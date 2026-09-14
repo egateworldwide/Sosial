@@ -122,7 +122,7 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
       <TouchableOpacity activeOpacity={1} onPress={onClose} style={st.bg}>
         <TouchableOpacity activeOpacity={1} onPress={() => {}} style={st.sheet}>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 10 }} keyboardShouldPersistTaps="handled">
+          <ScrollView style={{ flexShrink: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 10 }} keyboardShouldPersistTaps="handled">
           <Text style={st.title}>{title ?? 'Add to queue'}</Text>
 
           {composer ? (

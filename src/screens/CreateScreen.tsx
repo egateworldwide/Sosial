@@ -365,7 +365,7 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
       <Modal visible={editing !== null} transparent animationType="slide" onRequestClose={() => setEditing(null)}>
         <TouchableOpacity activeOpacity={1} onPress={() => setEditing(null)} style={s.sheetBg}>
           <TouchableOpacity activeOpacity={1} onPress={() => {}} style={s.sheet}>
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <ScrollView style={{ flexShrink: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <Text style={s.sheetT}>Edit idea</Text>
               <Txt value={eTitle} onChangeText={setETitle} placeholder="Idea title…" style={s.cTitle} />
               <View style={{ height: 8 }} />

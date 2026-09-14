@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R } from '../theme';
 import { Txt, PrimaryBtn, GhostBtn, Stepper, PillToggle, Section, Field } from './ui';
@@ -63,9 +63,16 @@ export default function AIGenerateSheet({ visible, template, ratio, onClose, onA
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
       <TouchableOpacity activeOpacity={1} onPress={close} style={st.bg}>
         <TouchableOpacity activeOpacity={1} onPress={() => {}} style={st.sheet}>
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12 }}>
+          <ScrollView
+            style={{ flexShrink: 1 }}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ gap: 12 }}
+          >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Ionicons name="sparkles" size={19} color={C.accent} />
               <Text style={st.title}>Generate content</Text>
@@ -158,6 +165,7 @@ export default function AIGenerateSheet({ visible, template, ratio, onClose, onA
           </ScrollView>
         </TouchableOpacity>
       </TouchableOpacity>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
