@@ -59,6 +59,20 @@ function PostCanvasInner({ page, ratio, scale }: Props, ref: React.Ref<ViewShotR
   const stickToCard = page.stickToCard ?? false;
   const dir = dirFor(socialPos);
 
+  // auto-height cards must never exceed the canvas — cap them and let AutoFit scale
+  // the content down instead of the canvas clipping the bottom off
+  const canvasH = H * s;
+  const titleLines = hasTitle ? Math.max(1, Math.ceil(page.title.text.trim().length / 26)) : 0;
+  const titleH = hasTitle
+    ? page.title.size * s * 1.3 * titleLines + ((page.title.subtitle ?? '').trim() ? (page.title.subtitleSize ?? 15) * s * 1.35 : 0)
+    : 0;
+  const pfpVisible = !(page.pfp.hidden ?? false);
+  const socialsBelow = pfpVisible && visibleSocials.length > 0 && socialPos === 'below';
+  const pfpH = pfpVisible
+    ? page.pfp.size * s + pad(4) + (page.pfp.username?.trim() ? pad(handleSize) + pad(2) : 0) + (socialsBelow ? pad(iconSize) + pad(6) : 0)
+    : 0;
+  const cardMax = Math.max(90, canvasH - pad(16) * 2 - titleH - pfpH - pad(10) * 2);
+
   const blocks = page.blocks.length === 0 ? (
     <Text style={{ color: '#787774', textAlign: 'center', marginTop: pad(24), fontSize: pad(13), fontWeight: '600' }}>Add bullets, table or chart below</Text>
   ) : (
@@ -150,7 +164,7 @@ function PostCanvasInner({ page, ratio, scale }: Props, ref: React.Ref<ViewShotR
           {(page.cardH || page.cardAuto) ? (
             <>
               {!stickToCard && pfpOnTop ? pfpRow : null}
-              <View style={{ gap: pad(10), marginTop: cardY === 'top' ? undefined : 'auto', marginBottom: cardY === 'bottom' ? undefined : 'auto' }}>
+              <View style={{ gap: pad(10), flexShrink: page.cardAuto ? 1 : 0, marginTop: cardY === 'top' ? undefined : 'auto', marginBottom: cardY === 'bottom' ? undefined : 'auto' }}>
                 {stickToCard && pfpOnTop ? pfpRow : null}
                 {titleOnTop ? titleBlock : null}
                 {page.cardH ? (
@@ -160,8 +174,8 @@ function PostCanvasInner({ page, ratio, scale }: Props, ref: React.Ref<ViewShotR
                     </SocialCardChrome>
                   </View>
                 ) : (
-                  /* auto height — the card hugs its generated content */
-                  <SocialCardChrome page={page} pad={pad} fit>
+                  /* auto height — hugs content, capped so it can never spill off the canvas */
+                  <SocialCardChrome page={page} pad={pad} fit maxH={cardMax}>
                     {blocks}
                   </SocialCardChrome>
                 )}
