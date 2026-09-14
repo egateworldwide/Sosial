@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "Zap",
+    "slug": "zap",
+    "scheme": "zap",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "QuickPost saves your infographic posts to your photo library.",
+        "NSPhotoLibraryAddUsageDescription": "QuickPost saves your infographic posts to your photo library."
+      }
+    },
+    "android": {
+      "package": "com.zap.app",
+      "permissions": []
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "QuickPost needs access to your photos to use custom backgrounds and profile pictures."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "QuickPost saves your posts to your gallery.",
+          "savePhotosPermission": "QuickPost saves your posts to your gallery.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "backgroundColor": "#F7F6F3",
+          "imageWidth": 220
+        }
+      ],
+      "@react-native-community/datetimepicker"
+    ]
+  }
+}
