@@ -103,10 +103,10 @@ export default function EditorScreen({ onExport, onHome, onPosts }: { onExport: 
     }),
   ).current;
 
-  // preview scale: fit inside 34% of screen (normal) or most of the screen (expanded)
-  const overhead = expanded ? 120 : 88;
-  const availH = expanded ? SCREEN_H * 0.86 - overhead : SCREEN_H * 0.32 - overhead;
-  const stageScale = Math.max(0.3, Math.min(CANVAS_SCALE, availH / (CANVAS_W * sizeRatio)));
+  // preview scale: identical math in both modes, only the available height differs,
+  // so Minimize and Maximize render the exact same canvas at different sizes
+  const stageMaxH = expanded ? SCREEN_H * 0.82 : SCREEN_H * 0.34;
+  const stageScale = Math.min(CANVAS_SCALE, stageMaxH / (CANVAS_W * sizeRatio));
   const stageW = CANVAS_W * stageScale;
   const stageWR = useRef(stageW);
   stageWR.current = stageW;
@@ -316,7 +316,7 @@ const makeS = (C: Palette) => StyleSheet.create({
   exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, height: 38, borderRadius: R.lg, backgroundColor: C.accent },
   exportT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14, color: C.onInk, letterSpacing: -0.2 },
 
-  stage: { justifyContent: 'flex-start', alignItems: 'center', paddingTop: 6, paddingBottom: 10 },
+  stage: { justifyContent: 'center', alignItems: 'center', paddingTop: 6, paddingBottom: 10 },
   dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 6 },
   dots: { flexDirection: 'row', gap: 6 },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.lineSoft },
