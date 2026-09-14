@@ -1,12 +1,11 @@
 import { ContentBrief, GenPage } from './types';
 
 /** Deterministic stand-in for a real model. Good enough to exercise the whole
- *  brief → generate → normalize → apply → layout path with no API key.
+ *  prompt → generate → normalize → apply → layout path with no API key.
  *  Replace via provider.ts once a real endpoint is wired. */
 export function mockGenerate(brief: ContentBrief): GenPage[] {
-  const topic = brief.topic.trim() || 'your idea';
-  const audience = brief.audience.trim() || 'your audience';
-  const cta = brief.cta.trim() || 'Learn more';
+  const idea = brief.prompt.trim() || 'your idea';
+  const short = shortIdea(idea);
   const n = Math.max(1, Math.min(10, brief.pages));
   const pages: GenPage[] = [];
 
@@ -17,11 +16,11 @@ export function mockGenerate(brief: ContentBrief): GenPage[] {
         blocks: [
           {
             type: 'bullets',
-            heading: `Why ${short(topic)}`,
+            heading: `Why ${short}`,
             items: [
-              `${cap(topic)} saves ${audience} time every week.`,
-              `It removes the guesswork from daily decisions.`,
-              `Small habit, compounding long-term results.`,
+              `${cap(short)} saves you time every week.`,
+              'It removes the guesswork from daily decisions.',
+              'Small habit, compounding long-term results.',
             ],
           },
         ],
@@ -34,7 +33,7 @@ export function mockGenerate(brief: ContentBrief): GenPage[] {
           {
             type: 'numbered',
             heading: 'How to start',
-            items: [`Pick one clear goal for ${short(topic)}.`, 'Set a 10-minute daily block.', `Track it for a week, then review.`],
+            items: [`Pick one clear goal for ${short}.`, 'Set a 10-minute daily block.', 'Track it for a week, then review.'],
           },
         ],
       });
@@ -61,7 +60,7 @@ export function mockGenerate(brief: ContentBrief): GenPage[] {
         blocks: [
           {
             type: 'table',
-            heading: `${short(topic)} at a glance`,
+            heading: `${short} at a glance`,
             columns: ['Aspect', 'Before', 'After'],
             rows: [
               ['Time', 'Slow', 'Fast'],
@@ -77,23 +76,20 @@ export function mockGenerate(brief: ContentBrief): GenPage[] {
       {
         type: 'free',
         heading: 'Key insight',
-        lines: [
-          `${cap(topic)} works best when it is simple and repeated.`,
-          `Start today — ${cta.toLowerCase()}.`,
-        ],
+        lines: [`${cap(short)} works best when it is simple and repeated.`, 'Start today and stay consistent.'],
       },
     ];
     if (brief.includeImages && brief.maxBlocksPerPage > blocks.length) {
-      blocks.push({ type: 'image', heading: `Visual for ${short(topic)}` });
+      blocks.push({ type: 'image', heading: `Visual for ${short}` });
     }
-    pages.push({ blocks, imagePrompt: `${topic} — illustrative photo` });
+    pages.push({ blocks, imagePrompt: `${idea} — illustrative photo` });
   }
 
   return pages;
 }
 
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
-const short = (s: string) => {
+const shortIdea = (s: string) => {
   const w = s.trim().split(/\s+/).slice(0, 3).join(' ');
   return cap(w);
 };

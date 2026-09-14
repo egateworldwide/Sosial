@@ -2,15 +2,15 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R } from '../theme';
-import { Txt, PrimaryBtn, GhostBtn, Seg, Stepper, PillToggle, Section, Field } from './ui';
+import { Txt, PrimaryBtn, GhostBtn, Stepper, PillToggle, Section, Field } from './ui';
 import PostCanvas from './PostCanvas';
 import { RULES } from '../utils/ai/rules';
-import { ContentBrief, DEFAULT_BRIEF, GenResult, TONES, Tone } from '../utils/ai/types';
+import { ContentBrief, DEFAULT_BRIEF, GenResult } from '../utils/ai/types';
 import { generate } from '../utils/ai/provider';
 import { applyGenResult } from '../utils/ai/apply';
 import { PostPage } from '../types';
 
-/** Brief → generate → visual preview → apply. Mock engine for now (no key yet). */
+/** Prompt → generate → visual preview → apply. Mock engine for now (no key yet). */
 export default function AIGenerateSheet({ visible, template, ratio, onClose, onApply }: {
   visible: boolean;
   template: PostPage;
@@ -20,10 +20,7 @@ export default function AIGenerateSheet({ visible, template, ratio, onClose, onA
 }) {
   const { C } = useTheme();
   const st = makeSt(C);
-  const [topic, setTopic] = useState('');
-  const [audience, setAudience] = useState('');
-  const [cta, setCta] = useState('');
-  const [tone, setTone] = useState<Tone>('friendly');
+  const [prompt, setPrompt] = useState('');
   const [pages, setPages] = useState(3);
   const [maxWords, setMaxWords] = useState(DEFAULT_BRIEF.maxWordsPerPage);
   const [maxBlocks, setMaxBlocks] = useState(DEFAULT_BRIEF.maxBlocksPerPage);
@@ -33,7 +30,7 @@ export default function AIGenerateSheet({ visible, template, ratio, onClose, onA
   const [result, setResult] = useState<GenResult | null>(null);
 
   const brief: ContentBrief = {
-    topic, audience, tone, cta, language: 'English',
+    prompt, language: 'English',
     pages, maxWordsPerPage: maxWords, maxBlocksPerPage: maxBlocks, includeImages,
   };
 
@@ -44,8 +41,8 @@ export default function AIGenerateSheet({ visible, template, ratio, onClose, onA
   );
 
   const run = async () => {
-    if (!topic.trim()) {
-      setErr('Add a topic so the AI knows what to write about.');
+    if (!prompt.trim()) {
+      setErr('Type what you want the AI to write about.');
       return;
     }
     setErr('');
@@ -77,21 +74,17 @@ export default function AIGenerateSheet({ visible, template, ratio, onClose, onA
               Your template stays exactly as it is — the AI only fills the content card, then sizes it to fit.
             </Text>
 
-            <Section no="01" title="Brief" hint="The more specific, the better the copy." />
-            <Field label="Topic">
-              <Txt value={topic} onChangeText={setTopic} placeholder="e.g. 5 habits for better sleep" />
-            </Field>
-            <Field label="Audience">
-              <Txt value={audience} onChangeText={setAudience} placeholder="e.g. busy parents" />
-            </Field>
-            <Field label="Call to action">
-              <Txt value={cta} onChangeText={setCta} placeholder="e.g. Follow for more tips" />
-            </Field>
-            <Field label="Tone">
-              <Seg<Tone> options={TONES.map((t) => ({ value: t.id, label: t.label }))} value={tone} onChange={setTone} />
+            <Field label="Prompt" hint="Describe the content you want.">
+              <Txt
+                value={prompt}
+                onChangeText={setPrompt}
+                placeholder="e.g. 5 habits for better sleep, one per card…"
+                multiline
+                style={{ minHeight: 84, textAlignVertical: 'top' }}
+              />
             </Field>
 
-            <Section no="02" title="Rules" hint="Hard limits the content is always trimmed to." />
+            <Section no="01" title="Rules" hint="Hard limits the content is always trimmed to." />
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <View style={{ flex: 1 }}>
                 <Field label="Cards" hint={`${pages}`}>
@@ -115,7 +108,10 @@ export default function AIGenerateSheet({ visible, template, ratio, onClose, onA
               <PillToggle on={includeImages} onPress={() => setIncludeImages((v) => !v)} />
             </View>
 
-            <PrimaryBtn label={busy ? 'Generating…' : 'Generate'} onPress={run} />
+            <TouchableOpacity onPress={run} disabled={busy} style={[st.genBtn, busy && { opacity: 0.6 }]} activeOpacity={0.85}>
+              <Ionicons name="sparkles" size={15} color={C.onInk} />
+              <Text style={st.genT}>{busy ? 'Generating…' : 'Generate'}</Text>
+            </TouchableOpacity>
             {err ? <Text style={st.err}>{err}</Text> : null}
 
             {result ? (
@@ -151,7 +147,7 @@ export default function AIGenerateSheet({ visible, template, ratio, onClose, onA
                     />
                   </>
                 ) : (
-                  <Text style={st.warn}>Nothing usable was generated — try a more specific topic.</Text>
+                  <Text style={st.warn}>Nothing usable was generated — try a more specific prompt.</Text>
                 )}
               </View>
             ) : null}
@@ -174,6 +170,8 @@ const makeSt = (C: Palette) => StyleSheet.create({
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderRadius: R.lg, paddingHorizontal: 15, paddingVertical: 13 },
   toggleT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13.5, color: C.ink },
   toggleS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.muted, marginTop: 2 },
+  genBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, alignSelf: 'flex-start', backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 20, paddingVertical: 11 },
+  genT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: C.onInk },
   previewT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: C.ink },
   warn: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, lineHeight: 18, color: C.muted },
   err: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.redText },

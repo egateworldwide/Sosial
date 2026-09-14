@@ -139,14 +139,8 @@ export default function ContentEditor() {
   return (
     <View style={{ gap: 22 }}>
       <TouchableOpacity onPress={() => setAi(true)} style={st.aiBtn} activeOpacity={0.85}>
-        <View style={st.aiIcon}>
-          <Ionicons name="sparkles" size={18} color={C.onInk} />
-        </View>
-        <View style={{ flex: 1, gap: 2 }}>
-          <Text style={st.aiT}>Generate content</Text>
-          <Text style={st.aiS}>AI writes the blocks — your template stays</Text>
-        </View>
-        <Ionicons name="arrow-forward" size={18} color={C.onInk} />
+        <Ionicons name="sparkles" size={15} color={C.onInk} />
+        <Text style={st.aiT}>Generate with AI</Text>
       </TouchableOpacity>
 
       <View style={{ gap: 12 }}>
@@ -384,10 +378,8 @@ export default function ContentEditor() {
 }
 
 const makeSt = (C: Palette) => StyleSheet.create({
-  aiBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.ink, borderRadius: R.lg, paddingHorizontal: 15, paddingVertical: 14 },
-  aiIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#FFFFFF22', alignItems: 'center', justifyContent: 'center' },
-  aiT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 15, letterSpacing: -0.2, color: C.onInk },
-  aiS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.onInk, opacity: 0.75 },
+  aiBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start', backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10 },
+  aiT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13.5, color: C.onInk },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, backgroundColor: C.card },
   chipT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.ink },

@@ -16,20 +16,9 @@ export interface GenPage {
   imagePrompt?: string;
 }
 
-export type Tone = 'friendly' | 'professional' | 'bold' | 'educational';
-
-export const TONES: { id: Tone; label: string }[] = [
-  { id: 'friendly', label: 'Friendly' },
-  { id: 'professional', label: 'Professional' },
-  { id: 'bold', label: 'Bold' },
-  { id: 'educational', label: 'Educational' },
-];
-
 export interface ContentBrief {
-  topic: string;
-  audience: string;
-  tone: Tone;
-  cta: string;
+  /** free-form prompt — the user's idea, in their words */
+  prompt: string;
   language: string;
   pages: number;
   maxWordsPerPage: number;
@@ -47,10 +36,7 @@ export interface GenResult {
 export const ALLOWED_TYPES: BlockType[] = ['free', 'bullets', 'numbered', 'table', 'bar', 'vbar', 'pie', 'image'];
 
 export const DEFAULT_BRIEF: ContentBrief = {
-  topic: '',
-  audience: '',
-  tone: 'friendly',
-  cta: '',
+  prompt: '',
   language: 'English',
   pages: 3,
   maxWordsPerPage: 60,
