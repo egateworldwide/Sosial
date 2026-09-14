@@ -56,6 +56,9 @@ function PostCanvasInner({ page, ratio, scale }: Props, ref: React.Ref<ViewShotR
   const ringColor = surfaceDark ? '#FFFFFF' : '#111111';
   const pfpOnTop = (page.pfp.pfpY ?? 'top') === 'top';
   const cardY = page.cardY ?? 'bottom';
+  // when the card is auto-height and a title sits on top, anchor the title+card
+  // group to the top so it fills from the top instead of hanging at the bottom
+  const groupY = page.cardAuto && hasTitle && page.title.position === 'top' ? 'top' : cardY;
   const stickToCard = page.stickToCard ?? false;
   const dir = dirFor(socialPos);
 
@@ -164,7 +167,7 @@ function PostCanvasInner({ page, ratio, scale }: Props, ref: React.Ref<ViewShotR
           {(page.cardH || page.cardAuto) ? (
             <>
               {!stickToCard && pfpOnTop ? pfpRow : null}
-              <View style={{ gap: pad(10), flexShrink: page.cardAuto ? 1 : 0, marginTop: cardY === 'top' ? undefined : 'auto', marginBottom: cardY === 'bottom' ? undefined : 'auto' }}>
+              <View style={{ gap: pad(10), flexShrink: page.cardAuto ? 1 : 0, marginTop: groupY === 'top' ? undefined : 'auto', marginBottom: groupY === 'bottom' ? undefined : 'auto' }}>
                 {stickToCard && pfpOnTop ? pfpRow : null}
                 {titleOnTop ? titleBlock : null}
                 {page.cardH ? (
