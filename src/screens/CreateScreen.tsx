@@ -8,7 +8,7 @@ import { Txt } from '../components/ui';
 import { usePost, defaultPage } from '../store/PostContext';
 import { QuickPost } from '../types';
 import { uid } from '../constants';
-import { saveProject, loadProjects } from './HomeScreen';
+import { saveProject, loadProjects, deleteProject, renameProject } from './HomeScreen';
 import { loadIdeas, saveIdea, deleteIdea, Idea } from '../utils/ideas';
 import { loadMetaState } from '../utils/metaStore';
 import { deleteProjectPreset, instantiatePreset, loadProjectPresets, renameProjectPreset,
@@ -146,9 +146,7 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
       {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
-          const all = await loadProjects();
-          const { default: AsyncStorage } = await import('@react-native-async-storage/async-storage');
-          await AsyncStorage.setItem('quickpost_projects_v1', JSON.stringify(all.filter((x) => x.id !== item.id)));
+          await deleteProject(item.id);
           reload();
         },
       },
@@ -197,14 +195,8 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
     if (renaming.kind === 'preset') {
       renameProjectPreset(renaming.id, v).then(setPresets);
     } else {
-      const all = await loadProjects();
-      const p = all.find((x) => x.id === renaming.id);
-      if (p) {
-        p.name = v;
-        const { default: AsyncStorage } = await import('@react-native-async-storage/async-storage');
-        await AsyncStorage.setItem('quickpost_projects_v1', JSON.stringify(all));
-        loadProjects().then(setProjects);
-      }
+      await renameProject(renaming.id, v);
+      loadProjects().then(setProjects);
     }
     setRenaming(null);
   };
@@ -336,9 +328,9 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
                 ))}
               </View>
             )}
-            <Text style={[s.secT, { marginTop: 26 }]}>Designs</Text>
+            <Text style={[s.secT, { marginTop: 26 }]}>Recent</Text>
             {projects.length === 0 ? (
-              <Text style={s.hint}>Image drafts land here.</Text>
+              <Text style={s.hint}>Your recent designs land here.</Text>
             ) : (
               <View style={{ marginTop: 6 }}>
                 {projects.map((item, idx) => (

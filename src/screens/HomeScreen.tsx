@@ -32,7 +32,7 @@ export async function loadProjects(): Promise<QuickPost[]> {
   }
 }
 
-async function deleteProject(id: string) {
+export async function deleteProject(id: string) {
   try {
     const raw = await AsyncStorage.getItem(KEY);
     const list: QuickPost[] = raw ? JSON.parse(raw) : [];
@@ -40,7 +40,7 @@ async function deleteProject(id: string) {
   } catch {}
 }
 
-async function renameProject(id: string, name: string) {
+export async function renameProject(id: string, name: string) {
   try {
     const raw = await AsyncStorage.getItem(KEY);
     const list: QuickPost[] = raw ? JSON.parse(raw) : [];
