@@ -77,7 +77,7 @@ function SheetRow({ label, onPress, danger }: { label: string; onPress: () => vo
   );
 }
 
-export default function HomeScreen({ onNew, onOpen, onQueue }: { onNew: () => void; onOpen: (p: QuickPost) => void; onQueue: () => void }) {
+export default function HomeScreen({ onNew, onOpen, onQueue, onPrivacy }: { onNew: () => void; onOpen: (p: QuickPost) => void; onQueue: () => void; onPrivacy: () => void }) {
   const [projects, setProjects] = useState<QuickPost[]>([]);
   const [presets, setPresets] = useState<ProjectPreset[]>([]);
   const [managed, setManaged] = useState<ManagedPost[]>([]);
@@ -300,6 +300,9 @@ export default function HomeScreen({ onNew, onOpen, onQueue }: { onNew: () => vo
             </View>
           )}
           <Text style={s.hint}>Tip — long-press a design to open, duplicate, rename or delete it.</Text>
+          <TouchableOpacity onPress={onPrivacy} activeOpacity={0.7} style={{ marginTop: 26, alignSelf: 'center' }}>
+            <Text style={{ fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.faint }}>Privacy Policy</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
 

@@ -9,11 +9,12 @@ import SizeScreen from './src/screens/SizeScreen';
 import EditorScreen from './src/screens/EditorScreen';
 import ExportScreen from './src/screens/ExportScreen';
 import ScheduleScreen from './src/screens/ScheduleScreen';
+import PrivacyScreen from './src/screens/PrivacyScreen';
 import Grain from './src/components/Grain';
 import { useFontsLoaded } from './src/utils/fonts';
 import { C } from './src/theme';
 
-type Route = 'home' | 'size' | 'editor' | 'export' | 'schedule';
+type Route = 'home' | 'size' | 'editor' | 'export' | 'schedule' | 'privacy';
 
 // Canvas is a fixed-size export artifact — ignore the OS font-size setting
 // so it renders pixel-identical on every device (esp. Android). Also kill
@@ -35,7 +36,7 @@ function Shell() {
         setRoute('editor');
         return true;
       }
-      if (r === 'editor' || r === 'schedule' || r === 'size') {
+      if (r === 'editor' || r === 'schedule' || r === 'size' || r === 'privacy') {
         setRoute('home');
         return true;
       }
@@ -102,11 +103,12 @@ function Shell() {
     <View style={{ flex: 1 }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: C.bone }}>
         <StatusBar barStyle="dark-content" />
-        {route === 'home' ? <HomeScreen onNew={() => { clearPost(); setRoute('size'); }} onOpen={(p) => { loadPost(p); setRoute('editor'); }} onQueue={() => setRoute('schedule')} /> : null}
+        {route === 'home' ? <HomeScreen onNew={() => { clearPost(); setRoute('size'); }} onOpen={(p) => { loadPost(p); setRoute('editor'); }} onQueue={() => setRoute('schedule')} onPrivacy={() => setRoute('privacy')} /> : null}
         {route === 'size' ? <SizeScreen onDone={() => setRoute('editor')} onBack={() => setRoute('home')} /> : null}
         {route === 'editor' ? <EditorScreen onExport={() => setRoute('export')} onHome={() => setRoute('home')} onPosts={() => setRoute('schedule')} /> : null}
         {route === 'export' ? <ExportScreen onBack={() => setRoute('editor')} /> : null}
         {route === 'schedule' ? <ScheduleScreen onBack={() => setRoute('home')} /> : null}
+        {route === 'privacy' ? <PrivacyScreen onBack={() => setRoute('home')} /> : null}
       </SafeAreaView>
       {/* single film-grain coat over the whole window incl. status/home strips,
           so the strips never read as a different color from the screens */}
