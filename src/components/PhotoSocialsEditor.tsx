@@ -42,7 +42,7 @@ export default function PhotoSocialsEditor() {
   const visibleSocials = page.socials.filter((s) => s.visible);
 
   return (
-    <View style={{ gap: 22 }}>
+    <View style={{ gap: 18 }}>
       <View style={st.switchRow}>
         <View style={{ flex: 1 }}>
           <Text style={st.switchT}>Show photo & socials</Text>
@@ -51,7 +51,7 @@ export default function PhotoSocialsEditor() {
         <PillToggle on={!(p.hidden ?? false)} onPress={() => patchPfp({ hidden: !(p.hidden ?? false) })} />
       </View>
 
-      <View style={{ gap: 14, opacity: p.hidden ? 0.45 : 1 }}>
+      <View style={{ gap: 12, opacity: p.hidden ? 0.45 : 1 }}>
         <Section no="01" title="Portrait" hint="Your face on the post." />
         {p.uri ? (
           <View style={st.photoCard}>
@@ -93,7 +93,7 @@ export default function PhotoSocialsEditor() {
         </Field>
       </View>
 
-      <View style={{ gap: 14, opacity: p.hidden ? 0.45 : 1 }}>
+      <View style={{ gap: 12, opacity: p.hidden ? 0.45 : 1 }}>
         <Section no="02" title="Badges" hint="Centered next to your photo on the export." />
         <View style={st.list}>
           {ALL_PLATFORMS.map((pl, i) => {

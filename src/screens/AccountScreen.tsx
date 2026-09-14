@@ -238,7 +238,7 @@ const makeS = (C: Palette) => StyleSheet.create({
   rowT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15, color: C.ink },
   rowS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, color: C.muted, marginTop: 1 },
   label: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.soft, marginBottom: 7 },
-  save: { backgroundColor: C.ink, borderRadius: R.md + 2, paddingVertical: 15, alignItems: 'center' },
+  save: { backgroundColor: C.ink, borderRadius: R.md + 2, paddingVertical: 12, alignItems: 'center' },
   saveT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15, color: C.onInk },
   note: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 19, color: C.muted, margin: 14 },
   plan: { backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, padding: 16, gap: 6 },

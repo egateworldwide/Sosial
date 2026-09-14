@@ -137,7 +137,7 @@ export default function ContentEditor() {
   };
 
   return (
-    <View style={{ gap: 22 }}>
+    <View style={{ gap: 18 }}>
       <TouchableOpacity onPress={() => setAi(true)} style={st.aiBtn} activeOpacity={0.85}>
         <Ionicons name="sparkles" size={15} color={C.onInk} />
         <Text style={st.aiT}>Generate with AI</Text>
@@ -378,7 +378,7 @@ export default function ContentEditor() {
 }
 
 const makeSt = (C: Palette) => StyleSheet.create({
-  aiBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start', backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10 },
+  aiBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: C.ink, borderRadius: 999, paddingVertical: 12 },
   aiT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13.5, color: C.onInk },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, backgroundColor: C.card },

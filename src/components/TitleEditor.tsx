@@ -23,7 +23,7 @@ export default function TitleEditor() {
   if (!page) return null;
   const t = page.title;
   return (
-    <View style={{ gap: 18 }}>
+    <View style={{ gap: 16 }}>
       {/* 01 · Headline — the main line only */}
       <View style={st.group}>
         <Section no="01" title="Headline" hint="The first thing people read." />
@@ -110,7 +110,7 @@ export default function TitleEditor() {
 }
 
 const makeSt = (C: Palette) => StyleSheet.create({
-  group: { backgroundColor: C.card, borderRadius: R.lg, padding: 15, gap: 13, borderWidth: 1, borderColor: C.lineSoft },
+  group: { backgroundColor: C.card, borderRadius: R.lg, padding: 13, gap: 11, borderWidth: 1, borderColor: C.lineSoft },
   fontBtn: { flexGrow: 1, minWidth: '30%', paddingVertical: 11, borderRadius: R.md, alignItems: 'center', backgroundColor: C.paper },
   fontBtnOn: { backgroundColor: C.ink },
   fontBtnT: { fontSize: 12.5, color: C.muted },

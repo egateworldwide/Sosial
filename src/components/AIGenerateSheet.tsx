@@ -65,7 +65,7 @@ export default function AIGenerateSheet({ visible, template, ratio, onClose, onA
     <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
       <TouchableOpacity activeOpacity={1} onPress={close} style={st.bg}>
         <TouchableOpacity activeOpacity={1} onPress={() => {}} style={st.sheet}>
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 14 }}>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Ionicons name="sparkles" size={19} color={C.accent} />
               <Text style={st.title}>Generate content</Text>
@@ -80,7 +80,7 @@ export default function AIGenerateSheet({ visible, template, ratio, onClose, onA
                 onChangeText={setPrompt}
                 placeholder="e.g. 5 habits for better sleep, one per card…"
                 multiline
-                style={{ minHeight: 84, textAlignVertical: 'top' }}
+                style={{ minHeight: 70, textAlignVertical: 'top' }}
               />
             </Field>
 
@@ -170,7 +170,7 @@ const makeSt = (C: Palette) => StyleSheet.create({
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderRadius: R.lg, paddingHorizontal: 15, paddingVertical: 13 },
   toggleT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13.5, color: C.ink },
   toggleS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.muted, marginTop: 2 },
-  genBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, alignSelf: 'flex-start', backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 20, paddingVertical: 11 },
+  genBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: C.ink, borderRadius: 999, paddingVertical: 12 },
   genT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: C.onInk },
   previewT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: C.ink },
   warn: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, lineHeight: 18, color: C.muted },

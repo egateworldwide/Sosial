@@ -48,7 +48,7 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
   const { C } = useTheme();
   const s = makeS(C);
   return (
-    <View style={{ gap: 9 }}>
+    <View style={{ gap: 7 }}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
         <Text style={s.label}>{label}</Text>
         {hint ? <Text style={s.hint}>{hint}</Text> : null}
@@ -172,7 +172,7 @@ export function GhostBtn({ label, onPress, danger }: { label: string; onPress: (
 export function Txt(props: TextInputProps) {
   const { C } = useTheme();
   const s = makeS(C);
-  return <TextInput {...props} placeholderTextColor={C.faint} style={[s.input, props.multiline && { minHeight: 76, textAlignVertical: 'top' }, props.style as any]} />;
+  return <TextInput {...props} placeholderTextColor={C.faint} style={[s.input, props.multiline && { minHeight: 60, textAlignVertical: 'top' }, props.style as any]} />;
 }
 
 /** Native-feel switch */
@@ -187,26 +187,26 @@ export function PillToggle({ on, onPress }: { on: boolean; onPress: () => void }
 }
 
 const makeS = (C: Palette) => StyleSheet.create({
-  secNo: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: C.accent },
-  secTitle: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 17, letterSpacing: -0.3, color: C.ink },
-  secHint: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 18, color: C.muted },
-  label: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.soft },
-  hint: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11.5, color: C.faint },
+  secNo: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11.5, color: C.accent },
+  secTitle: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 16, letterSpacing: -0.3, color: C.ink },
+  secHint: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, lineHeight: 17, color: C.muted },
+  label: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.soft },
+  hint: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11, color: C.faint },
   segWrap: { flexDirection: 'row', backgroundColor: C.surface, borderRadius: R.md, padding: 3, gap: 2 },
-  seg: { flex: 1, minWidth: 0, paddingVertical: 9, paddingHorizontal: 2, alignItems: 'center', borderRadius: R.sm },
+  seg: { flex: 1, minWidth: 0, paddingVertical: 7.5, paddingHorizontal: 2, alignItems: 'center', borderRadius: R.sm },
   segOn: { backgroundColor: C.paper, shadowColor: '#1C1917', shadowOpacity: 0.12, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
-  segT: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.muted, textAlign: 'center' },
+  segT: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11.5, color: C.muted, textAlign: 'center' },
   segTOn: { fontFamily: 'PlusJakartaSans_700Bold', color: C.ink },
   stepWrap: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start' },
-  stepBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  stepT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 16, color: C.ink, marginTop: -2 },
-  stepVal: { minWidth: 56, flexShrink: 1, textAlign: 'center', fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.ink, fontVariant: ['tabular-nums'] },
-  btn: { backgroundColor: C.ink, borderRadius: R.md + 2, minHeight: 54, paddingVertical: 16, alignItems: 'center', justifyContent: 'center' },
-  btnT: { fontFamily: 'PlusJakartaSans_700Bold', color: C.onInk, fontSize: 15 },
-  ghost: { backgroundColor: C.surface, borderRadius: R.md + 2, minHeight: 50, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
+  stepBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  stepT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15, color: C.ink, marginTop: -2 },
+  stepVal: { minWidth: 50, flexShrink: 1, textAlign: 'center', fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.ink, fontVariant: ['tabular-nums'] },
+  btn: { backgroundColor: C.ink, borderRadius: R.md + 2, minHeight: 46, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
+  btnT: { fontFamily: 'PlusJakartaSans_700Bold', color: C.onInk, fontSize: 14.5 },
+  ghost: { backgroundColor: C.surface, borderRadius: R.md + 2, minHeight: 42, paddingVertical: 11, alignItems: 'center', justifyContent: 'center' },
   ghostDanger: { backgroundColor: C.paleRed },
-  ghostT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: C.ink },
-  input: { fontFamily: 'PlusJakartaSans_400Regular', backgroundColor: C.surface, borderRadius: R.md, paddingHorizontal: 15, paddingVertical: 13, fontSize: 15, color: C.ink },
+  ghostT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13.5, color: C.ink },
+  input: { fontFamily: 'PlusJakartaSans_400Regular', backgroundColor: C.surface, borderRadius: R.md, paddingHorizontal: 13, paddingVertical: 10, fontSize: 14.5, color: C.ink },
   toggle: { width: 50, height: 30, borderRadius: 15, backgroundColor: '#D8D1BF', padding: 2, justifyContent: 'center' },
   toggleOn: { backgroundColor: C.accent, alignItems: 'flex-end' },
   knob: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#fff', shadowColor: '#1C1917', shadowOpacity: 0.2, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
