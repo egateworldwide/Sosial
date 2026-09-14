@@ -10,7 +10,7 @@ import { saveMetaState } from './metaStore';
 // Expo Go can't receive custom schemes back from Meta, so it goes through
 // the Expo proxy (real https — the only thing Meta's URI field accepts).
 // Standalone builds use the app scheme directly.
-const PROXY_URL = 'https://auth.expo.io/@naqibhusainii/zap';
+const PROXY_URL = 'https://auth.expo.io/@naqibhusainiis-team/zap';
 
 export const redirectUri = () =>
   Constants.appOwnership === 'expo'
