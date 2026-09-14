@@ -17,6 +17,7 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
   const [meta, setMeta] = useState<MetaState>({});
   const [pages, setPages] = useState<FbPage[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  const [pendingTarget, setPendingTarget] = useState<'fb' | 'ig' | null>(null);
   const fb = useFacebookAuth();
   const th = useThreadsAuth();
 
@@ -44,7 +45,18 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
         setMeta(st);
         const pgs = await fetchPages(token);
         setPages(pgs);
-        if (pgs.length === 0) Alert.alert('No Pages found', 'Create a Facebook Page you manage first — posts publish as the Page.');
+        const igOnly = pgs.filter((p) => p.instagram_business_account);
+        if (pendingTarget === 'ig') {
+          if (igOnly.length === 1) {
+            await pickPage(igOnly[0]);
+            setMeta(await loadMetaState());
+          } else if (igOnly.length === 0) {
+            Alert.alert('No linked Instagram', 'Link an Instagram Business account to one of your Pages first (Page Settings → Linked accounts).');
+          }
+        } else if (pgs.length === 0) {
+          Alert.alert('No Pages found', 'Create a Facebook Page you manage first — posts publish as the Page.');
+        }
+        setPendingTarget(null);
       } catch (e: any) {
         Alert.alert('Facebook login failed', e?.message ?? 'Try again.');
       } finally {
@@ -82,6 +94,25 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [th.response]);
 
+  const startLogin = (target: 'fb' | 'ig') => {
+    if (!configured) return;
+    setPendingTarget(target);
+    fb.promptAsync();
+  };
+
+  const loadPages = async () => {
+    const st = await loadMetaState();
+    if (!st.fbUserToken) return;
+    setBusy('Loading Pages…');
+    try {
+      setPages(await fetchPages(st.fbUserToken));
+    } catch (e: any) {
+      Alert.alert('Failed', e?.message ?? 'Could not load Pages.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const disconnectFB = async () => {
     const st = await saveMetaState({
       fbUserToken: undefined, pageId: undefined, pageName: undefined,
@@ -89,6 +120,11 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
     });
     setMeta(st);
     setPages([]);
+  };
+
+  const disconnectIG = async () => {
+    const st = await saveMetaState({ igId: undefined, igName: undefined });
+    setMeta(st);
   };
 
   const disconnectThreads = async () => {
@@ -127,36 +163,39 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
           </TouchableOpacity>
         </View>
 
-        {/* Facebook + Instagram */}
+        {/* Facebook */}
         <View style={{ marginTop: 22 }}>
-          <Section no="01" title="Facebook & Instagram" hint="One login covers both. Posts go out as your Page." />
-          {meta.pageId ? (
-            <View style={s.status}>
-              <Text style={s.statusT} numberOfLines={1}>{meta.pageName ?? 'Page'} {meta.igName ? `· ${meta.igName}` : '· no IG linked'}</Text>
-              <TouchableOpacity onPress={disconnectFB} activeOpacity={0.7}><Text style={s.danger}>Disconnect</Text></TouchableOpacity>
-            </View>
+          <Section no="01" title="Facebook" hint="Log in, then choose the Page to post as." />
+          {!meta.fbUserToken ? (
+            <PrimaryBtn label="Connect Facebook" onPress={() => startLogin('fb')} />
           ) : (
-            <PrimaryBtn label="Connect Facebook & Instagram" onPress={() => configured && fb.promptAsync()} />
-          )}
-          {pages.length > 0 && !meta.pageId ? (
-            <View style={{ gap: 8, marginTop: 12 }}>
-              <Text style={s.pickLabel}>Choose the Page to post as:</Text>
-              {pages.map((p) => (
-                <TouchableOpacity
-                  key={p.id}
-                  onPress={async () => { await pickPage(p); setMeta(await loadMetaState()); }}
-                  style={s.pageRow}
-                  activeOpacity={0.75}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.pageT} numberOfLines={1}>{p.name}</Text>
-                    <Text style={s.pageS}>{p.instagram_business_account ? `@${p.instagram_business_account.username ?? 'ig'}` : 'No IG linked'}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={C.faint} />
-                </TouchableOpacity>
-              ))}
+            <View style={{ gap: 10 }}>
+              {pages.length > 0 ? (
+                <View style={{ gap: 8 }}>
+                  {pages.map((p) => {
+                    const on = meta.pageId === p.id;
+                    return (
+                      <TouchableOpacity
+                        key={p.id}
+                        onPress={async () => { await pickPage(p); setMeta(await loadMetaState()); }}
+                        style={[s.pageRow, on && { borderWidth: 1.5, borderColor: C.accent }]}
+                        activeOpacity={0.75}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.pageT} numberOfLines={1}>{p.name}</Text>
+                          <Text style={s.pageS}>{p.instagram_business_account ? `@${p.instagram_business_account.username ?? 'ig'}` : 'No IG linked'}</Text>
+                        </View>
+                        {on ? <Ionicons name="checkmark-circle" size={20} color={C.accent} /> : null}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ) : (
+                <GhostBtn label="Load my Pages" onPress={loadPages} />
+              )}
+              <GhostBtn label="Disconnect Facebook" danger onPress={disconnectFB} />
             </View>
-          ) : null}
+          )}
           {busy ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}>
               <ActivityIndicator color={C.accent} />
@@ -165,9 +204,49 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
           ) : null}
         </View>
 
+        {/* Instagram */}
+        <View style={{ marginTop: 22 }}>
+          <Section no="02" title="Instagram" hint="Runs on the Facebook login — pick a Page with IG linked." />
+          {meta.igId ? (
+            <View style={s.status}>
+              <Text style={s.statusT} numberOfLines={1}>{meta.igName ?? 'Instagram connected'}</Text>
+              <TouchableOpacity onPress={disconnectIG} activeOpacity={0.7}><Text style={s.danger}>Disconnect</Text></TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ gap: 10 }}>
+              <PrimaryBtn
+                label="Connect Instagram"
+                onPress={() => {
+                  if (!configured) return;
+                  if (!meta.fbUserToken) startLogin('ig');
+                  else loadPages();
+                }}
+              />
+              {meta.fbUserToken && pages.filter((p) => p.instagram_business_account).length > 0 ? (
+                <View style={{ gap: 8 }}>
+                  {pages.filter((p) => p.instagram_business_account).map((p) => (
+                    <TouchableOpacity
+                      key={p.id}
+                      onPress={async () => { await pickPage(p); setMeta(await loadMetaState()); }}
+                      style={s.pageRow}
+                      activeOpacity={0.75}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.pageT} numberOfLines={1}>{p.name}</Text>
+                        <Text style={s.pageS}>@{p.instagram_business_account?.username ?? 'ig'}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={C.faint} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          )}
+        </View>
+
         {/* Threads */}
         <View style={{ marginTop: 22 }}>
-          <Section no="02" title="Threads" hint="Separate login, same dashboard." />
+          <Section no="03" title="Threads" hint="Separate login, same dashboard." />
           {meta.threadsId ? (
             <View style={s.status}>
               <Text style={s.statusT} numberOfLines={1}>{meta.threadsName ?? 'Threads connected'}</Text>
