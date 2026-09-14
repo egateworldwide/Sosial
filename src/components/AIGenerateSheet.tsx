@@ -1,15 +1,20 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R } from '../theme';
 import { Txt, PrimaryBtn, GhostBtn, Seg, Stepper, PillToggle, Section, Field } from './ui';
+import PostCanvas from './PostCanvas';
 import { RULES } from '../utils/ai/rules';
 import { ContentBrief, DEFAULT_BRIEF, GenResult, TONES, Tone } from '../utils/ai/types';
 import { generate } from '../utils/ai/provider';
+import { applyGenResult } from '../utils/ai/apply';
+import { PostPage } from '../types';
 
-/** Brief → generate → preview → apply. Mock engine for now (no key yet). */
-export default function AIGenerateSheet({ visible, onClose, onApply }: {
+/** Brief → generate → visual preview → apply. Mock engine for now (no key yet). */
+export default function AIGenerateSheet({ visible, template, ratio, onClose, onApply }: {
   visible: boolean;
+  template: PostPage;
+  ratio: number;
   onClose: () => void;
   onApply: (result: GenResult, brief: ContentBrief) => void;
 }) {
@@ -24,6 +29,7 @@ export default function AIGenerateSheet({ visible, onClose, onApply }: {
   const [maxBlocks, setMaxBlocks] = useState(DEFAULT_BRIEF.maxBlocksPerPage);
   const [includeImages, setIncludeImages] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
   const [result, setResult] = useState<GenResult | null>(null);
 
   const brief: ContentBrief = {
@@ -31,10 +37,20 @@ export default function AIGenerateSheet({ visible, onClose, onApply }: {
     pages, maxWordsPerPage: maxWords, maxBlocksPerPage: maxBlocks, includeImages,
   };
 
+  // real, rendered cards so the preview is never a mystery
+  const previewPages: PostPage[] = useMemo(
+    () => (result && result.pages.length ? applyGenResult(result, { template, contentScale: template.contentScale ?? 1 }) : []),
+    [result, template],
+  );
+
   const run = async () => {
-    if (!topic.trim()) return;
-    setBusy(true);
+    if (!topic.trim()) {
+      setErr('Add a topic so the AI knows what to write about.');
+      return;
+    }
+    setErr('');
     setResult(null);
+    setBusy(true);
     try {
       setResult(await generate(brief));
     } finally {
@@ -44,10 +60,9 @@ export default function AIGenerateSheet({ visible, onClose, onApply }: {
 
   const close = () => {
     setResult(null);
+    setErr('');
     onClose();
   };
-
-  const previewRows = result?.pages ?? [];
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
@@ -101,35 +116,43 @@ export default function AIGenerateSheet({ visible, onClose, onApply }: {
             </View>
 
             <PrimaryBtn label={busy ? 'Generating…' : 'Generate'} onPress={run} />
+            {err ? <Text style={st.err}>{err}</Text> : null}
 
             {result ? (
               <View style={{ gap: 10, marginTop: 4 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Ionicons
-                    name={previewRows.length > 0 ? 'checkmark-circle' : 'alert-circle'}
+                    name={previewPages.length > 0 ? 'checkmark-circle' : 'alert-circle'}
                     size={18}
-                    color={previewRows.length > 0 ? '#22C55E' : C.redText}
+                    color={previewPages.length > 0 ? '#22C55E' : C.redText}
                   />
                   <Text style={st.previewT}>
-                    {previewRows.length} card{previewRows.length === 1 ? '' : 's'} ready · {result.provider}
+                    {previewPages.length} card{previewPages.length === 1 ? '' : 's'} ready · {result.provider}
                   </Text>
                 </View>
+
                 {result.warnings.map((w, i) => (
                   <Text key={i} style={st.warn}>• {w}</Text>
                 ))}
-                {previewRows.map((p, i) => (
-                  <View key={i} style={st.preview}>
-                    <Text style={st.previewNo}>Card {i + 1}</Text>
-                    {p.blocks.map((b, j) => (
-                      <Text key={j} style={st.previewB}>
-                        {b.type}{b.heading ? ` · ${b.heading}` : ''}
-                      </Text>
-                    ))}
-                  </View>
-                ))}
-                {previewRows.length > 0 ? (
-                  <PrimaryBtn label={`Apply to ${previewRows.length} card${previewRows.length === 1 ? '' : 's'}`} onPress={() => onApply(result, brief)} />
-                ) : null}
+
+                {previewPages.length > 0 ? (
+                  <>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingVertical: 4 }}>
+                      {previewPages.map((p, i) => (
+                        <View key={p.id} style={{ alignItems: 'center', gap: 6 }}>
+                          <PostCanvas page={p} ratio={ratio} scale={0.3} />
+                          <Text style={st.cardNo}>Card {i + 1}</Text>
+                        </View>
+                      ))}
+                    </ScrollView>
+                    <PrimaryBtn
+                      label={`Use these ${previewPages.length} card${previewPages.length === 1 ? '' : 's'}`}
+                      onPress={() => onApply(result, brief)}
+                    />
+                  </>
+                ) : (
+                  <Text style={st.warn}>Nothing usable was generated — try a more specific topic.</Text>
+                )}
               </View>
             ) : null}
 
@@ -153,7 +176,6 @@ const makeSt = (C: Palette) => StyleSheet.create({
   toggleS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.muted, marginTop: 2 },
   previewT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: C.ink },
   warn: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, lineHeight: 18, color: C.muted },
-  preview: { backgroundColor: C.card, borderRadius: R.md, borderWidth: 1, borderColor: C.lineSoft, padding: 12, gap: 3 },
-  previewNo: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: C.accentInk, textTransform: 'uppercase', letterSpacing: 0.5 },
-  previewB: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, color: C.soft, textTransform: 'capitalize' },
+  err: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.redText },
+  cardNo: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11.5, color: C.muted },
 });

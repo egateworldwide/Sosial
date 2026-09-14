@@ -17,6 +17,7 @@ const CARDS: { id: CardStyle; label: string }[] = [
   { id: 'facebook', label: 'Facebook' },
   { id: 'instagram', label: 'Instagram' },
   { id: 'threads', label: 'Threads' },
+  { id: 'x', label: 'X' },
 ];
 
 const TYPES: { id: BlockType; label: string }[] = [
@@ -50,7 +51,7 @@ function newBlock(type: BlockType): ContentBlock {  if (type === 'table') return
 export default function ContentEditor() {
   const { C } = useTheme();
   const st = makeSt(C);
-  const { page, setBlocks, patchPage, setPages } = usePost();
+  const { page, setBlocks, patchPage, setPages, sizeRatio } = usePost();
   const [openId, setOpenId] = useState<string | null>(null);
   const [ai, setAi] = useState(false);
   const [cropId, setCropId] = useState<string | null>(null);
@@ -120,11 +121,19 @@ export default function ContentEditor() {
 
   /** AI result → cloned template pages with fitted card heights. */
   const applyAi = (result: GenResult) => {
-    if (result.pages.length === 0) return;
-    const pages = applyGenResult(result, { template: page, contentScale: page.contentScale ?? 1 });
-    setPages(pages);
-    setAi(false);
-    Alert.alert('Content generated', `Filled ${pages.length} card${pages.length === 1 ? '' : 's'} and sized each one to fit. Your template was kept.`);
+    if (result.pages.length === 0) {
+      Alert.alert('Nothing to apply', result.warnings.join('\n') || 'Try a more specific topic.');
+      return;
+    }
+    try {
+      const pages = applyGenResult(result, { template: page, contentScale: page.contentScale ?? 1 });
+      setPages(pages);
+      setAi(false);
+      setOpenId(null);
+      Alert.alert('Content generated', `Filled ${pages.length} card${pages.length === 1 ? '' : 's'} and sized each one to fit. Your template was kept.`);
+    } catch (e: any) {
+      Alert.alert('Could not apply', e?.message ?? 'Something went wrong.');
+    }
   };
 
   return (
@@ -360,7 +369,7 @@ export default function ContentEditor() {
       ) : null}
       </View>
 
-      <AIGenerateSheet visible={ai} onClose={() => setAi(false)} onApply={applyAi} />
+      <AIGenerateSheet visible={ai} template={page} ratio={sizeRatio} onClose={() => setAi(false)} onApply={applyAi} />
       <ImageCropModal
         visible={!!cropBlock}
         uri={cropBlock?.imageUri}
