@@ -4,10 +4,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { C, R, T } from '../theme';
-import { SocialGlyph, PrimaryBtn } from '../components/ui';
+import { SocialGlyph, PrimaryBtn, GhostBtn } from '../components/ui';
 import { uid } from '../constants';
 import ScheduleSheet from '../components/ScheduleSheet';
 import { loadManagedPosts, saveManagedPost, deleteManagedPost, ManagedPost } from '../utils/managed';
+import { loadMetaState, MetaState } from '../utils/metaStore';
+import { publishFacebook, publishInstagram, publishThreads } from '../utils/metaPublish';
 import {
   cancelPostReminder, fmtDateTime, platformsLabel,
   schedulePostReminder, ensureNotifPermission,
@@ -45,15 +47,20 @@ function Cover({ uri, kind }: { uri?: string; kind?: 'image' | 'video' }) {
 }
 
 /** Post manager: every post — title + photo + description + channels + time. */
-export default function ScheduleScreen({ onBack }: { onBack: () => void }) {
+export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => void; onConnect: () => void }) {
   const [posts, setPosts] = useState<ManagedPost[]>([]);
+  const [meta, setMeta] = useState<MetaState>({});
+  const [publishing, setPublishing] = useState(false);
   const [sheet, setSheet] = useState<{ post: ManagedPost | null } | null>(null);
   const [tTitle, setTTitle] = useState('');
   const [tBody, setTBody] = useState('');
   const [tUri, setTUri] = useState<string | undefined>(undefined);
   const [tKind, setTKind] = useState<'image' | 'video'>('image');
 
-  const reload = async () => setPosts(await loadManagedPosts());
+  const reload = async () => {
+    setPosts(await loadManagedPosts());
+    setMeta(await loadMetaState());
+  };
 
   useEffect(() => {
     reload();
@@ -138,6 +145,61 @@ export default function ScheduleScreen({ onBack }: { onBack: () => void }) {
     reload();
   };
 
+  const publish = async () => {
+    const p = sheet?.post;
+    if (!p || publishing) return;
+    const plats = p.platforms?.length ? p.platforms : ['any'];
+    const m = await loadMetaState();
+    const caption = [p.title, p.body].filter((x) => x && x.trim()).join('\n\n');
+    const done: string[] = [];
+    const errs: string[] = [];
+    const manual: string[] = [];
+    setPublishing(true);
+    try {
+      for (const ch of plats) {
+        try {
+          if (ch === 'facebook') {
+            if (!m.pageId || !m.pageToken) throw new Error('Facebook not connected');
+            await publishFacebook({ pageId: m.pageId, pageToken: m.pageToken, message: caption, imageUri: p.imageUri, videoUri: p.videoUri });
+            done.push('Facebook');
+          } else if (ch === 'instagram') {
+            if (!m.igId || !m.fbUserToken) throw new Error('Instagram not connected');
+            await publishInstagram({ igId: m.igId, userToken: m.fbUserToken, caption, imageUri: p.imageUri, videoUri: p.videoUri });
+            done.push('Instagram');
+          } else if (ch === 'threads') {
+            if (!m.threadsId || !m.threadsToken) throw new Error('Threads not connected');
+            await publishThreads({ threadsId: m.threadsId, token: m.threadsToken, text: caption, imageUri: p.imageUri, videoUri: p.videoUri });
+            done.push('Threads');
+          } else {
+            manual.push(ch === 'any' ? 'manual post' : ch);
+          }
+        } catch (e: any) {
+          errs.push(`${ch}: ${e?.message ?? 'failed'}`);
+        }
+      }
+    } finally {
+      setPublishing(false);
+    }
+    const lines = [
+      done.length ? `Posted: ${done.join(', ')}` : '',
+      manual.length ? `Post yourself: ${manual.join(', ')}` : '',
+      errs.length ? `Failed:\n${errs.join('\n')}` : '',
+    ].filter(Boolean).join('\n\n');
+    Alert.alert(done.length > 0 && errs.length === 0 && manual.length === 0 ? 'Published ✓' : 'Publish result', lines || 'Nothing to publish.');
+    if (done.length > 0 && errs.length === 0 && manual.length === 0) {
+      await cancelPostReminder(p.id);
+      await deleteManagedPost(p.id);
+      setSheet(null);
+      reload();
+    }
+  };
+
+  const connectedLabel = [
+    meta.pageName ? `FB: ${meta.pageName}` : '',
+    meta.igName ? `IG ${meta.igName}` : '',
+    meta.threadsName ? `Threads ${meta.threadsName}` : '',
+  ].filter(Boolean).join(' · ') || 'No accounts connected';
+
   const scheduled = posts.filter((p) => !!p.scheduledAt).sort((a, b) => (a.scheduledAt as number) - (b.scheduledAt as number));
 
   const groups: { day: string; rows: ManagedPost[] }[] = [];
@@ -189,6 +251,12 @@ export default function ScheduleScreen({ onBack }: { onBack: () => void }) {
             : `${scheduled.length} post${scheduled.length === 1 ? '' : 's'} queued.`}{' '}
           Tap the alert when it fires to jump back here.
         </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}>
+          <Text style={[s.meta, { flex: 1 }]} numberOfLines={1}>{connectedLabel}</Text>
+          <TouchableOpacity onPress={onConnect} style={s.qBtn} activeOpacity={0.8}>
+            <Text style={s.qBtnT}>Connect</Text>
+          </TouchableOpacity>
+        </View>
         <View style={{ marginTop: 16 }}>
           <PrimaryBtn label="+ New post" onPress={() => openSheet(null)} />
         </View>
@@ -216,6 +284,8 @@ export default function ScheduleScreen({ onBack }: { onBack: () => void }) {
         composer={{ title: tTitle, caption: tBody, onCaption: setTBody, onTitle: setTTitle }}
         media={{ uri: tUri, kind: tKind, onPick: pickMedia, onRemove: () => setTUri(undefined) }}
         onSave={save}
+        onPublish={sheet?.post ? publish : undefined}
+        publishBusy={publishing}
         onDelete={sheet?.post ? remove : undefined}
         onPosted={sheet?.post ? markPosted : undefined}
         onClose={() => setSheet(null)}
@@ -235,6 +305,8 @@ const s = StyleSheet.create({
   coverT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 17, color: C.accentInk },
   t: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15, letterSpacing: -0.2, color: C.ink },
   meta: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, color: C.muted },
+  qBtn: { backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 15, paddingVertical: 9 },
+  qBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: '#fff' },
   empty: { backgroundColor: C.card, borderRadius: R.lg, padding: 28, alignItems: 'center', marginTop: 22 },
   emptyT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 16, color: C.ink },
   emptyS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, color: C.muted, marginTop: 6, textAlign: 'center', lineHeight: 19 },

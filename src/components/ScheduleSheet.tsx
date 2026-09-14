@@ -47,12 +47,15 @@ interface Props {
   media?: SheetMedia;
   onDelete?: () => void;
   onPosted?: () => void;
+  publishLabel?: string;
+  publishBusy?: boolean;
+  onPublish?: () => void;
   onSave: (at: number, platforms: string[]) => void;
   onClose: () => void;
 }
 
 /** Buffer-style sheet: channels (multi) + title/description + time. */
-export default function ScheduleSheet({ visible, initialAt, initialPlatforms, title, bulkCount, composer, media, onDelete, onPosted, onSave, onClose }: Props) {
+export default function ScheduleSheet({ visible, initialAt, initialPlatforms, title, bulkCount, composer, media, onDelete, onPosted, publishLabel, publishBusy, onPublish, onSave, onClose }: Props) {
   const [plats, setPlats] = useState<string[]>(['any']);
   const [preset, setPreset] = useState<'today' | 'tomorrow' | 'custom'>('tomorrow');
   const [custom, setCustom] = useState(new Date(Date.now() + 86400000));
@@ -238,6 +241,18 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
               onPress={save}
             />
           </View>
+          {onPublish ? (
+            <TouchableOpacity
+              onPress={onPublish}
+              disabled={!!publishBusy}
+              style={{ backgroundColor: C.accent, borderRadius: R.lg, paddingVertical: 14, alignItems: 'center', opacity: publishBusy ? 0.6 : 1 }}
+              activeOpacity={0.85}
+            >
+              <Text style={{ fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 15, color: '#fff' }}>
+                {publishBusy ? 'Publishing…' : (publishLabel ?? 'Publish now')}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
           {onPosted || onDelete ? (
             <View style={{ flexDirection: 'row', gap: 8 }}>
               {onPosted ? <View style={{ flex: 1 }}><GhostBtn label="Posted ✓" onPress={onPosted} /></View> : null}

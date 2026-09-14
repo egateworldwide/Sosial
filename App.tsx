@@ -9,12 +9,13 @@ import SizeScreen from './src/screens/SizeScreen';
 import EditorScreen from './src/screens/EditorScreen';
 import ExportScreen from './src/screens/ExportScreen';
 import ScheduleScreen from './src/screens/ScheduleScreen';
+import ConnectScreen from './src/screens/ConnectScreen';
 import PrivacyScreen from './src/screens/PrivacyScreen';
 import Grain from './src/components/Grain';
 import { useFontsLoaded } from './src/utils/fonts';
 import { C } from './src/theme';
 
-type Route = 'home' | 'size' | 'editor' | 'export' | 'schedule' | 'privacy';
+type Route = 'home' | 'size' | 'editor' | 'export' | 'schedule' | 'privacy' | 'connect';
 
 // Canvas is a fixed-size export artifact — ignore the OS font-size setting
 // so it renders pixel-identical on every device (esp. Android). Also kill
@@ -34,6 +35,10 @@ function Shell() {
       const r = routeRef.current;
       if (r === 'export') {
         setRoute('editor');
+        return true;
+      }
+      if (r === 'connect') {
+        setRoute('schedule');
         return true;
       }
       if (r === 'editor' || r === 'schedule' || r === 'size' || r === 'privacy') {
@@ -107,8 +112,9 @@ function Shell() {
         {route === 'size' ? <SizeScreen onDone={() => setRoute('editor')} onBack={() => setRoute('home')} /> : null}
         {route === 'editor' ? <EditorScreen onExport={() => setRoute('export')} onHome={() => setRoute('home')} onPosts={() => setRoute('schedule')} /> : null}
         {route === 'export' ? <ExportScreen onBack={() => setRoute('editor')} /> : null}
-        {route === 'schedule' ? <ScheduleScreen onBack={() => setRoute('home')} /> : null}
+        {route === 'schedule' ? <ScheduleScreen onBack={() => setRoute('home')} onConnect={() => setRoute('connect')} /> : null}
         {route === 'privacy' ? <PrivacyScreen onBack={() => setRoute('home')} /> : null}
+        {route === 'connect' ? <ConnectScreen onBack={() => setRoute('schedule')} /> : null}
       </SafeAreaView>
       {/* single film-grain coat over the whole window incl. status/home strips,
           so the strips never read as a different color from the screens */}
