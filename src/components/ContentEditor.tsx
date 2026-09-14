@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { usePost } from '../store/PostContext';
 import { uid, PALETTE } from '../constants';
 import { BlockType, CardStyle, ContentBlock } from '../types';
 import { useTheme, Palette, R, DATA } from '../theme';
 import { Txt, GhostBtn, PrimaryBtn, Section, Field, Swatches, Seg, Stepper, PillToggle } from './ui';
+import AIGenerateSheet from './AIGenerateSheet';
+import ImageCropModal from './ImageCropModal';
+import { applyGenResult } from '../utils/ai/apply';
+import { GenResult } from '../utils/ai/types';
 
 const CARDS: { id: CardStyle; label: string }[] = [
   { id: 'minimal', label: 'Minimal' },
@@ -45,10 +50,13 @@ function newBlock(type: BlockType): ContentBlock {  if (type === 'table') return
 export default function ContentEditor() {
   const { C } = useTheme();
   const st = makeSt(C);
-  const { page, setBlocks, patchPage } = usePost();
+  const { page, setBlocks, patchPage, setPages } = usePost();
   const [openId, setOpenId] = useState<string | null>(null);
+  const [ai, setAi] = useState(false);
+  const [cropId, setCropId] = useState<string | null>(null);
   if (!page) return null;
   const blocks = page.blocks;
+  const cropBlock = cropId ? blocks.find((b) => b.id === cropId) ?? null : null;
   const commonInk =
     blocks.length > 0 && blocks.every((b) => (b.textColor ?? '#111111') === (blocks[0].textColor ?? '#111111'))
       ? (blocks[0].textColor ?? '#111111')
@@ -110,8 +118,28 @@ export default function ContentEditor() {
     setBlocks(next);
   };
 
+  /** AI result → cloned template pages with fitted card heights. */
+  const applyAi = (result: GenResult) => {
+    if (result.pages.length === 0) return;
+    const pages = applyGenResult(result, { template: page, contentScale: page.contentScale ?? 1 });
+    setPages(pages);
+    setAi(false);
+    Alert.alert('Content generated', `Filled ${pages.length} card${pages.length === 1 ? '' : 's'} and sized each one to fit. Your template was kept.`);
+  };
+
   return (
     <View style={{ gap: 22 }}>
+      <TouchableOpacity onPress={() => setAi(true)} style={st.aiBtn} activeOpacity={0.85}>
+        <View style={st.aiIcon}>
+          <Ionicons name="sparkles" size={18} color={C.onInk} />
+        </View>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={st.aiT}>Generate content</Text>
+          <Text style={st.aiS}>AI writes the blocks — your template stays</Text>
+        </View>
+        <Ionicons name="arrow-forward" size={18} color={C.onInk} />
+      </TouchableOpacity>
+
       <View style={{ gap: 12 }}>
         <Section no="01" title="Card style" hint="The inner card dressed as a social post." />
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -284,8 +312,19 @@ export default function ContentEditor() {
                       </Field>
                     ) : null}
                     {b.imageUri ? (
-                      <Field label="Crop" hint="Choose which part of the photo shows.">
-                        <View style={{ gap: 4 }}>
+                      <Field label="Crop" hint="Drag & zoom for full control, or tap a focal point.">
+                        <View style={{ gap: 10 }}>
+                          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                            <View style={{ flex: 1 }}>
+                              <GhostBtn label={b.imageCrop ? 'Edit crop' : 'Crop manually'} onPress={() => setCropId(b.id)} />
+                            </View>
+                            {b.imageCrop ? (
+                              <TouchableOpacity onPress={() => update(b.id, { imageCrop: undefined })} style={st.icon} activeOpacity={0.7}>
+                                <Text style={[st.iconT, { color: C.redText }]}>↺</Text>
+                              </TouchableOpacity>
+                            ) : null}
+                          </View>
+                          <View style={{ gap: 4 }}>
                           {[0, 1, 2].map((ry) => (
                             <View key={ry} style={{ flexDirection: 'row', gap: 4 }}>
                               {[0, 1, 2].map((rx) => {
@@ -302,6 +341,7 @@ export default function ContentEditor() {
                               })}
                             </View>
                           ))}
+                          </View>
                         </View>
                       </Field>
                     ) : null}
@@ -319,11 +359,26 @@ export default function ContentEditor() {
         </View>
       ) : null}
       </View>
+
+      <AIGenerateSheet visible={ai} onClose={() => setAi(false)} onApply={applyAi} />
+      <ImageCropModal
+        visible={!!cropBlock}
+        uri={cropBlock?.imageUri}
+        aspect={cropBlock?.imageAspect ?? (cropBlock?.imageH !== undefined ? 'custom' : 'wide')}
+        customH={cropBlock?.imageH}
+        value={cropBlock?.imageCrop}
+        onDone={(c) => { update(cropBlock!.id, { imageCrop: c }); setCropId(null); }}
+        onClose={() => setCropId(null)}
+      />
     </View>
   );
 }
 
 const makeSt = (C: Palette) => StyleSheet.create({
+  aiBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.ink, borderRadius: R.lg, paddingHorizontal: 15, paddingVertical: 14 },
+  aiIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#FFFFFF22', alignItems: 'center', justifyContent: 'center' },
+  aiT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 15, letterSpacing: -0.2, color: C.onInk },
+  aiS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.onInk, opacity: 0.75 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, backgroundColor: C.card },
   chipT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.ink },

@@ -71,6 +71,7 @@ interface PostStore {
   patchPfp: (patch: Partial<PfpStyle>) => void;
   setSocials: (s: SocialLink[]) => void;
   setBlocks: (b: ContentBlock[]) => void;
+  setPages: (pages: PostPage[]) => void;
   duplicatePage: () => void;
   addPage: () => void;
   deletePage: (id: string) => void;
@@ -171,6 +172,13 @@ export function PostProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  /** Bulk-replace the whole page list (AI generate / apply). Clamps the cursor. */
+  const setPages = useCallback((pages: PostPage[]) => {
+    if (pages.length === 0) return;
+    setPost((prev) => (prev ? { ...prev, pages } : prev));
+    setPageIndex((i) => Math.min(i, Math.max(0, pages.length - 1)));
+  }, []);
+
   const duplicatePage = useCallback(() => {
     setPost((prev) => {
       if (!prev) return prev;
@@ -221,10 +229,10 @@ export function PostProvider({ children }: { children: React.ReactNode }) {
     return {
       post, pageIndex, page, createPost, loadPost, clearPost, renamePost,
       setPageIndex, patchPage, patchPageById, patchBackground, patchTitle, patchPfp,
-      setSocials, setBlocks, duplicatePage, addPage, deletePage, setPageOrder,
+      setSocials, setBlocks, setPages, duplicatePage, addPage, deletePage, setPageOrder,
       sizeRatio: size?.ratio ?? 1,
     };
-  }, [post, pageIndex, createPost, loadPost, clearPost, renamePost, patchPage, patchPageById, patchBackground, patchTitle, patchPfp, setSocials, setBlocks, duplicatePage, addPage, deletePage, setPageOrder]);
+  }, [post, pageIndex, createPost, loadPost, clearPost, renamePost, patchPage, patchPageById, patchBackground, patchTitle, patchPfp, setSocials, setBlocks, setPages, duplicatePage, addPage, deletePage, setPageOrder]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

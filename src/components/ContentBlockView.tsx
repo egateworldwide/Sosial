@@ -163,14 +163,30 @@ export default function ContentBlockView({ block, width, font = 'inter', zoom = 
     const imgInner = custom
       ? { width: iw, height: cropped ? '140%' : '100%', alignSelf: hAlign }
       : { width: iw, aspectRatio: asp === 'square' ? 1 : 16 / 9, alignSelf: hAlign };
+    // manual crop wins over the focal preset: scale the frame-filling photo and pan it
+    const crop = block.imageCrop;
+    const frameW = w;
+    const frameH = custom ? (block.imageH ?? 140) * k : asp === 'square' ? w : w * (9 / 16);
+    const overX = frameW * ((crop?.zoom ?? 1) - 1);
+    const overY = frameH * ((crop?.zoom ?? 1) - 1);
+    const cropInner = crop
+      ? {
+          width: `${crop.zoom * 100}%` as any,
+          height: `${crop.zoom * 100}%` as any,
+          transform: [
+            { translateX: (crop.x * overX) / 2 },
+            { translateY: (crop.y * overY) / 2 },
+          ],
+        }
+      : null;
     // in fixed-height cards the photo grows into leftover space instead of leaving a gap below
     const grow = fill ? { flexGrow: 1 } : null;
     return (
       <View style={grow}>
         {block.heading ? <Text style={{ ...F(font, true), fontSize: sz(12, 0.045), color: tc, marginBottom: Math.max(4 * k, w * 0.015) }}>{block.heading}</Text> : null}
         {block.imageUri ? (
-          <View style={[frame, grow, { overflow: 'hidden', borderRadius: 8 * k, justifyContent: vAlign }]}>
-            <Image source={{ uri: block.imageUri }} style={imgInner as any} resizeMode="cover" />
+          <View style={[frame, grow, { overflow: 'hidden', borderRadius: 8 * k, justifyContent: crop ? 'flex-start' : vAlign }]}>
+            <Image source={{ uri: block.imageUri }} style={(cropInner ?? imgInner) as any} resizeMode="cover" />
           </View>
         ) : (
           <View style={[frame, { width: '100%', borderRadius: 8 * k, borderWidth: hair, borderStyle: 'dashed', borderColor: tc + '66', alignItems: 'center', justifyContent: 'center' }]}>

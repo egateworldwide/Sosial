@@ -88,6 +88,8 @@ export interface ContentBlock {
   imageH?: number; // custom height in canvas units
   imageAspect?: 'square' | 'wide' | 'custom'; // crop frame: 1:1, 16:9, or custom height
   imageFocus?: number; // 0-8 focal cell (3x3 grid), 4 = center
+  /** Non-destructive manual crop: zoom (1-3) + pan (-1..1 each axis). */
+  imageCrop?: { zoom: number; x: number; y: number };
   textColor?: string;
 }
 
