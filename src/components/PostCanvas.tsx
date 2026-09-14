@@ -78,7 +78,7 @@ function PostCanvasInner({ page, ratio, scale }: Props, ref: React.Ref<ViewShotR
     </View>
   );
 
-  const pfpRow = (
+  const pfpRow = (page.pfp.hidden ?? false) ? null : (
     <View
       style={{
         flexDirection: dir,

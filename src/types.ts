@@ -47,6 +47,7 @@ export type FontId = 'inter' | 'jakarta' | 'space-grotesk' | 'playfair' | 'crims
 
 export interface PfpStyle {
   uri?: string;
+  hidden?: boolean; // master switch: hide the photo + badges entirely
   pfpY: 'top' | 'bottom';
   size: number; // 40-120
   shape: 'circle' | 'rounded';
