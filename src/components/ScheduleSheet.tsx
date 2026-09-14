@@ -180,7 +180,7 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
                   {c === 'any' ? (
                     <Ionicons name="globe-outline" size={14} color={on ? '#fff' : C.muted} />
                   ) : (
-                    <SocialGlyph platform={c} size={14} color="#fff" />
+                    <SocialGlyph platform={c} size={14} color={on ? '#fff' : C.ink} />
                   )}
                   <Text style={[st.chipT, on && { color: '#fff' }]}>{c === 'any' ? 'Anywhere' : c[0].toUpperCase() + c.slice(1)}</Text>
                 </TouchableOpacity>
