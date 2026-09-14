@@ -147,17 +147,24 @@ function PostCanvasInner({ page, ratio, scale }: Props, ref: React.Ref<ViewShotR
       <View style={{ width: CANVAS_W * s, height: H * s }}>
         <PatternBackground bg={page.background} width={CANVAS_W * s} height={H * s} />
         <View style={{ flex: 1, padding: pad(16), gap: pad(10) }}>
-          {page.cardH ? (
+          {(page.cardH || page.cardAuto) ? (
             <>
               {!stickToCard && pfpOnTop ? pfpRow : null}
               <View style={{ gap: pad(10), marginTop: cardY === 'top' ? undefined : 'auto', marginBottom: cardY === 'bottom' ? undefined : 'auto' }}>
                 {stickToCard && pfpOnTop ? pfpRow : null}
                 {titleOnTop ? titleBlock : null}
-                <View style={{ height: pad(page.cardH) }}>
-                  <SocialCardChrome page={page} pad={pad}>
+                {page.cardH ? (
+                  <View style={{ height: pad(page.cardH) }}>
+                    <SocialCardChrome page={page} pad={pad}>
+                      {blocks}
+                    </SocialCardChrome>
+                  </View>
+                ) : (
+                  /* auto height — the card hugs its generated content */
+                  <SocialCardChrome page={page} pad={pad} fit>
                     {blocks}
                   </SocialCardChrome>
-                </View>
+                )}
                 {titleOnBottom ? titleBlock : null}
                 {stickToCard && !pfpOnTop ? pfpRow : null}
               </View>

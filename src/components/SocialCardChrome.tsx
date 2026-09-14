@@ -9,6 +9,8 @@ import { SocialGlyph } from './ui';
 interface ChromeProps {
   page: PostPage;
   pad: (v: number) => number;
+  /** when true the card hugs its content (auto height) instead of filling the canvas */
+  fit?: boolean;
   children: React.ReactNode;
 }
 
@@ -43,10 +45,10 @@ function isDarkHex(hex: string): boolean {
 
 /** Auto-fit: measures available body height vs natural content height and
  * scales content down (min 45%) so nothing ever clips out of the fixed card. */
-function AutoFit({ style, children }: { style: any; children: React.ReactNode }) {
+function AutoFit({ style, children, fit }: { style: any; children: React.ReactNode; fit?: boolean }) {
   const [avail, setAvail] = useState(0);
   const [natural, setNatural] = useState(0);
-  const fit = avail > 0 && natural > avail + 1 ? Math.max(0.45, avail / natural) : 1;
+  const ratio = avail > 0 && natural > avail + 1 ? Math.max(0.45, avail / natural) : 1;
   const onOuter = (e: any) => {
     const h = e.nativeEvent.layout.height;
     setAvail((p) => (Math.abs(p - h) > 1 ? h : p));
@@ -55,13 +57,14 @@ function AutoFit({ style, children }: { style: any; children: React.ReactNode })
     const h = e.nativeEvent.layout.height;
     setNatural((p) => (Math.abs(p - h) > 1 ? h : p));
   };
+  const base = fit ? { ...style, flex: undefined, minHeight: undefined } : style;
   return (
-    <View onLayout={onOuter} style={[style, fit < 1 ? { height: Math.max(1, Math.round(natural * fit)), overflow: 'hidden' } : null]}>
+    <View onLayout={onOuter} style={[base, ratio < 1 ? { height: Math.max(1, Math.round(natural * ratio)), overflow: 'hidden' } : null]}>
       <View
         onLayout={onInner}
         style={
-          fit < 1
-            ? { width: '100%', transform: [{ scale: fit }], transformOrigin: ['50%', '0%', 0] as any }
+          ratio < 1
+            ? { width: '100%', transform: [{ scale: ratio }], transformOrigin: ['50%', '0%', 0] as any }
             : { width: '100%' }
         }
       >
@@ -72,7 +75,7 @@ function AutoFit({ style, children }: { style: any; children: React.ReactNode })
 }
 
 /** Platform-authentic card templates wrapping the content blocks. */
-export default function SocialCardChrome({ page, pad, children }: ChromeProps) {
+export default function SocialCardChrome({ page, pad, fit, children }: ChromeProps) {
   const style = page.cardStyle ?? 'minimal';
   const cardBg = page.cardColor ?? '#FFFFFFF2';
   const { firstHandle, name } = useChrome(page);
@@ -84,6 +87,7 @@ export default function SocialCardChrome({ page, pad, children }: ChromeProps) {
   const hairline = dark ? '#FFFFFF24' : '#11111114';
   const showCheck = page.verified ?? true;
   const check = (size: number) => showCheck ? <Ionicons name="checkmark-circle" size={pad(size)} color="#1D9BF0" /> : null;
+  const rootFlex = fit ? {} : { flex: 1 as const, minHeight: 0 as const };
 
   const bodyPad = pad(13);
   const body = (topExtra: boolean, bottomExtra: boolean) => ({
@@ -91,13 +95,12 @@ export default function SocialCardChrome({ page, pad, children }: ChromeProps) {
     paddingTop: topExtra ? pad(8) : bodyPad,
     paddingBottom: bottomExtra ? pad(8) : bodyPad,
     gap: pad(10),
-    flex: 1 as const,
-    minHeight: 0 as const,
+    ...rootFlex,
   });
 
   if (style === 'facebook') {
     return (
-      <View style={{ flex: 1, minHeight: 0, backgroundColor: cardBg, borderRadius: pad(8), borderWidth: pad(1), borderColor: '#11111112', overflow: 'hidden' }}>
+      <View style={{ ...rootFlex, backgroundColor: cardBg, borderRadius: pad(8), borderWidth: pad(1), borderColor: '#11111112', overflow: 'hidden' }}>
         {/* author header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: pad(7), paddingHorizontal: pad(12), paddingTop: pad(10) }}>
           <Avatar page={page} pad={pad} size={24} />
@@ -110,7 +113,7 @@ export default function SocialCardChrome({ page, pad, children }: ChromeProps) {
           </View>
           <Ionicons name="ellipsis-horizontal" size={pad(12)} color={gray} />
         </View>
-        <AutoFit style={body(true, true)}>{children}</AutoFit>
+        <AutoFit fit={fit} style={body(true, true)}>{children}</AutoFit>
         {/* stats */}
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: pad(12), paddingBottom: pad(7) }}>
           <View style={{ width: pad(15), height: pad(15), borderRadius: pad(7.5), backgroundColor: '#1877F2', alignItems: 'center', justifyContent: 'center' }}>
@@ -142,7 +145,7 @@ export default function SocialCardChrome({ page, pad, children }: ChromeProps) {
 
   if (style === 'x') {
     return (
-      <View style={{ flex: 1, minHeight: 0, backgroundColor: cardBg, borderRadius: pad(14), borderWidth: pad(1), borderColor: hairline, overflow: 'hidden' }}>
+      <View style={{ ...rootFlex, backgroundColor: cardBg, borderRadius: pad(14), borderWidth: pad(1), borderColor: hairline, overflow: 'hidden' }}>
         {/* author header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: pad(7), paddingHorizontal: pad(13), paddingTop: pad(11) }}>
           <Avatar page={page} pad={pad} size={22} />
@@ -154,7 +157,7 @@ export default function SocialCardChrome({ page, pad, children }: ChromeProps) {
           </Text>
           <Ionicons name="ellipsis-horizontal" size={pad(11)} color={gray} />
         </View>
-        <AutoFit style={body(true, true)}>{children}</AutoFit>
+        <AutoFit fit={fit} style={body(true, true)}>{children}</AutoFit>
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: pad(14), paddingBottom: pad(10), gap: pad(4) }}>
           {[
             { icon: 'chatbubble-outline', count: '12', color: gray },
@@ -175,14 +178,14 @@ export default function SocialCardChrome({ page, pad, children }: ChromeProps) {
 
   if (style === 'instagram') {
     return (
-      <View style={{ flex: 1, minHeight: 0, backgroundColor: cardBg, borderRadius: pad(6), borderWidth: pad(1), borderColor: '#11111112', overflow: 'hidden' }}>
+      <View style={{ ...rootFlex, backgroundColor: cardBg, borderRadius: pad(6), borderWidth: pad(1), borderColor: '#11111112', overflow: 'hidden' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: pad(7), paddingHorizontal: pad(12), paddingTop: pad(10) }}>
           <Avatar page={page} pad={pad} size={20} />
           <Text style={{ ...F(font, true), fontSize: pad(9), color: ink, flex: 1 }}>{name} {check(9)}</Text>
           <SocialGlyph platform="instagram" size={pad(11)} color="#E1306C" />
           <Ionicons name="ellipsis-horizontal" size={pad(12)} color={ink} />
         </View>
-        <AutoFit style={body(true, true)}>{children}</AutoFit>
+        <AutoFit fit={fit} style={body(true, true)}>{children}</AutoFit>
         <View style={{ paddingHorizontal: pad(12), paddingBottom: pad(11), gap: pad(6) }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: pad(10) }}>
             <Ionicons name="heart-outline" size={pad(14)} color={ink} />
@@ -202,7 +205,7 @@ export default function SocialCardChrome({ page, pad, children }: ChromeProps) {
 
   if (style === 'threads') {
     return (
-      <View style={{ flex: 1, minHeight: 0, backgroundColor: cardBg, borderRadius: pad(14), borderWidth: pad(1), borderColor: hairline, overflow: 'hidden' }}>
+      <View style={{ ...rootFlex, backgroundColor: cardBg, borderRadius: pad(14), borderWidth: pad(1), borderColor: hairline, overflow: 'hidden' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: pad(7), paddingHorizontal: pad(13), paddingTop: pad(11) }}>
           <Avatar page={page} pad={pad} size={20} />
           <Text style={{ ...F(font, true), fontSize: pad(9), color: ink, flex: 1 }}>
@@ -210,7 +213,7 @@ export default function SocialCardChrome({ page, pad, children }: ChromeProps) {
           </Text>
           <SocialGlyph platform="threads" size={pad(12)} color={ink} />
         </View>
-        <AutoFit style={body(true, true)}>{children}</AutoFit>
+        <AutoFit fit={fit} style={body(true, true)}>{children}</AutoFit>
         <View style={{ paddingHorizontal: pad(13), paddingBottom: pad(11), gap: pad(6) }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: pad(11) }}>
             <Ionicons name="heart-outline" size={pad(13)} color={ink} />
@@ -226,7 +229,7 @@ export default function SocialCardChrome({ page, pad, children }: ChromeProps) {
 
   // minimal
   return (
-    <AutoFit style={{ flex: 1, gap: pad(10), backgroundColor: cardBg, borderRadius: pad(14), padding: pad(13), borderWidth: pad(1), borderColor: '#11111112' }}>
+    <AutoFit fit={fit} style={{ flex: fit ? undefined : 1, gap: pad(10), backgroundColor: cardBg, borderRadius: pad(14), padding: pad(13), borderWidth: pad(1), borderColor: '#11111112' }}>
       {children}
     </AutoFit>
   );

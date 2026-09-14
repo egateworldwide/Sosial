@@ -1,7 +1,6 @@
 import { ContentBlock, PostPage } from '../../types';
 import { uid } from '../../constants';
 import { GenBlock, GenResult } from './types';
-import { estimateCardH } from './fit';
 
 /** GenBlock → canvas ContentBlock. No colors/sizes: the template owns those. */
 export function toContentBlock(b: GenBlock): ContentBlock {
@@ -32,8 +31,9 @@ export interface ApplyOptions {
 
 /**
  * Build the replacement page list: one page per generated page, each cloned from
- * the template so the *design* is untouched, with content + fitted card height
- * applied. Page ids are fresh; the caller swaps the whole list in atomically.
+ * the template so the *design* is untouched. Card height is auto — the card hugs
+ * its generated content instead of a guessed fixed height. Page ids are fresh;
+ * the caller swaps the whole list in atomically.
  */
 export function applyGenResult(gen: GenResult, opts: ApplyOptions): PostPage[] {
   const { template } = opts;
@@ -41,10 +41,8 @@ export function applyGenResult(gen: GenResult, opts: ApplyOptions): PostPage[] {
     const page: PostPage = JSON.parse(JSON.stringify(template));
     page.id = uid('page');
     page.blocks = p.blocks.map(toContentBlock);
-    page.cardH = estimateCardH(p.blocks, {
-      contentScale: opts.contentScale ?? page.contentScale ?? 1,
-      cardStyle: page.cardStyle,
-    });
+    page.cardH = null;
+    page.cardAuto = true;
     page.cardY = page.cardY ?? 'bottom';
     delete page.scheduledAt;
     delete page.scheduledPlatform;
