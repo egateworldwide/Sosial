@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
-import * as Clipboard from 'expo-clipboard';
 import { C, R, T } from '../theme';
 import { PrimaryBtn, GhostBtn, Section } from '../components/ui';
 import { META_APP_ID } from '../utils/metaConfig';
-import { redirectUri as getRedirectUri } from '../utils/metaAuth';
 import { loadMetaState, saveMetaState, MetaState } from '../utils/metaStore';
 import {
   useFacebookAuth, exchangeFacebookCode, fetchPages, pickPage, FbPage,
@@ -157,11 +155,6 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
     setMeta(st);
   };
 
-  const copyUri = async () => {
-    await Clipboard.setStringAsync(getRedirectUri());
-    Alert.alert('Copied', 'Paste it into Facebook Login → Valid OAuth redirect URIs (and Threads redirect URIs).');
-  };
-
   const configured = META_APP_ID.length > 0;
 
   return (
@@ -179,14 +172,6 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
             <Text style={s.warnT}>Add your Meta App ID in src/utils/metaConfig.ts first, then reload.</Text>
           </View>
         ) : null}
-
-        <View style={s.uriBox}>
-          <Text style={s.uriLabel}>Redirect URI — whitelist this in the Meta dashboard</Text>
-          <Text style={s.uri} numberOfLines={1}>{getRedirectUri()}</Text>
-          <TouchableOpacity onPress={copyUri} style={s.copyBtn} activeOpacity={0.7}>
-            <Text style={s.copyT}>Copy</Text>
-          </TouchableOpacity>
-        </View>
 
         {/* Facebook */}
         <View style={{ marginTop: 22 }}>
