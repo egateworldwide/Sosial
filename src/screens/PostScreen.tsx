@@ -360,8 +360,9 @@ export default function PostScreen({ email, team, onProfile, onConnect, composeS
             );
           })}
           <View style={{ flex: 1 }} />
-          <TouchableOpacity onPress={() => openSheet(null)} activeOpacity={0.8} style={s.addBtn}>
-            <Ionicons name="add" size={18} color={C.onInk} />
+          <TouchableOpacity onPress={() => openSheet(null)} activeOpacity={0.85} style={s.addBtn}>
+            <Ionicons name="add" size={16} color={C.onInk} />
+            <Text style={s.addBtnT}>Post</Text>
           </TouchableOpacity>
         </View>
 
@@ -444,7 +445,8 @@ const makeS = (C: Palette) => StyleSheet.create({
   tab: { borderRadius: 999, paddingHorizontal: 15, paddingVertical: 9, backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft },
   tabT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.muted },
   sortT: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, color: C.faint },
-  addBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
+  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.accent, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
+  addBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.onInk },
   day: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14, letterSpacing: 0.4, textTransform: 'uppercase', color: C.accentInk },
   card: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderRadius: R.lg, padding: 12 },
   cover: { width: 56, height: 56, borderRadius: 12 },
