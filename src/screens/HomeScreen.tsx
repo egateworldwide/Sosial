@@ -174,7 +174,7 @@ export default function HomeScreen({ onNew, onOpen, onQueue, onPrivacy }: { onNe
         {/* masthead */}
         <View style={s.masthead}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Image source={require('../../assets/icon.png')} style={{ width: 26, height: 26, borderRadius: 7 }} />
+            <Image source={require('../../assets/mark.png')} style={{ width: 26, height: 26 }} />
             <Text style={s.wordmark}>Zap</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
