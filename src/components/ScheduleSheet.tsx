@@ -188,7 +188,7 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
                   ) : (
                     <SocialGlyph platform={c} size={14} color={on ? C.onInk : C.ink} />
                   )}
-                  <Text style={[st.chipT, on && { color: '#fff' }]}>{c === 'any' ? 'Anywhere' : c[0].toUpperCase() + c.slice(1)}</Text>
+                  <Text style={[st.chipT, on && { color: C.onInk }]}>{c === 'any' ? 'Anywhere' : c[0].toUpperCase() + c.slice(1)}</Text>
                 </TouchableOpacity>
               );
             })}
