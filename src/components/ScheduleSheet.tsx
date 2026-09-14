@@ -51,11 +51,15 @@ interface Props {
   publishBusy?: boolean;
   onPublish?: () => void;
   onSave: (at: number, platforms: string[]) => void;
+  draftLabel?: string;
+  onDraft?: () => void;
+  approveLabel?: string;
+  onApprove?: () => void;
   onClose: () => void;
 }
 
 /** Buffer-style sheet: channels (multi) + title/description + time. */
-export default function ScheduleSheet({ visible, initialAt, initialPlatforms, title, bulkCount, composer, media, onDelete, onPosted, publishLabel, publishBusy, onPublish, onSave, onClose }: Props) {
+export default function ScheduleSheet({ visible, initialAt, initialPlatforms, title, bulkCount, composer, media, onDelete, onPosted, publishLabel, publishBusy, onPublish, draftLabel, onDraft, approveLabel, onApprove, onSave, onClose }: Props) {
   const [plats, setPlats] = useState<string[]>(['any']);
   const [preset, setPreset] = useState<'today' | 'tomorrow' | 'custom'>('tomorrow');
   const [custom, setCustom] = useState(new Date(Date.now() + 86400000));
@@ -241,6 +245,22 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
               onPress={save}
             />
           </View>
+          {onDraft ? (
+            <View style={{ marginTop: 8 }}>
+              <GhostBtn label={draftLabel ?? 'Save as draft'} onPress={onDraft} />
+            </View>
+          ) : null}
+          {onApprove ? (
+            <TouchableOpacity
+              onPress={onApprove}
+              style={{ backgroundColor: C.accentSoft, borderRadius: R.lg, paddingVertical: 14, alignItems: 'center' }}
+              activeOpacity={0.85}
+            >
+              <Text style={{ fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 15, color: C.accentInk }}>
+                {approveLabel ?? 'Send to approvals'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
           {onPublish ? (
             <TouchableOpacity
               onPress={onPublish}

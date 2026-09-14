@@ -1,38 +1,61 @@
 import React, { useState } from 'react';
-import { StatusBar, ActivityIndicator, View, Text, BackHandler, Platform } from 'react-native';
+import { StatusBar, ActivityIndicator, View, Text, BackHandler, Platform, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { PostProvider, usePost } from './src/store/PostContext';
-import HomeScreen, { loadProjects } from './src/screens/HomeScreen';
+import { loadProjects } from './src/screens/HomeScreen';
+import CreateScreen from './src/screens/CreateScreen';
+import PostScreen from './src/screens/PostScreen';
+import AnalyticsScreen from './src/screens/AnalyticsScreen';
+import AccountScreen from './src/screens/AccountScreen';
 import SizeScreen from './src/screens/SizeScreen';
 import EditorScreen from './src/screens/EditorScreen';
 import ExportScreen from './src/screens/ExportScreen';
-import ScheduleScreen from './src/screens/ScheduleScreen';
 import ConnectScreen from './src/screens/ConnectScreen';
 import PrivacyScreen from './src/screens/PrivacyScreen';
+import BottomNav, { MainTab } from './src/components/BottomNav';
+import ProfileMenu from './src/components/ProfileMenu';
 import Grain from './src/components/Grain';
 import { useFontsLoaded } from './src/utils/fonts';
+import { loadAccount, saveAccount, Account } from './src/utils/account';
 import { C } from './src/theme';
 
-type Route = 'home' | 'size' | 'editor' | 'export' | 'schedule' | 'privacy' | 'connect';
+type Route = MainTab | 'size' | 'editor' | 'export' | 'connect' | 'privacy' | 'account';
 
 // Canvas is a fixed-size export artifact — ignore the OS font-size setting
 // so it renders pixel-identical on every device (esp. Android). Also kill
 // Android's extra font padding, which shifts every line box vs iOS.
 (Text as any).defaultProps = { ...((Text as any).defaultProps ?? {}), allowFontScaling: false, includeFontPadding: false };
 
+const TABS: MainTab[] = ['create', 'post', 'analytics'];
+
 function Shell() {
-  const [route, setRoute] = useState<Route>('home');
-  const [connectFrom, setConnectFrom] = useState<Route>('schedule');
+  const [route, setRoute] = useState<Route>('create');
+  const [connectFrom, setConnectFrom] = useState<Route>('post');
+  const [privacyFrom, setPrivacyFrom] = useState<Route>('account');
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [composeSignal, setComposeSignal] = useState(0);
+  const [account, setAccount] = useState<Account>({ email: '', team: 'My team', notifPosts: true, notifComments: true, notifWeekly: false });
   const { loadPost, clearPost, setPageIndex } = usePost();
   const fontsLoaded = useFontsLoaded();
   const routeRef = React.useRef(route);
   routeRef.current = route;
-  const connectFromRef = React.useRef(connectFrom);
-  connectFromRef.current = connectFrom;
 
-  // phone back button follows the route stack (home exits the app)
+  React.useEffect(() => {
+    loadAccount().then(setAccount);
+  }, []);
+
+  const patchAccount = async (patch: Partial<Account>) => {
+    setAccount(await saveAccount(patch));
+  };
+
+  const goConnect = (from: Route) => {
+    setConnectFrom(from);
+    setRoute('connect');
+  };
+
+  // phone back button follows the route stack (tabs exit the app)
   React.useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       const r = routeRef.current;
@@ -41,16 +64,25 @@ function Shell() {
         return true;
       }
       if (r === 'connect') {
-        setRoute(connectFromRef.current);
+        setRoute(connectFrom);
         return true;
       }
-      if (r === 'editor' || r === 'schedule' || r === 'size' || r === 'privacy') {
-        setRoute('home');
+      if (r === 'privacy') {
+        setRoute(privacyFrom);
+        return true;
+      }
+      if (r === 'account') {
+        setRoute('create');
+        return true;
+      }
+      if (r === 'editor' || r === 'size') {
+        setRoute('create');
         return true;
       }
       return false;
     });
     return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const openScheduled = async (projectId: string, pageId: string) => {
@@ -74,7 +106,7 @@ function Shell() {
         try {
           await AsyncStorage.setItem('quickpost_open_post', String(d.managedPostId));
         } catch {}
-        setRoute('schedule');
+        setRoute('post');
         return;
       }
       if (d.projectId) openScheduled(d.projectId, d.pageId);
@@ -99,6 +131,33 @@ function Shell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const composePost = () => {
+    setRoute('post');
+    setComposeSignal(Date.now());
+  };
+
+  const newTemplate = () => {
+    clearPost();
+    setRoute('size');
+  };
+
+  const support = () => {
+    Alert.alert('Support', 'Need help? Email pestelbiz@gmail.com and we’ll get back to you.');
+  };
+
+  const logout = () => {
+    Alert.alert('Logout', 'Sign out on this device?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Logout',
+        onPress: async () => {
+          await patchAccount({ email: '' });
+          setRoute('create');
+        },
+      },
+    ]);
+  };
+
   if (!fontsLoaded) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bone }}>
@@ -107,17 +166,78 @@ function Shell() {
     );
   }
 
+  const isTab = (TABS as string[]).includes(route);
+
   return (
     <View style={{ flex: 1 }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: C.bone }}>
         <StatusBar barStyle="dark-content" />
-        {route === 'home' ? <HomeScreen onNew={() => { clearPost(); setRoute('size'); }} onOpen={(p) => { loadPost(p); setRoute('editor'); }} onQueue={() => setRoute('schedule')} onPrivacy={() => setRoute('privacy')} onConnect={() => { setConnectFrom('home'); setRoute('connect'); }} /> : null}
-        {route === 'size' ? <SizeScreen onDone={() => setRoute('editor')} onBack={() => setRoute('home')} /> : null}
-        {route === 'editor' ? <EditorScreen onExport={() => setRoute('export')} onHome={() => setRoute('home')} onPosts={() => setRoute('schedule')} /> : null}
-        {route === 'export' ? <ExportScreen onBack={() => setRoute('editor')} /> : null}
-        {route === 'schedule' ? <ScheduleScreen onBack={() => setRoute('home')} onConnect={() => { setConnectFrom('schedule'); setRoute('connect'); }} /> : null}
-        {route === 'privacy' ? <PrivacyScreen onBack={() => setRoute('home')} /> : null}
-        {route === 'connect' ? <ConnectScreen onBack={() => setRoute(connectFrom)} /> : null}
+        <View style={{ flex: 1 }}>
+          {route === 'create' ? (
+            <CreateScreen
+              email={account.email}
+              team={account.team}
+              onProfile={() => setProfileOpen(true)}
+              onConnect={() => goConnect('create')}
+              onTemplate={newTemplate}
+              onOpenProject={(p) => { loadPost(p); setRoute('editor'); }}
+              onComposePost={composePost}
+            />
+          ) : null}
+          {route === 'post' ? (
+            <PostScreen
+              email={account.email}
+              team={account.team}
+              onProfile={() => setProfileOpen(true)}
+              onConnect={() => goConnect('post')}
+              composeSignal={composeSignal}
+            />
+          ) : null}
+          {route === 'analytics' ? (
+            <AnalyticsScreen
+              email={account.email}
+              team={account.team}
+              onProfile={() => setProfileOpen(true)}
+              onConnect={() => goConnect('analytics')}
+            />
+          ) : null}
+          {route === 'size' ? <SizeScreen onDone={() => setRoute('editor')} onBack={() => setRoute('create')} /> : null}
+          {route === 'editor' ? <EditorScreen onExport={() => setRoute('export')} onHome={() => setRoute('create')} onPosts={() => setRoute('post')} /> : null}
+          {route === 'export' ? <ExportScreen onBack={() => setRoute('editor')} /> : null}
+          {route === 'account' ? (
+            <AccountScreen
+              email={account.email}
+              team={account.team}
+              notifPosts={account.notifPosts}
+              notifComments={account.notifComments}
+              notifWeekly={account.notifWeekly}
+              onUpdate={patchAccount}
+              onBack={() => setRoute('create')}
+              onConnect={() => goConnect('account')}
+              onPrivacy={() => { setPrivacyFrom('account'); setRoute('privacy'); }}
+              onLoggedOut={() => setRoute('create')}
+            />
+          ) : null}
+          {route === 'privacy' ? <PrivacyScreen onBack={() => setRoute(privacyFrom)} /> : null}
+          {route === 'connect' ? <ConnectScreen onBack={() => setRoute(connectFrom)} /> : null}
+        </View>
+        {isTab ? (
+          <BottomNav
+            tab={route as MainTab}
+            onTab={setRoute}
+            onTemplate={newTemplate}
+            onPost={composePost}
+          />
+        ) : null}
+        <ProfileMenu
+          visible={profileOpen}
+          email={account.email}
+          team={account.team}
+          onClose={() => setProfileOpen(false)}
+          onAccount={() => setRoute('account')}
+          onSupport={support}
+          onLogout={logout}
+        />
       </SafeAreaView>
       {/* single film-grain coat over the whole window incl. status/home strips,
           so the strips never read as a different color from the screens */}

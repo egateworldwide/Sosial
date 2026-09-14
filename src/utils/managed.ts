@@ -1,7 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { uid } from '../constants';
 
-/** A managed social post: title + optional photo/video + description + channels + time. */
+export type PostStatus = 'draft' | 'queued' | 'approval' | 'sent';
+
+/** A managed social post: title + optional photo/video + description + channels + time + pipeline status. */
 export interface ManagedPost {
   id: string;
   title: string;
@@ -11,6 +13,14 @@ export interface ManagedPost {
   platforms: string[];
   scheduledAt?: number;
   createdAt: number;
+  status?: PostStatus;
+  sentAt?: number;
+}
+
+/** Backfill status for posts saved before the pipeline existed. */
+export function withStatus(p: ManagedPost): ManagedPost {
+  if (p.status) return p;
+  return { ...p, status: p.scheduledAt ? 'queued' : 'draft' };
 }
 
 const KEY = 'quickpost_managed_posts_v1';
@@ -47,7 +57,7 @@ export async function loadManagedPosts(): Promise<ManagedPost[]> {
       }
     }
     const list: ManagedPost[] = raw ? JSON.parse(raw) : [];
-    return list;
+    return list.map(withStatus);
   } catch {
     return [];
   }
