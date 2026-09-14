@@ -1,105 +1,128 @@
 import { ContentBrief, GenBlock, GenPage } from './types';
 
-/** Deterministic stand-in for a real model. Good enough to exercise the whole
+/** Deterministic stand-in for a real model. Exercises the whole
  *  prompt → generate → normalize → apply → layout path with no API key.
  *  Replace via provider.ts once a real endpoint is wired.
  *
  *  Shape rule: every card starts with a TEXT block (heading + description), then
- *  one context block. A real model decides that second block from the prompt;
- *  here we rotate through the block types so every kind gets exercised. */
+ *  one context block. Text AND context data are varied per card so no two cards
+ *  repeat. A real model writes genuinely distinct copy; here we rotate templates. */
 export function mockGenerate(brief: ContentBrief): GenPage[] {
   const idea = brief.prompt.trim() || 'your idea';
-  const short = shortIdea(idea);
+  const s = shortIdea(idea);
   const n = Math.max(1, Math.min(10, brief.pages));
   const max = Math.max(1, brief.maxBlocksPerPage);
-  const CONTEXT: GenBlock['type'][] = ['bar', 'table', 'bullets', 'numbered', 'pie', 'vbar'];
   const pages: GenPage[] = [];
 
   for (let i = 0; i < n; i++) {
     const blocks: GenBlock[] = [];
 
-    // block 1 — text: heading with description, always present
-    blocks.push({
-      type: 'free',
-      heading: `${short}`,
-      lines: [
-        `Here is what actually matters about ${short}.`,
-        `${cap(short)} is easier than it looks — start small and stay consistent.`,
-      ],
-    });
+    // block 1 — text: heading + description, unique per card
+    blocks.push(textBlock(i, s));
 
-    // block 2 — context block, depends on what the card is about
-    if (max >= 2) {
-      const kind = CONTEXT[i % CONTEXT.length];
-      if (kind === 'bar') {
-        blocks.push({
-          type: 'bar',
-          heading: 'By the numbers',
-          series: [
-            { label: 'Week 1', value: 35 },
-            { label: 'Week 2', value: 58 },
-            { label: 'Week 3', value: 82 },
-          ],
-        });
-      } else if (kind === 'table') {
-        blocks.push({
-          type: 'table',
-          heading: `${short} at a glance`,
-          columns: ['Aspect', 'Before', 'After'],
-          rows: [
-            ['Time', 'Slow', 'Fast'],
-            ['Clarity', 'Low', 'High'],
-            ['Cost', 'High', 'Low'],
-          ],
-        });
-      } else if (kind === 'bullets') {
-        blocks.push({
-          type: 'bullets',
-          heading: 'Quick points',
-          items: ['One clear goal beats five vague ones.', 'Ten focused minutes a day adds up.', 'Review weekly, adjust once.'],
-        });
-      } else if (kind === 'numbered') {
-        blocks.push({
-          type: 'numbered',
-          heading: 'Next steps',
-          items: [`Decide your goal for ${short}.`, 'Block 10 minutes daily.', 'Track one week, then review.'],
-        });
-      } else if (kind === 'pie') {
-        blocks.push({
-          type: 'pie',
-          heading: 'Where the time goes',
-          series: [
-            { label: 'Planning', value: 45 },
-            { label: 'Doing', value: 35 },
-            { label: 'Review', value: 20 },
-          ],
-        });
-      } else if (kind === 'vbar') {
-        blocks.push({
-          type: 'vbar',
-          heading: 'Momentum',
-          series: [
-            { label: 'Mon', value: 30 },
-            { label: 'Wed', value: 55 },
-            { label: 'Fri', value: 78 },
-          ],
-        });
-      }
-    }
+    // block 2 — context block, unique per card
+    if (max >= 2) blocks.push(contextBlock(i, s));
 
-    // optional image slot when there is room left
     if (brief.includeImages && blocks.length < max) {
-      blocks.push({ type: 'image', heading: `Visual for ${short}` });
+      blocks.push({ type: 'image', heading: `Visual ${i + 1} for ${s}` });
     }
 
-    pages.push({ blocks, imagePrompt: `${idea} — illustrative photo` });
+    pages.push({ blocks, imagePrompt: `${idea} — illustrative photo ${i + 1}` });
   }
 
   return pages;
 }
 
-const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
-const shortIdea = (s: string) => {
-  const w = s.trim().split(/\s+/).slice(0, 3).join(' ');
-  return cap(w);
+/* ---------- text block variations ---------- */
+
+function textBlock(i: number, s: string): GenBlock {
+  const variants: { heading: string; lines: string[] }[] = [
+    { heading: `Why ${s} matters`, lines: [`Most people overcomplicate ${s}.`, 'One clear habit beats ten vague plans.'] },
+    { heading: `How ${s} works`, lines: ['Start with the smallest version you can repeat.', 'Consistency beats intensity every single week.'] },
+    { heading: `${s}, simplified`, lines: ['Pick one outcome you actually care about.', 'Track it for a week before changing anything.'] },
+    { heading: `Common ${s} mistakes`, lines: ['Chasing perfect instead of simply starting.', 'Changing the plan every few days.'] },
+    { heading: `${s} quick wins`, lines: ['Ten focused minutes a day compounds fast.', 'Review weekly, adjust once, repeat.'] },
+    { heading: `Make ${s} stick`, lines: ['Attach it to something you already do daily.', 'Miss once, never twice — then move on.'] },
+    { heading: `The truth about ${s}`, lines: ['Results come from boring repetition, not hacks.', 'Keep the system, change the details.'] },
+  ];
+  // page number keeps every card's copy different even past the list length
+  const v = variants[i % variants.length];
+  const heading = i < variants.length ? v.heading : `${v.heading} · part ${Math.floor(i / variants.length) + 1}`;
+  return { type: 'free', heading, lines: v.lines };
+}
+
+/* ---------- context block variations ---------- */
+
+function contextBlock(i: number, s: string): GenBlock {
+  const kind = i % 6;
+  const bump = i * 7; // so repeated types still carry different numbers
+
+  if (kind === 0) {
+    return {
+      type: 'bar',
+      heading: `Progress on ${s}`,
+      series: [
+        { label: `Week ${1 + i}`, value: 30 + bump },
+        { label: `Week ${2 + i}`, value: 52 + bump },
+        { label: `Week ${3 + i}`, value: 78 + bump },
+      ],
+    };
+  }
+  if (kind === 1) {
+    return {
+      type: 'table',
+      heading: `${s} at a glance`,
+      columns: ['Aspect', 'Before', 'After'],
+      rows: [
+        ['Time', `${20 + bump} min`, `${10 + bump} min`],
+        ['Focus', 'Scattered', 'Sharp'],
+        ['Effort', 'High', 'Low'],
+      ],
+    };
+  }
+  if (kind === 2) {
+    return {
+      type: 'bullets',
+      heading: `Points to remember ${i + 1}`,
+      items: [
+        `Start small with ${s}.`,
+        'Measure one thing only.',
+        'Adjust weekly, not daily.',
+      ],
+    };
+  }
+  if (kind === 3) {
+    return {
+      type: 'numbered',
+      heading: `Step plan ${i + 1}`,
+      items: [`Define your goal for ${s}.`, 'Block a daily slot.', 'Review and refine.'],
+    };
+  }
+  if (kind === 4) {
+    return {
+      type: 'pie',
+      heading: `Time split ${i + 1}`,
+      series: [
+        { label: 'Plan', value: 40 + bump },
+        { label: 'Do', value: 35 + bump },
+        { label: 'Review', value: 25 + bump },
+      ],
+    };
+  }
+  return {
+    type: 'vbar',
+    heading: `Momentum ${i + 1}`,
+    series: [
+      { label: 'Mon', value: 25 + bump },
+      { label: 'Wed', value: 48 + bump },
+      { label: 'Fri', value: 70 + bump },
+    ],
+  };
+}
+
+const cap = (t: string) => (t ? t[0].toUpperCase() + t.slice(1) : t);
+const shortIdea = (t: string) => {
+  const w = t.trim().split(/\s+/).filter(Boolean);
+  const chosen = w.length <= 6 ? w : w.slice(0, 4);
+  return cap(chosen.join(' '));
 };
