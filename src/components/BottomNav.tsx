@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, StyleSheet, Platform } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
+import { BlurView } from 'expo-blur';
 import { C, R } from '../theme';
 
 export type MainTab = 'create' | 'post' | 'analytics';
@@ -24,17 +25,30 @@ export default function BottomNav({ tab, onTab, onTemplate, onPost }: {
     );
   };
 
+  const inner = (
+    <>
+      {item('create', tab === 'create' ? 'bulb' : 'bulb-outline', 'Create')}
+      <TouchableOpacity onPress={() => setPlus(true)} style={s.plusWrap} activeOpacity={0.8}>
+        <View style={s.plus}>
+          <Ionicons name="add" size={28} color="#fff" />
+        </View>
+      </TouchableOpacity>
+      {item('analytics', tab === 'analytics' ? 'bar-chart' : 'bar-chart-outline', 'Analytics')}
+    </>
+  );
+
   return (
     <>
-      <View style={s.bar}>
-        {item('create', tab === 'create' ? 'bulb' : 'bulb-outline', 'Create')}
-        <TouchableOpacity onPress={() => setPlus(true)} style={s.plusWrap} activeOpacity={0.8}>
-          <View style={s.plus}>
-            <Ionicons name="add" size={30} color="#fff" />
+      <View style={s.float}>
+        {Platform.OS === 'ios' ? (
+          <BlurView intensity={85} tint="light" style={s.pill}>
+            {inner}
+          </BlurView>
+        ) : (
+          <View style={[s.pill, { backgroundColor: '#FFFFFFF2' }]}>
+            {inner}
           </View>
-          <Text style={s.itemT}>Post</Text>
-        </TouchableOpacity>
-        {item('analytics', tab === 'analytics' ? 'bar-chart' : 'bar-chart-outline', 'Analytics')}
+        )}
       </View>
 
       <Modal visible={plus} transparent animationType="fade" onRequestClose={() => setPlus(false)}>
@@ -74,18 +88,22 @@ export default function BottomNav({ tab, onTab, onTemplate, onPost }: {
 }
 
 const s = StyleSheet.create({
-  bar: {
-    flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-around',
-    backgroundColor: C.paper, borderTopWidth: 1, borderTopColor: C.lineSoft,
-    paddingTop: 8, paddingBottom: 10, paddingHorizontal: 24,
+  float: { paddingHorizontal: 22, paddingBottom: 12, paddingTop: 6, backgroundColor: 'transparent' },
+  pill: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around',
+    borderRadius: 32, overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth, borderColor: C.line,
+    paddingVertical: 10, paddingHorizontal: 10,
+    shadowColor: '#1C1917', shadowOpacity: 0.14, shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 }, elevation: 6,
   },
   item: { alignItems: 'center', gap: 3, minWidth: 72, paddingVertical: 2 },
   itemT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11.5, color: C.faint },
-  plusWrap: { alignItems: 'center', gap: 3, minWidth: 72 },
+  plusWrap: { alignItems: 'center', justifyContent: 'center', minWidth: 72 },
   plus: {
-    width: 56, height: 56, borderRadius: 28, backgroundColor: C.accent,
-    alignItems: 'center', justifyContent: 'center', marginTop: -26,
-    shadowColor: '#1C1917', shadowOpacity: 0.2, shadowRadius: 8,
+    width: 52, height: 52, borderRadius: 26, backgroundColor: C.accent,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: C.accent, shadowOpacity: 0.35, shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 }, elevation: 4,
   },
   sheetBg: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
