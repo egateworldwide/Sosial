@@ -10,6 +10,10 @@
 export const META_APP_ID = '3602598746546300';
 export const META_APP_SECRET = '4ec89a1a6bcc3fcaf59786128e46dd5c';
 
+// Threads lives in its own Meta app — separate keys, same redirect URI.
+export const THREADS_APP_ID = '1745955523308050';
+export const THREADS_APP_SECRET = '13ed5a25a88190b55497ace83f30d4d2';
+
 export const GRAPH_VERSION = 'v21.0';
 
 export const FB_SCOPES = [

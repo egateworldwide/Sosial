@@ -1,7 +1,7 @@
 import * as AuthSession from 'expo-auth-session';
 import Constants from 'expo-constants';
 import {
-  META_APP_ID, META_APP_SECRET, graph,
+  META_APP_ID, META_APP_SECRET, THREADS_APP_ID, THREADS_APP_SECRET, graph,
   FB_AUTH_ENDPOINT, FB_SCOPES,
   THREADS_AUTH_ENDPOINT, THREADS_SCOPES, THREADS_API,
 } from './metaConfig';
@@ -84,7 +84,7 @@ export async function pickPage(p: FbPage): Promise<void> {
 export function useThreadsAuth() {
   const [request, response, promptAsync] = AuthSession.useAuthRequest(
     {
-      clientId: META_APP_ID,
+      clientId: THREADS_APP_ID,
       scopes: THREADS_SCOPES,
       redirectUri: redirectUri(),
       responseType: AuthSession.ResponseType.Code,
@@ -105,8 +105,8 @@ export async function exchangeThreadsCode(code: string): Promise<{ token: string
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body({
-      client_id: META_APP_ID,
-      client_secret: META_APP_SECRET,
+      client_id: THREADS_APP_ID,
+      client_secret: THREADS_APP_SECRET,
       code,
       grant_type: 'authorization_code',
       redirect_uri: redir,
@@ -119,7 +119,7 @@ export async function exchangeThreadsCode(code: string): Promise<{ token: string
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body({
       grant_type: 'th_exchange_token',
-      client_secret: META_APP_SECRET,
+      client_secret: THREADS_APP_SECRET,
       access_token: j1.access_token,
     }),
   });
