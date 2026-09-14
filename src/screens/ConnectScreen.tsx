@@ -9,16 +9,19 @@ import { redirectUri as getRedirectUri } from '../utils/metaAuth';
 import { loadMetaState, saveMetaState, MetaState } from '../utils/metaStore';
 import {
   useFacebookAuth, exchangeFacebookCode, fetchPages, pickPage, FbPage,
+  useInstagramAuth, exchangeInstagramCode, fetchInstagramProfile,
   useThreadsAuth, exchangeThreadsCode, fetchThreadsProfile,
 } from '../utils/metaAuth';
+import { IG_APP_ID } from '../utils/metaConfig';
 
 /** Link Facebook Page / Instagram / Threads accounts for API publishing. */
 export default function ConnectScreen({ onBack }: { onBack: () => void }) {
   const [meta, setMeta] = useState<MetaState>({});
   const [pages, setPages] = useState<FbPage[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
-  const [pendingTarget, setPendingTarget] = useState<'fb' | 'ig' | null>(null);
+  const [pendingTarget, setPendingTarget] = useState<'fb' | null>(null);
   const fb = useFacebookAuth();
+  const ig = useInstagramAuth();
   const th = useThreadsAuth();
 
   useEffect(() => {
@@ -45,15 +48,7 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
         setMeta(st);
         const pgs = await fetchPages(token);
         setPages(pgs);
-        const igOnly = pgs.filter((p) => p.instagram_business_account);
-        if (pendingTarget === 'ig') {
-          if (igOnly.length === 1) {
-            await pickPage(igOnly[0]);
-            setMeta(await loadMetaState());
-          } else if (igOnly.length === 0) {
-            Alert.alert('No linked Instagram', 'Link an Instagram Business account to one of your Pages first (Page Settings → Linked accounts).');
-          }
-        } else if (pgs.length === 0) {
+        if (pgs.length === 0) {
           Alert.alert('No Pages found', 'Create a Facebook Page you manage first — posts publish as the Page.');
         }
         setPendingTarget(null);
@@ -65,6 +60,36 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fb.response]);
+
+  // Instagram Business Login result (own OAuth, own app)
+  useEffect(() => {
+    const r: any = ig.response;
+    if (!r) return;
+    if (r.type !== 'success') {
+      if (r.type === 'error') Alert.alert('Instagram login failed', 'Cancelled or rejected — try again.');
+      return;
+    }
+    (async () => {
+      setBusy('Exchanging token…');
+      try {
+        const { token, userId } = await exchangeInstagramCode(r.params.code);
+        let name: string | undefined;
+        let id = userId;
+        try {
+          const prof = await fetchInstagramProfile(token);
+          id = prof.id || userId;
+          name = prof.username;
+        } catch {}
+        const st = await saveMetaState({ igToken: token, igId: id, igName: name });
+        setMeta(st);
+      } catch (e: any) {
+        Alert.alert('Instagram login failed', e?.message ?? 'Try again.');
+      } finally {
+        setBusy(null);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ig.response]);
 
   // Threads login result
   useEffect(() => {
@@ -94,9 +119,9 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [th.response]);
 
-  const startLogin = (target: 'fb' | 'ig') => {
+  const startLogin = () => {
     if (!configured) return;
-    setPendingTarget(target);
+    setPendingTarget('fb');
     fb.promptAsync();
   };
 
@@ -123,7 +148,7 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
   };
 
   const disconnectIG = async () => {
-    const st = await saveMetaState({ igId: undefined, igName: undefined });
+    const st = await saveMetaState({ igToken: undefined, igId: undefined, igName: undefined });
     setMeta(st);
   };
 
@@ -167,7 +192,7 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
         <View style={{ marginTop: 22 }}>
           <Section no="01" title="Facebook" hint="Log in, then choose the Page to post as." />
           {!meta.fbUserToken ? (
-            <PrimaryBtn label="Connect Facebook" onPress={() => startLogin('fb')} />
+            <PrimaryBtn label="Connect Facebook" onPress={() => startLogin()} />
           ) : (
             <View style={{ gap: 10 }}>
               {pages.length > 0 ? (
@@ -206,41 +231,18 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
 
         {/* Instagram */}
         <View style={{ marginTop: 22 }}>
-          <Section no="02" title="Instagram" hint="Runs on the Facebook login — pick a Page with IG linked." />
-          {meta.igId ? (
+          <Section no="02" title="Instagram" hint="Own login, own app — no Page needed." />
+          {IG_APP_ID.length === 0 ? (
+            <View style={s.warn}>
+              <Text style={s.warnT}>Add your Instagram App ID + secret in src/utils/metaConfig.ts first, then reload.</Text>
+            </View>
+          ) : meta.igId && meta.igToken ? (
             <View style={s.status}>
               <Text style={s.statusT} numberOfLines={1}>{meta.igName ?? 'Instagram connected'}</Text>
               <TouchableOpacity onPress={disconnectIG} activeOpacity={0.7}><Text style={s.danger}>Disconnect</Text></TouchableOpacity>
             </View>
           ) : (
-            <View style={{ gap: 10 }}>
-              <PrimaryBtn
-                label="Connect Instagram"
-                onPress={() => {
-                  if (!configured) return;
-                  if (!meta.fbUserToken) startLogin('ig');
-                  else loadPages();
-                }}
-              />
-              {meta.fbUserToken && pages.filter((p) => p.instagram_business_account).length > 0 ? (
-                <View style={{ gap: 8 }}>
-                  {pages.filter((p) => p.instagram_business_account).map((p) => (
-                    <TouchableOpacity
-                      key={p.id}
-                      onPress={async () => { await pickPage(p); setMeta(await loadMetaState()); }}
-                      style={s.pageRow}
-                      activeOpacity={0.75}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.pageT} numberOfLines={1}>{p.name}</Text>
-                        <Text style={s.pageS}>@{p.instagram_business_account?.username ?? 'ig'}</Text>
-                      </View>
-                      <Ionicons name="chevron-forward" size={18} color={C.faint} />
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              ) : null}
-            </View>
+            <PrimaryBtn label="Connect Instagram" onPress={() => ig.promptAsync()} />
           )}
         </View>
 

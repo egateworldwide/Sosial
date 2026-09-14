@@ -20,9 +20,16 @@ export const FB_SCOPES = [
   'pages_show_list',
   'pages_read_engagement',
   'pages_manage_posts',
-  'instagram_business_basic',
-  'instagram_business_content_publish',
 ];
+
+// Instagram Business Login is its own OAuth flow (instagram.com) with its own
+// app credentials — these scopes are INVALID on Facebook's dialog.
+export const IG_APP_ID = '';
+export const IG_APP_SECRET = '';
+export const IG_SCOPES = ['instagram_business_basic', 'instagram_business_content_publish'];
+export const IG_AUTH_ENDPOINT = 'https://www.instagram.com/oauth/authorize';
+export const IG_TOKEN_ENDPOINT = 'https://api.instagram.com/oauth/access_token';
+export const IG_GRAPH = 'https://graph.instagram.com';
 
 export const THREADS_SCOPES = ['threads_basic', 'threads_content_publish'];
 

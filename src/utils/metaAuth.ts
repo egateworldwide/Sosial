@@ -1,9 +1,10 @@
 import * as AuthSession from 'expo-auth-session';
 import Constants from 'expo-constants';
 import {
-  META_APP_ID, META_APP_SECRET, THREADS_APP_ID, THREADS_APP_SECRET, graph,
+  META_APP_ID, META_APP_SECRET, graph,
   FB_AUTH_ENDPOINT, FB_SCOPES,
-  THREADS_AUTH_ENDPOINT, THREADS_SCOPES, THREADS_API,
+  IG_APP_ID, IG_APP_SECRET, IG_SCOPES, IG_AUTH_ENDPOINT, IG_TOKEN_ENDPOINT, IG_GRAPH,
+  THREADS_APP_ID, THREADS_APP_SECRET, THREADS_AUTH_ENDPOINT, THREADS_SCOPES, THREADS_API,
 } from './metaConfig';
 import { saveMetaState } from './metaStore';
 
@@ -68,15 +69,67 @@ export async function fetchPages(userToken: string): Promise<FbPage[]> {
 }
 
 export async function pickPage(p: FbPage): Promise<void> {
+  // FB only — Instagram connects through its own login, never inherit its id here
   await saveMetaState({
     pageId: p.id,
     pageName: p.name,
     pageToken: p.access_token,
-    igId: p.instagram_business_account?.id,
-    igName: p.instagram_business_account?.username
-      ? `@${p.instagram_business_account.username}`
-      : undefined,
+    igId: undefined,
+    igName: undefined,
+    igToken: undefined,
   });
+}
+
+/* ---------------- Instagram Business Login (own OAuth, own app) ---------------- */
+
+export function useInstagramAuth() {
+  const [request, response, promptAsync] = AuthSession.useAuthRequest(
+    {
+      clientId: IG_APP_ID,
+      scopes: IG_SCOPES,
+      redirectUri: redirectUri(),
+      responseType: AuthSession.ResponseType.Code,
+    },
+    { authorizationEndpoint: IG_AUTH_ENDPOINT },
+  );
+  return { request, response, promptAsync };
+}
+
+/** code -> 1h token -> 60d token, plus the scoped IG user id. */
+export async function exchangeInstagramCode(code: string): Promise<{ token: string; userId: string }> {
+  const redir = redirectUri();
+  const body = (p: Record<string, string>) =>
+    Object.entries(p)
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join('&');
+  const r1 = await fetch(IG_TOKEN_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body({
+      client_id: IG_APP_ID,
+      client_secret: IG_APP_SECRET,
+      grant_type: 'authorization_code',
+      redirect_uri: redir,
+      code,
+    }),
+  });
+  const j1: any = await r1.json().catch(() => ({}));
+  const shortToken: string | undefined =
+    j1?.data?.[0]?.access_token ?? j1.access_token;
+  const userId: string = String(j1?.data?.[0]?.user_id ?? j1.user_id ?? '');
+  if (!shortToken) throw new Error(errMsg(j1?.data?.[0] ?? j1, 'Instagram login exchange failed.'));
+  const q = `grant_type=ig_exchange_token&client_secret=${encodeURIComponent(IG_APP_SECRET)}&access_token=${encodeURIComponent(shortToken)}`;
+  const r2 = await fetch(`${IG_GRAPH}/access_token?${q}`);
+  const j2: any = await r2.json().catch(() => ({}));
+  if (!j2.access_token) throw new Error(errMsg(j2, 'Could not get a long-lived Instagram token.'));
+  return { token: j2.access_token as string, userId };
+}
+
+export async function fetchInstagramProfile(token: string): Promise<{ id: string; username?: string }> {
+  const r = await fetch(`${IG_GRAPH}/me?fields=id,username&access_token=${encodeURIComponent(token)}`);
+  const j: any = await r.json().catch(() => ({}));
+  if (j.error) throw new Error(errMsg(j, 'Could not read your Instagram profile.'));
+  return { id: String(j.id), username: j.username ? `@${j.username}` : undefined };
 }
 
 /* ---------------- Threads (separate OAuth) ---------------- */

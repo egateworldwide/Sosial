@@ -5,6 +5,7 @@ export interface MetaState {
   pageId?: string;
   pageName?: string;
   pageToken?: string;
+  igToken?: string;
   igId?: string;
   igName?: string;
   threadsToken?: string;

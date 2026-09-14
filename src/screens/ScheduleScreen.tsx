@@ -163,8 +163,8 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
             await publishFacebook({ pageId: m.pageId, pageToken: m.pageToken, message: caption, imageUri: p.imageUri, videoUri: p.videoUri });
             done.push('Facebook');
           } else if (ch === 'instagram') {
-            if (!m.igId || !m.fbUserToken) throw new Error('Instagram not connected');
-            await publishInstagram({ igId: m.igId, userToken: m.fbUserToken, caption, imageUri: p.imageUri, videoUri: p.videoUri });
+            if (!meta.igId || !meta.igToken) throw new Error('Instagram not connected');
+            await publishInstagram({ igId: meta.igId, igToken: meta.igToken, caption, imageUri: p.imageUri, videoUri: p.videoUri });
             done.push('Instagram');
           } else if (ch === 'threads') {
             if (!m.threadsId || !m.threadsToken) throw new Error('Threads not connected');

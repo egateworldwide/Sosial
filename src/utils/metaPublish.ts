@@ -1,4 +1,4 @@
-import { graph, THREADS_API } from './metaConfig';
+import { graph, THREADS_API, IG_GRAPH } from './metaConfig';
 
 function gerr(j: any, fallback: string): string {
   const m = j?.error?.message;
@@ -68,11 +68,11 @@ export async function publishFacebook(opts: {
   return String(j.id);
 }
 
-/* ---------------- Instagram (URL-only media) ---------------- */
+/* ---------------- Instagram Business Login API (graph.instagram.com) ---------------- */
 
 export async function publishInstagram(opts: {
   igId: string;
-  userToken: string;
+  igToken: string;
   caption: string;
   imageUri?: string;
   videoUri?: string;
@@ -81,10 +81,10 @@ export async function publishInstagram(opts: {
   if (!kind) throw new Error('Instagram needs a photo or video — text-only is not allowed by their API.');
   const local = (opts.videoUri ?? opts.imageUri) as string;
   const mediaUrl = local.startsWith('http') ? local : await uploadPublic(local, kind);
-  const tok = encodeURIComponent(opts.userToken);
+  const tok = encodeURIComponent(opts.igToken);
   if (kind === 'video') {
     const c = await fetch(
-      graph(`/${opts.igId}/media?media_type=REELS&video_url=${encodeURIComponent(mediaUrl)}&caption=${encodeURIComponent(opts.caption)}&share_to_feed=true&access_token=${tok}`),
+      `${IG_GRAPH}/${opts.igId}/media?media_type=REELS&video_url=${encodeURIComponent(mediaUrl)}&caption=${encodeURIComponent(opts.caption)}&share_to_feed=true&access_token=${tok}`,
       { method: 'POST' },
     );
     const cj: any = await gjson(c);
@@ -93,25 +93,25 @@ export async function publishInstagram(opts: {
     let status = '';
     for (let i = 0; i < 10; i++) {
       await sleep(8000);
-      const s = await fetch(graph(`/${cj.id}?fields=status_code&access_token=${tok}`));
+      const s = await fetch(`${IG_GRAPH}/${cj.id}?fields=status_code&access_token=${tok}`);
       const sj: any = await gjson(s);
       status = String(sj.status_code ?? '');
       if (status === 'FINISHED') break;
       if (status === 'ERROR') throw new Error('Instagram failed to process the video.');
     }
     if (status !== 'FINISHED') throw new Error('Instagram is still processing the video — try publishing again in a minute.');
-    const p = await fetch(graph(`/${opts.igId}/media_publish?creation_id=${encodeURIComponent(String(cj.id))}&access_token=${tok}`), { method: 'POST' });
+    const p = await fetch(`${IG_GRAPH}/${opts.igId}/media_publish?creation_id=${encodeURIComponent(String(cj.id))}&access_token=${tok}`, { method: 'POST' });
     const pj: any = await gjson(p);
     if (pj.error || !pj.id) throw new Error(gerr(pj, 'Instagram publish failed.'));
     return String(pj.id);
   }
   const c = await fetch(
-    graph(`/${opts.igId}/media?image_url=${encodeURIComponent(mediaUrl)}&caption=${encodeURIComponent(opts.caption)}&access_token=${tok}`),
+    `${IG_GRAPH}/${opts.igId}/media?image_url=${encodeURIComponent(mediaUrl)}&caption=${encodeURIComponent(opts.caption)}&access_token=${tok}`,
     { method: 'POST' },
   );
   const cj: any = await gjson(c);
   if (cj.error || !cj.id) throw new Error(gerr(cj, 'Instagram container failed. Image URLs must be public JPEG/PNG.'));
-  const p = await fetch(graph(`/${opts.igId}/media_publish?creation_id=${encodeURIComponent(String(cj.id))}&access_token=${tok}`), { method: 'POST' });
+  const p = await fetch(`${IG_GRAPH}/${opts.igId}/media_publish?creation_id=${encodeURIComponent(String(cj.id))}&access_token=${tok}`, { method: 'POST' });
   const pj: any = await gjson(p);
   if (pj.error || !pj.id) throw new Error(gerr(pj, 'Instagram publish failed.'));
   return String(pj.id);
