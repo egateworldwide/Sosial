@@ -254,6 +254,11 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
                   <Ionicons name="image-outline" size={17} color={C.accentInk} />
                   <Text style={s.cAttachT}>{cUri ? 'Change' : 'Image'}</Text>
                 </TouchableOpacity>
+                {cUri ? (
+                  <TouchableOpacity onPress={() => setCUri(undefined)} style={s.cAttach} activeOpacity={0.7}>
+                    <Text style={[s.cAttachT, { color: C.redText }]}>Remove</Text>
+                  </TouchableOpacity>
+                ) : null}
                 <View style={{ flex: 1 }} />
                 <TouchableOpacity onPress={postIdea} style={s.cPost} activeOpacity={0.8}>
                   <Text style={s.cPostT}>New idea</Text>
