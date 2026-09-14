@@ -57,7 +57,14 @@ function AutoFit({ style, children }: { style: any; children: React.ReactNode })
   };
   return (
     <View onLayout={onOuter} style={[style, fit < 1 ? { height: Math.max(1, Math.round(natural * fit)), overflow: 'hidden' } : null]}>
-      <View onLayout={onInner} style={fit < 1 ? { transform: [{ scale: fit }], transformOrigin: 'top center' } : null}>
+      <View
+        onLayout={onInner}
+        style={
+          fit < 1
+            ? { width: '100%', transform: [{ scale: fit }], transformOrigin: ['50%', '0%', 0] as any }
+            : { width: '100%' }
+        }
+      >
         {children}
       </View>
     </View>

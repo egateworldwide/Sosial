@@ -178,6 +178,9 @@ function PostCanvasInner({ page, ratio, scale }: Props, ref: React.Ref<ViewShotR
           )}
         </View>
       </View>
+      {/* hairline drawn as an overlay so its border never eats into the content box
+          (a real border made the inner canvas 2px too wide and shifted it right) */}
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: pad(14), borderWidth: 1, borderColor: '#EAEAEA' }} />
     </ViewShot>
   );
 }
@@ -190,8 +193,6 @@ const styles = StyleSheet.create({
   frame: {
     backgroundColor: '#fff',
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#EAEAEA',
     elevation: 2,
     shadowColor: '#111111',
     shadowOpacity: 0.05,
