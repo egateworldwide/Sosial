@@ -7,8 +7,8 @@
  *    fine for your own dev-mode use. Move the exchange server-side before any
  *    store release — never ship a secret you care about.
  */
-export const META_APP_ID = '';
-export const META_APP_SECRET = '';
+export const META_APP_ID = '3602598746546300';
+export const META_APP_SECRET = '4ec89a1a6bcc3fcaf59786128e46dd5c';
 
 export const GRAPH_VERSION = 'v21.0';
 
