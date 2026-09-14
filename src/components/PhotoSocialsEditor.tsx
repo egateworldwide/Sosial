@@ -8,7 +8,7 @@ import { FONTS } from '../utils/fonts';
 import { C, R } from '../theme';
 import { Txt, PillToggle, Seg, Field, Stepper, PrimaryBtn, GhostBtn, SocialGlyph, Swatches, Section } from './ui';
 
-const ALL_PLATFORMS: SocialPlatform[] = ['instagram', 'tiktok', 'threads', 'x', 'facebook', 'youtube', 'whatsapp'];
+const ALL_PLATFORMS: SocialPlatform[] = ['instagram', 'tiktok', 'threads', 'facebook', 'youtube', 'whatsapp'];
 
 export default function PhotoSocialsEditor() {
   const { page, patchPfp, setSocials } = usePost();

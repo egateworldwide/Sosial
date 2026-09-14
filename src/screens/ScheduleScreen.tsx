@@ -52,6 +52,7 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
   const [meta, setMeta] = useState<MetaState>({});
   const [publishing, setPublishing] = useState(false);
   const [sheet, setSheet] = useState<{ post: ManagedPost | null } | null>(null);
+  const [filter, setFilter] = useState('all');
   const [tTitle, setTTitle] = useState('');
   const [tBody, setTBody] = useState('');
   const [tUri, setTUri] = useState<string | undefined>(undefined);
@@ -64,15 +65,22 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
 
   useEffect(() => {
     reload();
-    // reminder tap lands here with the post id stashed
+    // reminder tap lands here with the post id stashed; home + button stashes compose
     (async () => {
       try {
         const id = await AsyncStorage.getItem('quickpost_open_post');
-        if (!id) return;
-        await AsyncStorage.removeItem('quickpost_open_post');
-        const all = await loadManagedPosts();
-        const t = all.find((x) => x.id === id);
-        if (t) openSheet(t);
+        if (id) {
+          await AsyncStorage.removeItem('quickpost_open_post');
+          const all = await loadManagedPosts();
+          const t = all.find((x) => x.id === id);
+          if (t) openSheet(t);
+          return;
+        }
+        const compose = await AsyncStorage.getItem('quickpost_compose');
+        if (compose) {
+          await AsyncStorage.removeItem('quickpost_compose');
+          openSheet(null);
+        }
       } catch {}
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -201,9 +209,12 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
   ].filter(Boolean).join(' · ') || 'No accounts connected';
 
   const scheduled = posts.filter((p) => !!p.scheduledAt).sort((a, b) => (a.scheduledAt as number) - (b.scheduledAt as number));
+  const visible = scheduled.filter((p) =>
+    filter === 'all' ? true : (p.platforms?.length ? p.platforms : ['any']).includes(filter),
+  );
 
   const groups: { day: string; rows: ManagedPost[] }[] = [];
-  for (const p of scheduled) {
+  for (const p of visible) {
     const day = dayLabel(p.scheduledAt as number);
     const g = groups.find((x) => x.day === day);
     if (g) g.rows.push(p);
@@ -243,8 +254,8 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
         <TouchableOpacity onPress={onBack} activeOpacity={0.7} style={s.backBtn}>
           <Ionicons name="chevron-back" size={20} color={C.ink} />
         </TouchableOpacity>
-        <Text style={s.kicker}>Post manager</Text>
-        <Text style={[T.h1, { color: C.ink, marginTop: 8, fontSize: 30, lineHeight: 36 }]}>Posts</Text>
+        <Text style={s.kicker}>Social media</Text>
+        <Text style={[T.h1, { color: C.ink, marginTop: 8, fontSize: 30, lineHeight: 36 }]}>Manager</Text>
         <Text style={s.sub}>
           {scheduled.length === 0
             ? 'Nothing scheduled yet — create your first post below.'
@@ -257,6 +268,16 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
             <Text style={s.qBtnT}>Connect</Text>
           </TouchableOpacity>
         </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginTop: 14 }}>
+          {['all', 'facebook', 'instagram', 'threads'].map((c) => {
+            const on = filter === c;
+            return (
+              <TouchableOpacity key={c} onPress={() => setFilter(c)} style={[s.chip, on && { backgroundColor: C.ink, borderColor: C.ink }]} activeOpacity={0.75}>
+                <Text style={[s.chipT, on && { color: '#fff' }]}>{c === 'all' ? 'All' : c[0].toUpperCase() + c.slice(1)}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
         <View style={{ marginTop: 16 }}>
           <PrimaryBtn label="+ New post" onPress={() => openSheet(null)} />
         </View>
@@ -305,6 +326,8 @@ const s = StyleSheet.create({
   coverT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 17, color: C.accentInk },
   t: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15, letterSpacing: -0.2, color: C.ink },
   meta: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, color: C.muted },
+  chip: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft },
+  chipT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.muted },
   qBtn: { backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 15, paddingVertical: 9 },
   qBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: '#fff' },
   empty: { backgroundColor: C.card, borderRadius: R.lg, padding: 28, alignItems: 'center', marginTop: 22 },

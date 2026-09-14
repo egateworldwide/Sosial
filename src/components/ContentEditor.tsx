@@ -10,7 +10,6 @@ import { Txt, GhostBtn, PrimaryBtn, Section, Field, Swatches, Seg, Stepper, Pill
 const CARDS: { id: CardStyle; label: string }[] = [
   { id: 'minimal', label: 'Minimal' },
   { id: 'facebook', label: 'Facebook' },
-  { id: 'x', label: 'X' },
   { id: 'instagram', label: 'Instagram' },
   { id: 'threads', label: 'Threads' },
 ];

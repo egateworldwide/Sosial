@@ -7,7 +7,7 @@ import { PrimaryBtn, GhostBtn, Txt } from './ui';
 import { SocialGlyph } from './ui';
 import { fmtDateTime } from '../utils/reminders';
 
-const CHANNELS = ['any', 'facebook', 'instagram', 'tiktok', 'threads', 'x', 'whatsapp'];
+const CHANNELS = ['any', 'facebook', 'instagram', 'tiktok', 'threads', 'whatsapp'];
 
 function slotToday(hour: number, min = 0): number {
   const d = new Date();

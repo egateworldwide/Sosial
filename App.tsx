@@ -24,10 +24,13 @@ type Route = 'home' | 'size' | 'editor' | 'export' | 'schedule' | 'privacy' | 'c
 
 function Shell() {
   const [route, setRoute] = useState<Route>('home');
+  const [connectFrom, setConnectFrom] = useState<Route>('schedule');
   const { loadPost, clearPost, setPageIndex } = usePost();
   const fontsLoaded = useFontsLoaded();
   const routeRef = React.useRef(route);
   routeRef.current = route;
+  const connectFromRef = React.useRef(connectFrom);
+  connectFromRef.current = connectFrom;
 
   // phone back button follows the route stack (home exits the app)
   React.useEffect(() => {
@@ -38,7 +41,7 @@ function Shell() {
         return true;
       }
       if (r === 'connect') {
-        setRoute('schedule');
+        setRoute(connectFromRef.current);
         return true;
       }
       if (r === 'editor' || r === 'schedule' || r === 'size' || r === 'privacy') {
@@ -108,13 +111,13 @@ function Shell() {
     <View style={{ flex: 1 }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: C.bone }}>
         <StatusBar barStyle="dark-content" />
-        {route === 'home' ? <HomeScreen onNew={() => { clearPost(); setRoute('size'); }} onOpen={(p) => { loadPost(p); setRoute('editor'); }} onQueue={() => setRoute('schedule')} onPrivacy={() => setRoute('privacy')} /> : null}
+        {route === 'home' ? <HomeScreen onNew={() => { clearPost(); setRoute('size'); }} onOpen={(p) => { loadPost(p); setRoute('editor'); }} onQueue={() => setRoute('schedule')} onPrivacy={() => setRoute('privacy')} onConnect={() => { setConnectFrom('home'); setRoute('connect'); }} /> : null}
         {route === 'size' ? <SizeScreen onDone={() => setRoute('editor')} onBack={() => setRoute('home')} /> : null}
         {route === 'editor' ? <EditorScreen onExport={() => setRoute('export')} onHome={() => setRoute('home')} onPosts={() => setRoute('schedule')} /> : null}
         {route === 'export' ? <ExportScreen onBack={() => setRoute('editor')} /> : null}
-        {route === 'schedule' ? <ScheduleScreen onBack={() => setRoute('home')} onConnect={() => setRoute('connect')} /> : null}
+        {route === 'schedule' ? <ScheduleScreen onBack={() => setRoute('home')} onConnect={() => { setConnectFrom('schedule'); setRoute('connect'); }} /> : null}
         {route === 'privacy' ? <PrivacyScreen onBack={() => setRoute('home')} /> : null}
-        {route === 'connect' ? <ConnectScreen onBack={() => setRoute('schedule')} /> : null}
+        {route === 'connect' ? <ConnectScreen onBack={() => setRoute(connectFrom)} /> : null}
       </SafeAreaView>
       {/* single film-grain coat over the whole window incl. status/home strips,
           so the strips never read as a different color from the screens */}

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { loadMetaState } from '../utils/metaStore';
 import { usePost } from '../store/PostContext';
 import { QuickPost } from '../types';
 import { C, T, R } from '../theme';
@@ -77,10 +78,12 @@ function SheetRow({ label, onPress, danger }: { label: string; onPress: () => vo
   );
 }
 
-export default function HomeScreen({ onNew, onOpen, onQueue, onPrivacy }: { onNew: () => void; onOpen: (p: QuickPost) => void; onQueue: () => void; onPrivacy: () => void }) {
+export default function HomeScreen({ onNew, onOpen, onQueue, onPrivacy, onConnect }: { onNew: () => void; onOpen: (p: QuickPost) => void; onQueue: () => void; onPrivacy: () => void; onConnect: () => void }) {
   const [projects, setProjects] = useState<QuickPost[]>([]);
   const [presets, setPresets] = useState<ProjectPreset[]>([]);
   const [managed, setManaged] = useState<ManagedPost[]>([]);
+  const [connected, setConnected] = useState(false);
+  const [libTab, setLibTab] = useState<'designs' | 'templates'>('designs');
   const { post } = usePost();
   const queued = managed.filter((t) => t.scheduledAt).length;
   const [menu, setMenu] = useState<{ kind: 'project'; item: QuickPost } | { kind: 'preset'; tpl: ProjectPreset } | null>(null);
@@ -90,6 +93,13 @@ export default function HomeScreen({ onNew, onOpen, onQueue, onPrivacy }: { onNe
   const reload = () => {
     loadProjects().then(setProjects);
     loadManagedPosts().then(setManaged);
+    loadMetaState().then((m) => setConnected(!!(m.pageId || m.igId || m.threadsId)));
+  };
+  const composeNew = async () => {
+    try {
+      await AsyncStorage.setItem('quickpost_compose', '1');
+    } catch {}
+    onQueue();
   };
   const upcoming: { key: string; at: number; title: string; sub: string }[] = [];
   managed.forEach((t) => {
@@ -178,8 +188,11 @@ export default function HomeScreen({ onNew, onOpen, onQueue, onPrivacy }: { onNe
             <Text style={s.wordmark}>Zap</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TouchableOpacity onPress={onQueue} activeOpacity={0.8} style={s.queueBtn}>
-              <Text style={s.queueBtnT}>Posts{queued > 0 ? ` ${queued}` : ''}</Text>
+            <TouchableOpacity onPress={onConnect} activeOpacity={0.8} style={s.queueBtn}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                {connected ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#22C55E' }} /> : null}
+                <Text style={s.queueBtnT}>Connect</Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity onPress={onNew} activeOpacity={0.8} style={s.newBtn}>
               <Text style={s.newBtnT}>+ Design</Text>
@@ -187,28 +200,24 @@ export default function HomeScreen({ onNew, onOpen, onQueue, onPrivacy }: { onNe
           </View>
         </View>
 
-        {/* hero — two doors: make images, or manage posts */}
-        <View style={{ paddingHorizontal: 24, marginTop: 30 }}>
-          <Text style={s.kicker}>Design & schedule</Text>
-          <Text style={[T.display, { color: C.ink, marginTop: 12 }]}>
-            Create images.{'\n'}Ship posts.
+        {/* hero — manager first */}
+        <View style={{ paddingHorizontal: 24, marginTop: 26 }}>
+          <Text style={[T.display, { color: C.ink, fontSize: 34, lineHeight: 40 }]}>
+            Never miss{'\n'}a post.
           </Text>
-          <Text style={[T.body, { color: C.muted, marginTop: 12, maxWidth: 300 }]}>
-            Design scroll-stopping cards, then queue them with captions across every channel.
+          <Text style={[T.body, { color: C.muted, marginTop: 8 }]}>
+            {queued > 0 ? `Next: ${next3[0].title} · ${fmtDateTime(next3[0].at)}` : 'Queue your first post.'}
           </Text>
-          <TouchableOpacity onPress={onNew} style={[s.cta, { marginTop: 24 }]} activeOpacity={0.88}>
-            <View style={{ gap: 2 }}>
-              <Text style={s.ctaT}>Design studio</Text>
-              <Text style={s.ctaS}>Infographic images for your feed</Text>
-            </View>
+          <TouchableOpacity onPress={composeNew} style={[s.cta, { backgroundColor: C.accent, marginTop: 16 }]} activeOpacity={0.88}>
+            <Text style={s.ctaT}>+ New post</Text>
             <Ionicons name="arrow-forward" size={19} color="#fff" />
           </TouchableOpacity>
-          <TouchableOpacity onPress={onQueue} style={[s.cta, { backgroundColor: C.accent, marginTop: 12 }]} activeOpacity={0.88}>
+          <TouchableOpacity onPress={onNew} style={s.ghostTile} activeOpacity={0.8}>
             <View style={{ gap: 2 }}>
-              <Text style={s.ctaT}>Post manager</Text>
-              <Text style={s.ctaS}>{queued > 0 ? `${queued} queued · next ${fmtDateTime(next3[0].at)}` : 'Titles, photos, times — Buffer-style'}</Text>
+              <Text style={s.ghostTileT}>Design studio</Text>
+              <Text style={s.ghostTileS}>Images for your posts</Text>
             </View>
-            <Ionicons name="arrow-forward" size={19} color="#fff" />
+            <Ionicons name="chevron-forward" size={18} color={C.faint} />
           </TouchableOpacity>
         </View>
 
@@ -232,47 +241,49 @@ export default function HomeScreen({ onNew, onOpen, onQueue, onPrivacy }: { onNe
           </View>
         ) : null}
 
-        {/* templates */}
-        <View style={{ paddingHorizontal: 24, marginTop: 40 }}>
+        {/* library — designs + templates under one roof */}
+        <View style={{ paddingHorizontal: 24, marginTop: 36 }}>
           <View style={s.secHead}>
-            <Text style={s.secT}>Templates</Text>
-            {presets.length > 0 ? <Text style={s.secCount}>{String(presets.length).padStart(2, '0')}</Text> : null}
-          </View>
-          {presets.length === 0 ? (
-            <Text style={s.presetHint}>No templates yet — tap ••• on any design below and choose “Save as template” to reuse its full look: size, backdrop, title, photo, socials and content.</Text>
-          ) : (
-            <View>
-              {presets.map((tpl, idx) => (
-                <TouchableOpacity key={tpl.id} onPress={() => handleUsePreset(tpl)} onLongPress={() => presetMenu(tpl)} style={s.row} activeOpacity={0.7}>
-                  <Text style={s.idx}>{String(idx + 1).padStart(2, '0')}</Text>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={s.rowT} numberOfLines={1}>{tpl.name}</Text>
-                    <Text style={s.rowS}>{tpl.post.sizeId} · {tpl.post.pages.length} page{tpl.post.pages.length > 1 ? 's' : ''}</Text>
-                  </View>
-                  <View style={s.useBtn}><Text style={s.useBtnT}>Use</Text></View>
-                  <TouchableOpacity onPress={() => presetMenu(tpl)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                    <Ionicons name="ellipsis-horizontal" size={20} color={C.muted} />
+            <Text style={s.secT}>Library</Text>
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              {(['designs', 'templates'] as const).map((t) => {
+                const on = libTab === t;
+                return (
+                  <TouchableOpacity key={t} onPress={() => setLibTab(t)} style={[s.miniTab, on && { backgroundColor: C.ink }]} activeOpacity={0.75}>
+                    <Text style={[s.miniTabT, on && { color: '#fff' }]}>{t === 'designs' ? 'Designs' : 'Templates'}</Text>
                   </TouchableOpacity>
-                </TouchableOpacity>
-              ))}
+                );
+              })}
             </View>
-          )}
-        </View>
-
-        {/* designs */}
-        <View style={{ paddingHorizontal: 24, marginTop: 44 }}>
-          <View style={s.secHead}>
-            <Text style={s.secT}>Your designs</Text>
-            <Text style={s.secCount}>{projects.length > 0 ? String(projects.length).padStart(2, '0') : ''}</Text>
           </View>
-          {projects.length === 0 ? (
+          {libTab === 'templates' ? (
+            presets.length === 0 ? (
+              <Text style={s.presetHint}>No templates yet — tap ••• on any design and choose “Save as template”.</Text>
+            ) : (
+              <View>
+                {presets.map((tpl, idx) => (
+                  <TouchableOpacity key={tpl.id} onPress={() => handleUsePreset(tpl)} onLongPress={() => presetMenu(tpl)} style={s.row} activeOpacity={0.7}>
+                    <Text style={s.idx}>{String(idx + 1).padStart(2, '0')}</Text>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={s.rowT} numberOfLines={1}>{tpl.name}</Text>
+                      <Text style={s.rowS}>{tpl.post.sizeId} · {tpl.post.pages.length} page{tpl.post.pages.length > 1 ? 's' : ''}</Text>
+                    </View>
+                    <View style={s.useBtn}><Text style={s.useBtnT}>Use</Text></View>
+                    <TouchableOpacity onPress={() => presetMenu(tpl)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                      <Ionicons name="ellipsis-horizontal" size={20} color={C.muted} />
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )
+          ) : projects.length === 0 ? (
             <View style={s.empty}>
               <View style={s.emptyStack}>
                 <View style={[s.emptyCard, { transform: [{ rotate: '-6deg' }] }]} />
                 <View style={[s.emptyCard, s.emptyCardTop, { transform: [{ rotate: '4deg' }] }]} />
               </View>
               <Text style={s.emptyT}>Nothing on the press yet</Text>
-              <Text style={s.emptyS}>Image drafts land here. Design your first card above.</Text>
+              <Text style={s.emptyS}>Image drafts land here.</Text>
             </View>
           ) : (
             <View>
@@ -299,7 +310,6 @@ export default function HomeScreen({ onNew, onOpen, onQueue, onPrivacy }: { onNe
               ))}
             </View>
           )}
-          <Text style={s.hint}>Tip — long-press a design to open, duplicate, rename or delete it.</Text>
           <TouchableOpacity onPress={onPrivacy} activeOpacity={0.7} style={{ marginTop: 26, alignSelf: 'center' }}>
             <Text style={{ fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.faint }}>Privacy Policy</Text>
           </TouchableOpacity>
@@ -378,6 +388,11 @@ const s = StyleSheet.create({
   kicker: { ...T.tag, color: C.accent },
   cta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.ink, borderRadius: R.md + 2, paddingVertical: 17, paddingHorizontal: 20, marginTop: 24 },
   ctaT: { fontFamily: 'PlusJakartaSans_700Bold', color: '#fff', fontSize: 15 },
+  ghostTile: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.card, borderRadius: R.md + 2, borderWidth: 1, borderColor: C.lineSoft, paddingVertical: 15, paddingHorizontal: 20, marginTop: 10 },
+  ghostTileT: { fontFamily: 'PlusJakartaSans_700Bold', color: C.ink, fontSize: 14.5, letterSpacing: -0.2 },
+  ghostTileS: { fontFamily: 'PlusJakartaSans_400Regular', color: C.muted, fontSize: 12.5, marginTop: 2 },
+  miniTab: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 7, backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft },
+  miniTabT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.muted },
   ctaS: { fontFamily: 'PlusJakartaSans_400Regular', color: '#ffffffB3', fontSize: 12.5, marginTop: 2 },
   ctaArrow: { fontFamily: 'PlusJakartaSans_400Regular', color: '#fff', fontSize: 18 },
   meta: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.faint, marginTop: 12 },

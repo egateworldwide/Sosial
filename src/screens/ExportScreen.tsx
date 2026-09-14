@@ -9,7 +9,7 @@ import { C, T, R } from '../theme';
 import { SOCIAL_META } from '../constants';
 import { SocialGlyph } from '../components/ui';
 
-const PLATFORMS = ['facebook', 'instagram', 'tiktok', 'threads', 'x', 'whatsapp'] as const;
+const PLATFORMS = ['facebook', 'instagram', 'tiktok', 'threads', 'whatsapp'] as const;
 
 export default function ExportScreen({ onBack }: { onBack: () => void }) {
   const { post, sizeRatio } = usePost();
