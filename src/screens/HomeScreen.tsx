@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePost } from '../store/PostContext';
 import { QuickPost } from '../types';
@@ -174,7 +174,7 @@ export default function HomeScreen({ onNew, onOpen, onQueue, onPrivacy }: { onNe
         {/* masthead */}
         <View style={s.masthead}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <View style={s.mark} />
+            <Image source={require('../../assets/icon.png')} style={{ width: 26, height: 26, borderRadius: 7 }} />
             <Text style={s.wordmark}>Zap</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
