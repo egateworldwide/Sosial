@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, StyleSheet, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
-import { BlurView } from 'expo-blur';
-import { C, R } from '../theme';
+import { useTheme, Palette, R } from '../theme';
 
 export type MainTab = 'create' | 'post' | 'analytics';
 
@@ -14,6 +13,8 @@ export default function BottomNav({ tab, onTab, onTemplate, onPost }: {
   onPost: () => void;
 }) {
   const [plus, setPlus] = useState(false);
+  const { C } = useTheme();
+  const s = makeS(C);
 
   const item = (t: MainTab, icon: string, label: string) => {
     const on = tab === t;
@@ -30,7 +31,7 @@ export default function BottomNav({ tab, onTab, onTemplate, onPost }: {
       {item('create', tab === 'create' ? 'bulb' : 'bulb-outline', 'Create')}
       <TouchableOpacity onPress={() => setPlus(true)} style={s.plusWrap} activeOpacity={0.8}>
         <View style={s.plus}>
-          <Ionicons name="add" size={28} color="#fff" />
+          <Ionicons name="add" size={28} color={C.onInk} />
         </View>
       </TouchableOpacity>
       {item('analytics', tab === 'analytics' ? 'bar-chart' : 'bar-chart-outline', 'Analytics')}
@@ -40,15 +41,7 @@ export default function BottomNav({ tab, onTab, onTemplate, onPost }: {
   return (
     <>
       <View style={s.float}>
-        {Platform.OS === 'ios' ? (
-          <BlurView intensity={85} tint="light" style={s.pill}>
-            {inner}
-          </BlurView>
-        ) : (
-          <View style={[s.pill, { backgroundColor: '#FFFFFFF2' }]}>
-            {inner}
-          </View>
-        )}
+        <View style={s.pill}>{inner}</View>
       </View>
 
       <Modal visible={plus} transparent animationType="fade" onRequestClose={() => setPlus(false)}>
@@ -87,11 +80,11 @@ export default function BottomNav({ tab, onTab, onTemplate, onPost }: {
   );
 }
 
-const s = StyleSheet.create({
+const makeS = (C: Palette) => StyleSheet.create({
   float: { paddingHorizontal: 22, paddingBottom: 12, paddingTop: 6, backgroundColor: 'transparent' },
   pill: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around',
-    borderRadius: 32, overflow: 'hidden',
+    borderRadius: 32, overflow: 'hidden', backgroundColor: C.paper,
     borderWidth: StyleSheet.hairlineWidth, borderColor: C.line,
     paddingVertical: 10, paddingHorizontal: 10,
     shadowColor: '#1C1917', shadowOpacity: 0.14, shadowRadius: 12,

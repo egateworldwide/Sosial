@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
-import { C, R, T } from '../theme';
+import { useTheme, Palette, R, T } from '../theme';
 
 const SECTIONS: { title: string; body: string }[] = [
   {
@@ -43,6 +43,8 @@ const SECTIONS: { title: string; body: string }[] = [
 ];
 
 export default function PrivacyScreen({ onBack }: { onBack: () => void }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   return (
     <View style={{ flex: 1, backgroundColor: C.bone }}>
       <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
@@ -65,7 +67,7 @@ export default function PrivacyScreen({ onBack }: { onBack: () => void }) {
   );
 }
 
-const s = StyleSheet.create({
+const makeS = (C: Palette) => StyleSheet.create({
   backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start' },
   kicker: { ...T.tag, color: C.accent, marginTop: 24 },
   sub: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, color: C.muted, marginTop: 6 },

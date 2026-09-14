@@ -9,7 +9,7 @@ import PhotoSocialsEditor from '../components/PhotoSocialsEditor';
 import ContentEditor from '../components/ContentEditor';
 import PageSortList from '../components/PageSortList';
 import { saveManagedPost } from '../utils/managed';
-import { C, R } from '../theme';
+import { useTheme, Palette, R } from '../theme';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PrimaryBtn, GhostBtn } from '../components/ui';
@@ -29,6 +29,8 @@ const STEPS: { id: EditorStep; label: string }[] = [
 ];
 
 export default function EditorScreen({ onExport, onHome, onPosts }: { onExport: () => void; onHome: () => void; onPosts: () => void }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   const { post, page, pageIndex, setPageIndex, duplicatePage, deletePage, setPageOrder, sizeRatio } = usePost();
   const [step, setStep] = useState<EditorStep>('background');
   const [expanded, setExpanded] = useState(false);
@@ -169,7 +171,7 @@ export default function EditorScreen({ onExport, onHome, onPosts }: { onExport: 
           <Text style={s.saveT}>Save</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={onExport} activeOpacity={0.85} style={s.exportBtn}>
-          <Ionicons name="arrow-forward" size={16} color="#fff" />
+          <Ionicons name="arrow-forward" size={16} color={C.onInk} />
           <Text style={s.exportT}>Export</Text>
         </TouchableOpacity>
       </View>
@@ -304,7 +306,7 @@ export default function EditorScreen({ onExport, onHome, onPosts }: { onExport: 
   );
 }
 
-const s = StyleSheet.create({
+const makeS = (C: Palette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bone },
   top: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8, gap: 10 },
   topBtn: { width: 38, height: 38, borderRadius: R.lg, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' },
@@ -312,7 +314,7 @@ const s = StyleSheet.create({
   saveBtn: { paddingHorizontal: 14, height: 38, borderRadius: R.lg, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' },
   saveT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.accentInk },
   exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, height: 38, borderRadius: R.lg, backgroundColor: C.accent },
-  exportT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14, color: '#fff', letterSpacing: -0.2 },
+  exportT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14, color: C.onInk, letterSpacing: -0.2 },
 
   stage: { justifyContent: 'flex-start', alignItems: 'center', paddingTop: 6, paddingBottom: 10 },
   dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 6 },

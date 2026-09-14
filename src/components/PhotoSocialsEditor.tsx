@@ -5,12 +5,14 @@ import { usePost } from '../store/PostContext';
 import { SocialPlatform, FontId } from '../types';
 import { SOCIAL_META, uid, PALETTE } from '../constants';
 import { FONTS } from '../utils/fonts';
-import { C, R } from '../theme';
+import { useTheme, Palette, R } from '../theme';
 import { Txt, PillToggle, Seg, Field, Stepper, PrimaryBtn, GhostBtn, SocialGlyph, Swatches, Section } from './ui';
 
 const ALL_PLATFORMS: SocialPlatform[] = ['instagram', 'tiktok', 'threads', 'facebook', 'youtube', 'whatsapp'];
 
 export default function PhotoSocialsEditor() {
+  const { C } = useTheme();
+  const st = makeSt(C);
   const { page, patchPfp, setSocials } = usePost();
   if (!page) return null;
   const p = page.pfp;
@@ -182,7 +184,7 @@ export default function PhotoSocialsEditor() {
   );
 }
 
-const st = StyleSheet.create({
+const makeSt = (C: Palette) => StyleSheet.create({
   photoCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: C.card, borderRadius: R.lg, padding: 14 },
   list: { backgroundColor: C.card, borderRadius: R.lg, overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 11 },
@@ -194,7 +196,7 @@ const st = StyleSheet.create({
   miniBtn: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: R.sm, backgroundColor: C.paper },
   miniBtnOn: { backgroundColor: C.ink },
   miniBtnT: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11, color: C.muted },
-  miniBtnTOn: { color: '#fff' },
+  miniBtnTOn: { color: C.onInk },
   miniToggle: { width: 34, height: 30, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: C.paper },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.card, borderRadius: R.lg, paddingHorizontal: 15, paddingVertical: 13 },
   switchT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13.5, color: C.ink },

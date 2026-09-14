@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadMetaState } from '../utils/metaStore';
 import { usePost } from '../store/PostContext';
 import { QuickPost } from '../types';
-import { C, T, R } from '../theme';
+import { useTheme, Palette, T, R } from '../theme';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { deleteProjectPreset, instantiatePreset, loadProjectPresets, renameProjectPreset,
 saveProjectPreset, ProjectPreset } from '../utils/presets';
@@ -71,6 +71,8 @@ function fmtDate(ts: number): string {
 }
 
 function SheetRow({ label, onPress, danger }: { label: string; onPress: () => void; danger?: boolean }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   return (
     <TouchableOpacity onPress={onPress} style={s.shRow} activeOpacity={0.7}>
       <Text style={[s.shRowT, danger && { color: C.redText }]}>{label}</Text>
@@ -79,6 +81,8 @@ function SheetRow({ label, onPress, danger }: { label: string; onPress: () => vo
 }
 
 export default function HomeScreen({ onNew, onOpen, onQueue, onPrivacy, onConnect }: { onNew: () => void; onOpen: (p: QuickPost) => void; onQueue: () => void; onPrivacy: () => void; onConnect: () => void }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   const [projects, setProjects] = useState<QuickPost[]>([]);
   const [presets, setPresets] = useState<ProjectPreset[]>([]);
   const [managed, setManaged] = useState<ManagedPost[]>([]);
@@ -184,7 +188,7 @@ export default function HomeScreen({ onNew, onOpen, onQueue, onPrivacy, onConnec
         {/* masthead */}
         <View style={s.masthead}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Image source={require('../../assets/mark.png')} style={{ width: 26, height: 26 }} />
+            <Image source={require('../../assets/bolt.png')} style={{ width: 22, height: 28 }} resizeMode="contain" />
             <Text style={s.wordmark}>Zap</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -210,7 +214,7 @@ export default function HomeScreen({ onNew, onOpen, onQueue, onPrivacy, onConnec
           </Text>
           <TouchableOpacity onPress={composeNew} style={[s.cta, { backgroundColor: C.accent, marginTop: 16 }]} activeOpacity={0.88}>
             <Text style={s.ctaT}>+ New post</Text>
-            <Ionicons name="arrow-forward" size={19} color="#fff" />
+            <Ionicons name="arrow-forward" size={19} color={C.onInk} />
           </TouchableOpacity>
           <TouchableOpacity onPress={onNew} style={s.ghostTile} activeOpacity={0.8}>
             <View style={{ gap: 2 }}>
@@ -250,7 +254,7 @@ export default function HomeScreen({ onNew, onOpen, onQueue, onPrivacy, onConnec
                 const on = libTab === t;
                 return (
                   <TouchableOpacity key={t} onPress={() => setLibTab(t)} style={[s.miniTab, on && { backgroundColor: C.ink }]} activeOpacity={0.75}>
-                    <Text style={[s.miniTabT, on && { color: '#fff' }]}>{t === 'designs' ? 'Designs' : 'Templates'}</Text>
+                    <Text style={[s.miniTabT, on && { color: C.onInk }]}>{t === 'designs' ? 'Designs' : 'Templates'}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -365,7 +369,7 @@ export default function HomeScreen({ onNew, onOpen, onQueue, onPrivacy, onConnec
               </View>
               <View style={{ flex: 1 }}>
                 <TouchableOpacity onPress={commitRename} style={[s.mBtn, { backgroundColor: C.accent }]} activeOpacity={0.7}>
-                  <Text style={[s.mBtnT, { color: '#fff' }]}>Save</Text>
+                  <Text style={[s.mBtnT, { color: C.onInk }]}>Save</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -377,24 +381,24 @@ export default function HomeScreen({ onNew, onOpen, onQueue, onPrivacy, onConnec
   );
 }
 
-const s = StyleSheet.create({
+const makeS = (C: Palette) => StyleSheet.create({
   masthead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 20 },
   mark: { width: 14, height: 14, borderRadius: 4, backgroundColor: C.accent },
   wordmark: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 17, letterSpacing: -0.4, color: C.ink },
   newBtn: { backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 9 },
-  newBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: '#fff' },
+  newBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.onInk },
   queueBtn: { backgroundColor: C.card, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 9, borderWidth: 1, borderColor: C.lineSoft },
   queueBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.accentInk },
   kicker: { ...T.tag, color: C.accent },
   cta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.ink, borderRadius: R.md + 2, paddingVertical: 17, paddingHorizontal: 20, marginTop: 24 },
-  ctaT: { fontFamily: 'PlusJakartaSans_700Bold', color: '#fff', fontSize: 15 },
+  ctaT: { fontFamily: 'PlusJakartaSans_700Bold', color: C.onInk, fontSize: 15 },
   ghostTile: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.card, borderRadius: R.md + 2, borderWidth: 1, borderColor: C.lineSoft, paddingVertical: 15, paddingHorizontal: 20, marginTop: 10 },
   ghostTileT: { fontFamily: 'PlusJakartaSans_700Bold', color: C.ink, fontSize: 14.5, letterSpacing: -0.2 },
   ghostTileS: { fontFamily: 'PlusJakartaSans_400Regular', color: C.muted, fontSize: 12.5, marginTop: 2 },
   miniTab: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 7, backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft },
   miniTabT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.muted },
   ctaS: { fontFamily: 'PlusJakartaSans_400Regular', color: '#ffffffB3', fontSize: 12.5, marginTop: 2 },
-  ctaArrow: { fontFamily: 'PlusJakartaSans_400Regular', color: '#fff', fontSize: 18 },
+  ctaArrow: { fontFamily: 'PlusJakartaSans_400Regular', color: C.onInk, fontSize: 18 },
   meta: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.faint, marginTop: 12 },
   secHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', borderBottomWidth: 1.5, borderBottomColor: C.ink, paddingBottom: 10 },
   secT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 19, letterSpacing: -0.4, color: C.ink },
@@ -404,7 +408,7 @@ const s = StyleSheet.create({
   rowT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15.5, letterSpacing: -0.2, color: C.ink },
   rowS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, color: C.muted },
   useBtn: { backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 15, paddingVertical: 8 },
-  useBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: '#fff' },
+  useBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.onInk },
   presetHint: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 19, color: C.muted, marginTop: 12 },
   del: { fontSize: 15, color: C.faint },
   hint: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.faint, marginTop: 12 },

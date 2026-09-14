@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, PanResponder, Animated } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { PostPage } from '../types';
-import { C, R } from '../theme';
+import { useTheme, Palette, R } from '../theme';
 
 interface Props {
   pages: PostPage[];
@@ -15,6 +15,8 @@ interface Props {
 /** Long-press the grip and drag to reorder. Order is kept local during the
  * drag (no parent re-renders = no lag) and committed once on drop. */
 export default function PageSortList({ pages, currentIndex, onSelect, onCommit, onDragChange }: Props) {
+  const { C } = useTheme();
+  const s = makeS(C);
   const [dragId, setDragId] = useState<string | null>(null);
   const [local, setLocal] = useState<string[] | null>(null);
   const dy = useRef(new Animated.Value(0)).current;
@@ -128,7 +130,7 @@ export default function PageSortList({ pages, currentIndex, onSelect, onCommit, 
   );
 }
 
-const s = {
+const makeS = (C: Palette) => ({
   hint: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.faint, marginBottom: 10 } as const,
   list: { backgroundColor: C.card, borderRadius: R.lg, overflow: 'hidden' } as const,
   rowWrap: {} as const,
@@ -139,4 +141,4 @@ const s = {
   rowS: { fontFamily: 'PlusJakartaSans_400Regular', color: C.muted, fontSize: 12 } as const,
   curT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11, color: C.accentInk, backgroundColor: C.accentSoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 } as const,
   grip: { width: 34, height: 40, alignItems: 'center', justifyContent: 'center' } as const,
-};
+});

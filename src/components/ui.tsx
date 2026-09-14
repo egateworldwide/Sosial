@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, TextInputProps, Platform } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import FontAwesome6 from '@expo/vector-icons/build/FontAwesome6';
-import { C, R } from '../theme';
+import { useTheme, Palette, R } from '../theme';
 
 /** Real brand glyph for a social platform — optically balanced per brand */
 const GLYPH_SCALE: Record<string, number> = {
@@ -30,6 +30,8 @@ export function SocialGlyph({ platform, size = 14, color = '#fff' }: { platform:
 
 /** Numbered editorial section header — "01 · Photo" */
 export function Section({ no, title, hint }: { no: string; title: string; hint?: string }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   return (
     <View style={{ gap: 2 }}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
@@ -43,6 +45,8 @@ export function Section({ no, title, hint }: { no: string; title: string; hint?:
 
 /** Sentence-case field label with optional hint */
 export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   return (
     <View style={{ gap: 9 }}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
@@ -56,6 +60,8 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
 
 /** iOS-style segmented control — tonal track, paper thumb with shadow */
 export function Seg<T extends string>({ options, value, onChange }: { options: { value: T; label: string }[]; value: T; onChange: (v: T) => void }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   return (
     <View style={s.segWrap}>
       {options.map((o) => {
@@ -72,6 +78,8 @@ export function Seg<T extends string>({ options, value, onChange }: { options: {
 
 /** Color swatches with offset ink ring when selected (exact dupes collapsed) */
 export function Swatches({ colors, value, onChange, size = 30 }: { colors: string[]; value?: string; onChange: (c: string) => void; size?: number }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   const unique: string[] = [];
   const seen = new Set<string>();
   for (const c of colors) {
@@ -105,6 +113,8 @@ export function Swatches({ colors, value, onChange, size = 30 }: { colors: strin
 
 /** Round stepper — tap −/+ or tap the number to type a value */
 export function Stepper({ value, onChange, step = 1, min = 0, max = 200, format }: { value: number; onChange: (v: number) => void; step?: number; min?: number; max?: number; format?: (v: number) => string }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   const dec = Math.max(0, (String(step).split('.')[1] ?? '').length);
   const round = (v: number) => Number(v.toFixed(dec));
   const clamp = (v: number) => round(Math.min(max, Math.max(min, v)));
@@ -138,6 +148,8 @@ export function Stepper({ value, onChange, step = 1, min = 0, max = 200, format 
 
 /** Solid ink press button */
 export function PrimaryBtn({ label, onPress }: { label: string; onPress: () => void }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   return (
     <TouchableOpacity onPress={onPress} style={s.btn} activeOpacity={0.85}>
       <Text style={s.btnT}>{label}</Text>
@@ -147,6 +159,8 @@ export function PrimaryBtn({ label, onPress }: { label: string; onPress: () => v
 
 /** Quiet tonal button */
 export function GhostBtn({ label, onPress, danger }: { label: string; onPress: () => void; danger?: boolean }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   return (
     <TouchableOpacity onPress={onPress} style={[s.ghost, danger && s.ghostDanger]} activeOpacity={0.8}>
       <Text style={[s.ghostT, danger && { color: C.redText }]}>{label}</Text>
@@ -156,11 +170,15 @@ export function GhostBtn({ label, onPress, danger }: { label: string; onPress: (
 
 /** Tonal inset text input */
 export function Txt(props: TextInputProps) {
+  const { C } = useTheme();
+  const s = makeS(C);
   return <TextInput {...props} placeholderTextColor={C.faint} style={[s.input, props.multiline && { minHeight: 76, textAlignVertical: 'top' }, props.style as any]} />;
 }
 
 /** Native-feel switch */
 export function PillToggle({ on, onPress }: { on: boolean; onPress: () => void }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   return (
     <TouchableOpacity onPress={onPress} style={[s.toggle, on && s.toggleOn]} activeOpacity={0.8}>
       <View style={[s.knob, on && s.knobOn]} />
@@ -168,7 +186,7 @@ export function PillToggle({ on, onPress }: { on: boolean; onPress: () => void }
   );
 }
 
-const s = StyleSheet.create({
+const makeS = (C: Palette) => StyleSheet.create({
   secNo: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: C.accent },
   secTitle: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 17, letterSpacing: -0.3, color: C.ink },
   secHint: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 18, color: C.muted },
@@ -184,7 +202,7 @@ const s = StyleSheet.create({
   stepT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 16, color: C.ink, marginTop: -2 },
   stepVal: { minWidth: 56, flexShrink: 1, textAlign: 'center', fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.ink, fontVariant: ['tabular-nums'] },
   btn: { backgroundColor: C.ink, borderRadius: R.md + 2, minHeight: 54, paddingVertical: 16, alignItems: 'center', justifyContent: 'center' },
-  btnT: { fontFamily: 'PlusJakartaSans_700Bold', color: '#fff', fontSize: 15 },
+  btnT: { fontFamily: 'PlusJakartaSans_700Bold', color: C.onInk, fontSize: 15 },
   ghost: { backgroundColor: C.surface, borderRadius: R.md + 2, minHeight: 50, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
   ghostDanger: { backgroundColor: C.paleRed },
   ghostT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: C.ink },

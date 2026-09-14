@@ -19,7 +19,7 @@ import ProfileMenu from './src/components/ProfileMenu';
 import Grain from './src/components/Grain';
 import { useFontsLoaded } from './src/utils/fonts';
 import { loadAccount, saveAccount, Account } from './src/utils/account';
-import { C } from './src/theme';
+import { useTheme, ThemeProvider } from './src/theme';
 
 type Route = MainTab | 'size' | 'editor' | 'export' | 'connect' | 'privacy' | 'account';
 
@@ -31,6 +31,7 @@ type Route = MainTab | 'size' | 'editor' | 'export' | 'connect' | 'privacy' | 'a
 const TABS: MainTab[] = ['create', 'post', 'analytics'];
 
 function Shell() {
+  const { C, mode, toggle } = useTheme();
   const [route, setRoute] = useState<Route>('create');
   const [connectFrom, setConnectFrom] = useState<Route>('post');
   const [privacyFrom, setPrivacyFrom] = useState<Route>('account');
@@ -171,7 +172,7 @@ function Shell() {
   return (
     <View style={{ flex: 1 }}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: C.bone }}>
-        <StatusBar barStyle="dark-content" />
+        <StatusBar barStyle={mode === 'dark' ? 'light-content' : 'dark-content'} />
         <View style={{ flex: 1 }}>
           {route === 'create' ? (
             <CreateScreen
@@ -233,6 +234,8 @@ function Shell() {
           visible={profileOpen}
           email={account.email}
           team={account.team}
+          dark={mode === 'dark'}
+          onToggleDark={toggle}
           onClose={() => setProfileOpen(false)}
           onAccount={() => setRoute('account')}
           onSupport={support}
@@ -250,10 +253,12 @@ function Shell() {
 
 export default function App() {
   return (
-    <PostProvider>
-      <SafeAreaProvider>
-        <Shell />
-      </SafeAreaProvider>
-    </PostProvider>
+    <ThemeProvider>
+      <PostProvider>
+        <SafeAreaProvider>
+          <Shell />
+        </SafeAreaProvider>
+      </PostProvider>
+    </ThemeProvider>
   );
 }

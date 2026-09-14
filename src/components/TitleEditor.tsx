@@ -4,7 +4,7 @@ import { usePost } from '../store/PostContext';
 import { PALETTE } from '../constants';
 import { FontId, TitlePosition } from '../types';
 import { fontFamily } from '../utils/fonts';
-import { C, R } from '../theme';
+import { useTheme, Palette, R } from '../theme';
 import { Field, Seg, Swatches, Stepper, Txt, Section } from './ui';
 
 const FONT_OPTIONS: { value: FontId; label: string }[] = [
@@ -17,6 +17,8 @@ const FONT_OPTIONS: { value: FontId; label: string }[] = [
 ];
 
 export default function TitleEditor() {
+  const { C } = useTheme();
+  const st = makeSt(C);
   const { page, patchTitle, patchPage } = usePost();
   if (!page) return null;
   const t = page.title;
@@ -101,15 +103,15 @@ export default function TitleEditor() {
   );
 }
 
-const st = StyleSheet.create({
+const makeSt = (C: Palette) => StyleSheet.create({
   fontBtn: { flexGrow: 1, minWidth: '30%', paddingVertical: 11, borderRadius: R.md, alignItems: 'center', backgroundColor: C.card },
   fontBtnOn: { backgroundColor: C.ink },
   fontBtnT: { fontSize: 12.5, color: C.muted },
-  fontBtnTOn: { color: '#fff' },
+  fontBtnTOn: { color: C.onInk },
   styleBtn: { width: 48, height: 48, borderRadius: R.md, alignItems: 'center', justifyContent: 'center', backgroundColor: C.card },
   styleBtnOn: { backgroundColor: C.ink },
   styleB: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 17, color: C.muted },
   styleI: { fontFamily: 'PlusJakartaSans_400Regular', fontStyle: 'italic', fontSize: 17, color: C.muted },
-  styleTOn: { color: '#fff' },
+  styleTOn: { color: C.onInk },
   subNote: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11.5, color: C.faint, paddingBottom: 14 },
 });

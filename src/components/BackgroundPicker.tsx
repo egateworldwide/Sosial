@@ -6,7 +6,7 @@ import { usePost } from '../store/PostContext';
 import { PALETTE, BG_PRESETS, uid } from '../constants';
 import { BgPreset, loadCustomBgPresets, saveCustomBgPreset, deleteCustomBgPreset } from '../utils/presets';
 import { BgType } from '../types';
-import { C, R } from '../theme';
+import { useTheme, Palette, R } from '../theme';
 import { Field, Swatches, Stepper, PrimaryBtn, PillToggle, Section, Txt } from './ui';
 
 const TYPES: { value: BgType; label: string }[] = [
@@ -37,6 +37,7 @@ const MIX_TYPES: { value: BgType; label: string }[] = [
 
 /** Wrapping chip grid — Seg only fits a handful of options. */
 function PatternGrid({ options, value, onChange }: { options: { value: BgType; label: string }[]; value: BgType; onChange: (v: BgType) => void }) {
+  const { C } = useTheme();
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
       {options.map((o) => {
@@ -55,7 +56,7 @@ function PatternGrid({ options, value, onChange }: { options: { value: BgType; l
             }}
             activeOpacity={0.75}
           >
-            <Text style={{ fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: on ? '#fff' : C.ink }}>{o.label}</Text>
+            <Text style={{ fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: on ? C.onInk : C.ink }}>{o.label}</Text>
           </TouchableOpacity>
         );
       })}
@@ -64,6 +65,7 @@ function PatternGrid({ options, value, onChange }: { options: { value: BgType; l
 }
 
 export default function BackgroundPicker() {
+  const { C } = useTheme();
   const { page, patchBackground } = usePost();
   const [custom, setCustom] = useState<BgPreset[]>([]);
   const [presetName, setPresetName] = useState('');
@@ -155,7 +157,7 @@ export default function BackgroundPicker() {
             style={{ backgroundColor: C.ink, borderRadius: R.md + 2, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center' }}
             activeOpacity={0.85}
           >
-            <Text style={{ fontFamily: 'PlusJakartaSans_700Bold', color: '#fff', fontSize: 14 }}>Save</Text>
+            <Text style={{ fontFamily: 'PlusJakartaSans_700Bold', color: C.onInk, fontSize: 14 }}>Save</Text>
           </TouchableOpacity>
         </View>
       </View>

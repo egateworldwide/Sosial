@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Linking, Switch } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
-import { C, R, T } from '../theme';
+import { useTheme, Palette, R, T } from '../theme';
 import { Txt } from '../components/ui';
 import { wipeAllData } from '../utils/account';
 
@@ -24,6 +24,8 @@ export default function AccountScreen({ email, team, notifPosts, notifComments, 
   onPrivacy: () => void;
   onLoggedOut: () => void;
 }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   const [view, setView] = useState<AcctView>('main');
   const [draftEmail, setDraftEmail] = useState(email);
   const [draftTeam, setDraftTeam] = useState(team);
@@ -224,11 +226,11 @@ export default function AccountScreen({ email, team, notifPosts, notifComments, 
   );
 }
 
-const s = StyleSheet.create({
+const makeS = (C: Palette) => StyleSheet.create({
   backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start' },
   head: { flexDirection: 'row', alignItems: 'center', gap: 13, marginTop: 18 },
   avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
-  avatarT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 22, color: '#fff' },
+  avatarT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 22, color: C.onInk },
   email: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 17, letterSpacing: -0.2, color: C.ink },
   team: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, color: C.muted },
   list: { backgroundColor: C.card, borderRadius: R.lg, overflow: 'hidden', marginTop: 16 },
@@ -237,7 +239,7 @@ const s = StyleSheet.create({
   rowS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, color: C.muted, marginTop: 1 },
   label: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.soft, marginBottom: 7 },
   save: { backgroundColor: C.ink, borderRadius: R.md + 2, paddingVertical: 15, alignItems: 'center' },
-  saveT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15, color: '#fff' },
+  saveT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15, color: C.onInk },
   note: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 19, color: C.muted, margin: 14 },
   plan: { backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, padding: 16, gap: 6 },
   planT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 17, color: C.ink },

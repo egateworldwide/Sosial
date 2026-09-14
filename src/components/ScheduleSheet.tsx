@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, Alert, Platform, KeyboardAvoidingView, Image } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
-import { C, R } from '../theme';
+import { useTheme, Palette, R } from '../theme';
 import { PrimaryBtn, GhostBtn, Txt } from './ui';
 import { SocialGlyph } from './ui';
 import { fmtDateTime } from '../utils/reminders';
@@ -60,6 +60,8 @@ interface Props {
 
 /** Buffer-style sheet: channels (multi) + title/description + time. */
 export default function ScheduleSheet({ visible, initialAt, initialPlatforms, title, bulkCount, composer, media, onDelete, onPosted, publishLabel, publishBusy, onPublish, draftLabel, onDraft, approveLabel, onApprove, onSave, onClose }: Props) {
+  const { C } = useTheme();
+  const st = makeSt(C);
   const [plats, setPlats] = useState<string[]>(['any']);
   const [preset, setPreset] = useState<'today' | 'tomorrow' | 'custom'>('tomorrow');
   const [custom, setCustom] = useState(new Date(Date.now() + 86400000));
@@ -182,9 +184,9 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
                   activeOpacity={0.75}
                 >
                   {c === 'any' ? (
-                    <Ionicons name="globe-outline" size={14} color={on ? '#fff' : C.muted} />
+                    <Ionicons name="globe-outline" size={14} color={on ? C.onInk : C.muted} />
                   ) : (
-                    <SocialGlyph platform={c} size={14} color={on ? '#fff' : C.ink} />
+                    <SocialGlyph platform={c} size={14} color={on ? C.onInk : C.ink} />
                   )}
                   <Text style={[st.chipT, on && { color: '#fff' }]}>{c === 'any' ? 'Anywhere' : c[0].toUpperCase() + c.slice(1)}</Text>
                 </TouchableOpacity>
@@ -268,7 +270,7 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
               style={{ backgroundColor: C.accent, borderRadius: R.lg, paddingVertical: 14, alignItems: 'center', opacity: publishBusy ? 0.6 : 1 }}
               activeOpacity={0.85}
             >
-              <Text style={{ fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 15, color: '#fff' }}>
+              <Text style={{ fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 15, color: C.onInk }}>
                 {publishBusy ? 'Publishing…' : (publishLabel ?? 'Publish now')}
               </Text>
             </TouchableOpacity>
@@ -287,7 +289,7 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
   );
 }
 
-const st = {
+const makeSt = (C: Palette) => ({
   bg: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' } as const,
   sheet: { backgroundColor: C.paper, borderTopLeftRadius: R.xl, borderTopRightRadius: R.xl, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 30, gap: 10, maxHeight: '92%' } as const,
   title: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 18, letterSpacing: -0.3, color: C.ink } as const,
@@ -304,4 +306,4 @@ const st = {
   mini: { backgroundColor: C.paper, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 } as const,
   miniWide: { backgroundColor: C.card, borderRadius: R.lg, paddingVertical: 11, alignItems: 'center' } as const,
   miniT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.accentInk } as const,
-};
+});

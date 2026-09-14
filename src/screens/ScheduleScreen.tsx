@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, Alert } fr
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
-import { C, R, T } from '../theme';
+import { useTheme, Palette, R, T } from '../theme';
 import { SocialGlyph, PrimaryBtn, GhostBtn } from '../components/ui';
 import { uid } from '../constants';
 import ScheduleSheet from '../components/ScheduleSheet';
@@ -31,6 +31,8 @@ function timeLabel(ts: number): string {
 }
 
 function Cover({ uri, kind }: { uri?: string; kind?: 'image' | 'video' }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   if (uri && kind !== 'video') return <Image source={{ uri }} style={s.cover} />;
   if (uri) {
     return (
@@ -48,6 +50,8 @@ function Cover({ uri, kind }: { uri?: string; kind?: 'image' | 'video' }) {
 
 /** Post manager: every post — title + photo + description + channels + time. */
 export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => void; onConnect: () => void }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   const [posts, setPosts] = useState<ManagedPost[]>([]);
   const [meta, setMeta] = useState<MetaState>({});
   const [publishing, setPublishing] = useState(false);
@@ -273,7 +277,7 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
             const on = filter === c;
             return (
               <TouchableOpacity key={c} onPress={() => setFilter(c)} style={[s.chip, on && { backgroundColor: C.ink, borderColor: C.ink }]} activeOpacity={0.75}>
-                <Text style={[s.chipT, on && { color: '#fff' }]}>{c === 'all' ? 'All' : c[0].toUpperCase() + c.slice(1)}</Text>
+                <Text style={[s.chipT, on && { color: C.onInk }]}>{c === 'all' ? 'All' : c[0].toUpperCase() + c.slice(1)}</Text>
               </TouchableOpacity>
             );
           })}
@@ -315,7 +319,7 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
   );
 }
 
-const s = StyleSheet.create({
+const makeS = (C: Palette) => StyleSheet.create({
   backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start' },
   kicker: { ...T.tag, color: C.accent, marginTop: 24 },
   sub: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, color: C.muted, marginTop: 6 },
@@ -329,7 +333,7 @@ const s = StyleSheet.create({
   chip: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft },
   chipT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.muted },
   qBtn: { backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 15, paddingVertical: 9 },
-  qBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: '#fff' },
+  qBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.onInk },
   empty: { backgroundColor: C.card, borderRadius: R.lg, padding: 28, alignItems: 'center', marginTop: 22 },
   emptyT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 16, color: C.ink },
   emptyS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, color: C.muted, marginTop: 6, textAlign: 'center', lineHeight: 19 },

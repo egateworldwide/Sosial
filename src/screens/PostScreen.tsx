@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, Alert } fr
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
-import { C, R, T } from '../theme';
+import { useTheme, Palette, R, T } from '../theme';
 import { SocialGlyph, PrimaryBtn } from '../components/ui';
 import { AvatarButton } from '../components/ProfileMenu';
 import ChannelDrawer from '../components/ChannelDrawer';
@@ -45,6 +45,8 @@ function dayLabel(ts: number): string {
 }
 
 function Cover({ uri, kind }: { uri?: string; kind?: 'image' | 'video' }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   if (uri && kind !== 'video') return <Image source={{ uri }} style={s.cover} />;
   if (uri) {
     return (
@@ -68,6 +70,8 @@ export default function PostScreen({ email, team, onProfile, onConnect, composeS
   onConnect: () => void;
   composeSignal: number;
 }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   const [posts, setPosts] = useState<ManagedPost[]>([]);
   const [meta, setMeta] = useState<MetaState>({});
   const [publishing, setPublishing] = useState(false);
@@ -338,7 +342,7 @@ export default function PostScreen({ email, team, onProfile, onConnect, composeS
             const on = tab === t.id;
             return (
               <TouchableOpacity key={t.id} onPress={() => setTab(t.id)} style={[s.tab, on && { backgroundColor: C.ink, borderColor: C.ink }]} activeOpacity={0.75}>
-                <Text style={[s.tabT, on && { color: '#fff' }]}>{t.label} · {counts[t.id]}</Text>
+                <Text style={[s.tabT, on && { color: C.onInk }]}>{t.label} · {counts[t.id]}</Text>
               </TouchableOpacity>
             );
           })}
@@ -357,7 +361,7 @@ export default function PostScreen({ email, team, onProfile, onConnect, composeS
           })}
           <View style={{ flex: 1 }} />
           <TouchableOpacity onPress={() => openSheet(null)} activeOpacity={0.8} style={s.addBtn}>
-            <Ionicons name="add" size={18} color="#fff" />
+            <Ionicons name="add" size={18} color={C.onInk} />
           </TouchableOpacity>
         </View>
 
@@ -433,7 +437,7 @@ export default function PostScreen({ email, team, onProfile, onConnect, composeS
   );
 }
 
-const s = StyleSheet.create({
+const makeS = (C: Palette) => StyleSheet.create({
   masthead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 20 },
   chanBtn: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, paddingHorizontal: 15, paddingVertical: 13 },
   chanBtnT: { flex: 1, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14.5, color: C.ink },

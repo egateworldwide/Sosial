@@ -5,7 +5,7 @@ import { usePost } from '../store/PostContext';
 import PostCanvas, { CANVAS_W } from '../components/PostCanvas';
 import { capturePage, saveUrisToGallery, shareSingleFile, saveAllImages } from '../utils/export';
 import { genericShare, openSocialApp } from '../utils/socialShare';
-import { C, T, R } from '../theme';
+import { useTheme, Palette, T, R } from '../theme';
 import { SOCIAL_META } from '../constants';
 import { SocialGlyph } from '../components/ui';
 
@@ -13,6 +13,8 @@ const PLATFORMS = ['facebook', 'instagram', 'tiktok', 'threads', 'whatsapp'] as 
 
 export default function ExportScreen({ onBack }: { onBack: () => void }) {
   const { post, sizeRatio } = usePost();
+  const { C } = useTheme();
+  const s = makeS(C);
   const [busy, setBusy] = useState(false);
   const [savedUris, setSavedUris] = useState<string[]>([]);
   const refs = useRef<any[]>([]);
@@ -150,10 +152,10 @@ export default function ExportScreen({ onBack }: { onBack: () => void }) {
         </ScrollView>
 
         <TouchableOpacity onPress={onSaveAll} style={s.save} disabled={busy} activeOpacity={0.88}>
-          {busy ? <ActivityIndicator color="#fff" /> : (
+          {busy ? <ActivityIndicator color={C.onInk} /> : (
             <>
               <Text style={s.saveT}>Save all to device</Text>
-              <Ionicons name="download-outline" size={18} color="#fff" />
+              <Ionicons name="download-outline" size={18} color={C.onInk} />
             </>
           )}
         </TouchableOpacity>
@@ -198,25 +200,25 @@ export default function ExportScreen({ onBack }: { onBack: () => void }) {
   );
 }
 
-const s = StyleSheet.create({
+const makeS = (C: Palette) => StyleSheet.create({
   backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start' },
   back: { fontFamily: 'PlusJakartaSans_700Bold', color: C.ink, fontSize: 20, marginTop: -2 },
   kicker: { ...T.tag, color: C.accent, marginTop: 24 },
   numBadge: { alignSelf: 'flex-start', backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
-  numBadgeT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11, color: '#fff' },
+  numBadgeT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11, color: C.onInk },
   previewCard: { borderRadius: R.lg, overflow: 'hidden', backgroundColor: C.paper, shadowColor: '#1C1917', shadowOpacity: 0.1, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
   shareMini: { backgroundColor: C.card, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
   shareMiniT: { fontFamily: 'PlusJakartaSans_700Bold', color: C.ink, fontSize: 12 },
   saveMini: { backgroundColor: C.accent, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8 },
-  saveMiniT: { fontFamily: 'PlusJakartaSans_700Bold', color: '#fff', fontSize: 12 },
+  saveMiniT: { fontFamily: 'PlusJakartaSans_700Bold', color: C.onInk, fontSize: 12 },
   save: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.ink, borderRadius: R.md + 2, paddingVertical: 17, paddingHorizontal: 20, marginTop: 22 },
-  saveT: { fontFamily: 'PlusJakartaSans_700Bold', color: '#fff', fontSize: 15 },
+  saveT: { fontFamily: 'PlusJakartaSans_700Bold', color: C.onInk, fontSize: 15 },
   secT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 19, letterSpacing: -0.4, color: C.ink, marginBottom: 12 },
   list: { backgroundColor: C.card, borderRadius: R.lg, overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 13, paddingHorizontal: 16, paddingVertical: 14 },
   rowDiv: { borderTopWidth: 1, borderTopColor: C.lineSoft },
   dot: { width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  dotT: { color: '#fff', fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12 },
+  dotT: { color: C.onInk, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12 },
   rowT: { flex: 1, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15, letterSpacing: -0.2, color: C.ink, textTransform: 'capitalize' },
   chev: { fontSize: 20, color: C.faint },
   note: { flexDirection: 'row', gap: 12, marginTop: 28, backgroundColor: C.card, borderRadius: R.lg, padding: 18 },

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
-import { C, R, T } from '../theme';
+import { useTheme, Palette, R, T } from '../theme';
 import { AvatarButton } from '../components/ProfileMenu';
 import ChannelDrawer from '../components/ChannelDrawer';
 import { SOCIAL_META } from '../constants';
@@ -41,6 +41,8 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
   onProfile: () => void;
   onConnect: () => void;
 }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   const [meta, setMeta] = useState<MetaState>({});
   const [data, setData] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -132,7 +134,7 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
             const on = range === r.key;
             return (
               <TouchableOpacity key={r.key} onPress={() => onRange(r.key)} style={[s.range, on && { backgroundColor: C.ink, borderColor: C.ink }]} activeOpacity={0.75}>
-                <Text style={[s.rangeT, on && { color: '#fff' }]}>{r.label}</Text>
+                <Text style={[s.rangeT, on && { color: C.onInk }]}>{r.label}</Text>
               </TouchableOpacity>
             );
           })}
@@ -234,7 +236,7 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
   );
 }
 
-const s = StyleSheet.create({
+const makeS = (C: Palette) => StyleSheet.create({
   masthead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 20 },
   chanBtn: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, paddingHorizontal: 15, paddingVertical: 13 },
   chanBtnT: { flex: 1, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14.5, color: C.ink },
@@ -262,6 +264,6 @@ const s = StyleSheet.create({
   emptyT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 16, color: C.ink },
   emptyS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, color: C.muted, marginTop: 6, textAlign: 'center', lineHeight: 19 },
   connectBtn: { backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 12, marginTop: 14 },
-  connectBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13.5, color: '#fff' },
+  connectBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13.5, color: C.onInk },
   loadingT: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, color: C.muted, marginTop: 10 },
 });

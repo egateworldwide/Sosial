@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, Modal, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
-import { C, R } from '../theme';
+import { useTheme, Palette, R } from '../theme';
 import { SocialGlyph } from './ui';
 
 export interface DrawerChannel {
@@ -21,13 +21,15 @@ export default function ChannelDrawer({ visible, channels, value, onPick, onAddC
   onSettings: () => void;
   onClose: () => void;
 }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   const row = (id: string, label: string, sub: string, glyph: string | null, dot?: boolean) => {
     const on = value === id;
     return (
       <TouchableOpacity key={id} onPress={() => { onPick(id); onClose(); }} style={[s.row, on && { borderColor: C.accent, backgroundColor: C.accentSoft }]} activeOpacity={0.75}>
         {glyph ? (
           <View style={{ width: 34, height: 34, borderRadius: 12, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }}>
-            <SocialGlyph platform={glyph} size={15} color="#fff" />
+            <SocialGlyph platform={glyph} size={15} color={C.onInk} />
           </View>
         ) : (
           <View style={[s.globe, dot && { backgroundColor: C.accent }]}>
@@ -55,7 +57,7 @@ export default function ChannelDrawer({ visible, channels, value, onPick, onAddC
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
             <View style={{ flex: 1 }}>
               <TouchableOpacity onPress={() => { onClose(); onAddChannel(); }} style={s.add} activeOpacity={0.8}>
-                <Ionicons name="add" size={18} color="#fff" />
+                <Ionicons name="add" size={18} color={C.onInk} />
                 <Text style={s.addT}>Add channel</Text>
               </TouchableOpacity>
             </View>
@@ -69,7 +71,7 @@ export default function ChannelDrawer({ visible, channels, value, onPick, onAddC
   );
 }
 
-const s = StyleSheet.create({
+const makeS = (C: Palette) => StyleSheet.create({
   bg: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
   sheet: { backgroundColor: C.paper, borderTopLeftRadius: R.xl, borderTopRightRadius: R.xl, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 30, maxHeight: '80%' },
   title: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 18, letterSpacing: -0.3, color: C.ink },
@@ -78,6 +80,6 @@ const s = StyleSheet.create({
   rowS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, color: C.muted },
   globe: { width: 34, height: 34, borderRadius: 12, backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center' },
   add: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: C.ink, borderRadius: R.md, paddingVertical: 14 },
-  addT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: '#fff' },
+  addT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: C.onInk },
   gear: { width: 52, borderRadius: R.md, backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft, alignItems: 'center', justifyContent: 'center' },
 });

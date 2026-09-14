@@ -4,7 +4,7 @@ import { POST_SIZES } from '../constants';
 import { FontId, PostSizeId } from '../types';
 import { usePost } from '../store/PostContext';
 import { fontFamily } from '../utils/fonts';
-import { C, T, R } from '../theme';
+import { useTheme, Palette, T, R } from '../theme';
 import { PrimaryBtn, Txt } from '../components/ui';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { saveProjectPreset } from '../utils/presets';
@@ -19,6 +19,8 @@ const FONT_OPTIONS: { value: FontId; label: string }[] = [
 ];
 
 export default function SizeScreen({ onDone, onBack }: { onDone: () => void; onBack: () => void }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   const { createPost } = usePost();
   const [sizeId, setSizeId] = useState<PostSizeId>('square');
   const [name, setName] = useState('My first post');
@@ -83,7 +85,7 @@ export default function SizeScreen({ onDone, onBack }: { onDone: () => void; onB
   );
 }
 
-const s = StyleSheet.create({
+const makeS = (C: Palette) => StyleSheet.create({
   back: { fontFamily: 'PlusJakartaSans_700Bold', color: C.ink, fontSize: 14 },
   kicker: { ...T.tag, color: C.accent, marginTop: 24 },
   label: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 16, letterSpacing: -0.2, color: C.ink, marginTop: 18, marginBottom: 8 },
@@ -101,7 +103,7 @@ const s = StyleSheet.create({
   fontBtn: { flexGrow: 1, minWidth: '30%', paddingVertical: 12, borderRadius: R.md, alignItems: 'center', backgroundColor: C.card },
   fontBtnOn: { backgroundColor: C.ink },
   fontBtnT: { fontSize: 13, color: C.muted },
-  fontBtnTOn: { color: '#fff' },
+  fontBtnTOn: { color: C.onInk },
   specimen: { backgroundColor: C.paper, borderRadius: R.lg, padding: 18, marginTop: 10, shadowColor: '#1C1917', shadowOpacity: 0.07, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
   footer: { padding: 20, paddingBottom: 26, backgroundColor: C.bone, borderTopWidth: 1, borderTopColor: C.lineSoft },
 });

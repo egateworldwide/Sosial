@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { usePost } from '../store/PostContext';
 import { uid, PALETTE } from '../constants';
 import { BlockType, CardStyle, ContentBlock } from '../types';
-import { C, R, DATA } from '../theme';
+import { useTheme, Palette, R, DATA } from '../theme';
 import { Txt, GhostBtn, PrimaryBtn, Section, Field, Swatches, Seg, Stepper, PillToggle } from './ui';
 
 const CARDS: { id: CardStyle; label: string }[] = [
@@ -43,6 +43,8 @@ function newBlock(type: BlockType): ContentBlock {  if (type === 'table') return
 }
 
 export default function ContentEditor() {
+  const { C } = useTheme();
+  const st = makeSt(C);
   const { page, setBlocks, patchPage } = usePost();
   const [openId, setOpenId] = useState<string | null>(null);
   if (!page) return null;
@@ -321,14 +323,14 @@ export default function ContentEditor() {
   );
 }
 
-const st = StyleSheet.create({
+const makeSt = (C: Palette) => StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, backgroundColor: C.card },
   chipT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.ink },
   cardBtn: { flexGrow: 1, minWidth: '30%', paddingVertical: 11, borderRadius: R.md, alignItems: 'center', backgroundColor: C.card },
   cardBtnOn: { backgroundColor: C.ink },
   cardBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.muted },
-  cardBtnTOn: { color: '#fff' },
+  cardBtnTOn: { color: C.onInk },
   card: { borderRadius: R.lg, padding: 14, backgroundColor: C.card },
   cardOpen: { backgroundColor: C.paper, shadowColor: '#1C1917', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
   cardT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, letterSpacing: -0.2, color: C.ink, textTransform: 'capitalize' },

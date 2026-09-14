@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
-import { C, R, T } from '../theme';
+import { useTheme, Palette, R, T } from '../theme';
 import { SocialGlyph } from '../components/ui';
 import { SOCIAL_META } from '../constants';
 import { META_APP_ID } from '../utils/metaConfig';
@@ -14,6 +14,8 @@ import {
 import { IG_APP_ID } from '../utils/metaConfig';
 
 function ChannelIcon({ platform }: { platform: string }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   return (
     <View style={{ width: 38, height: 38, borderRadius: 13, backgroundColor: SOCIAL_META[platform]?.bg ?? C.ink, alignItems: 'center', justifyContent: 'center' }}>
       <SocialGlyph platform={platform} size={17} color="#fff" />
@@ -23,6 +25,8 @@ function ChannelIcon({ platform }: { platform: string }) {
 
 /** One compact row per channel — tap to connect, tap again to manage. */
 export default function ConnectScreen({ onBack }: { onBack: () => void }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   const [meta, setMeta] = useState<MetaState>({});
   const [pages, setPages] = useState<FbPage[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -254,7 +258,7 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
   );
 }
 
-const s = StyleSheet.create({
+const makeS = (C: Palette) => StyleSheet.create({
   backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start' },
   kicker: { ...T.tag, color: C.accent, marginTop: 24 },
   warn: { backgroundColor: C.paleRed, borderRadius: R.lg, padding: 14, marginTop: 16 },

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Modal, TextInput, Image } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
-import { C, R, T } from '../theme';
+import { useTheme, Palette, R, T } from '../theme';
 import { AvatarButton } from '../components/ProfileMenu';
 import { Txt } from '../components/ui';
 import { usePost, defaultPage } from '../store/PostContext';
@@ -23,6 +23,8 @@ function fmtDate(ts: number): string {
 }
 
 function SheetRow({ label, onPress, danger }: { label: string; onPress: () => void; danger?: boolean }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   return (
     <TouchableOpacity onPress={onPress} style={s.shRow} activeOpacity={0.7}>
       <Text style={[s.shRowT, danger && { color: C.redText }]}>{label}</Text>
@@ -40,6 +42,8 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
   onOpenProject: (p: QuickPost) => void;
   onComposePost: () => void;
 }) {
+  const { C } = useTheme();
+  const s = makeS(C);
   const [tab, setTab] = useState<'ideas' | 'templates'>('ideas');
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [projects, setProjects] = useState<QuickPost[]>([]);
@@ -211,7 +215,7 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
         {/* masthead: mark + connect + avatar (no more + Design) */}
         <View style={s.masthead}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Image source={require('../../assets/mark.png')} style={{ width: 26, height: 26 }} />
+            <Image source={require('../../assets/bolt.png')} style={{ width: 22, height: 28 }} resizeMode="contain" />
             <Text style={s.wordmark}>Zap</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -236,7 +240,7 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
             const on = tab === t;
             return (
               <TouchableOpacity key={t} onPress={() => setTab(t)} style={[s.tab, on && { backgroundColor: C.ink, borderColor: C.ink }]} activeOpacity={0.75}>
-                <Text style={[s.tabT, on && { color: '#fff' }]}>{t === 'ideas' ? 'Ideas' : 'Templates'}</Text>
+                <Text style={[s.tabT, on && { color: C.onInk }]}>{t === 'ideas' ? 'Ideas' : 'Templates'}</Text>
               </TouchableOpacity>
             );
           })}
@@ -283,7 +287,7 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
                   {idea.imageUri ? <Image source={{ uri: idea.imageUri }} style={s.cardImg} /> : null}
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
                     <TouchableOpacity onPress={() => designIdea(idea)} style={s.designBtn} activeOpacity={0.8}>
-                      <Ionicons name="color-palette-outline" size={15} color="#fff" />
+                      <Ionicons name="color-palette-outline" size={15} color={C.onInk} />
                       <Text style={s.designBtnT}>Design</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={onComposePost} style={s.postBtn} activeOpacity={0.8}>
@@ -309,7 +313,7 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
           <View style={{ paddingHorizontal: 24, marginTop: 14 }}>
             <TouchableOpacity onPress={onTemplate} style={s.tplCta} activeOpacity={0.85}>
               <Text style={s.tplCtaT}>+ New template design</Text>
-              <Ionicons name="arrow-forward" size={18} color="#fff" />
+              <Ionicons name="arrow-forward" size={18} color={C.onInk} />
             </TouchableOpacity>
             {presets.length === 0 ? (
               <Text style={s.hint}>No templates yet — tap ••• on any design and choose “Save as template”.</Text>
@@ -435,7 +439,7 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
   );
 }
 
-const s = StyleSheet.create({
+const makeS = (C: Palette) => StyleSheet.create({
   masthead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 20 },
   wordmark: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 17, letterSpacing: -0.4, color: C.ink },
   queueBtn: { backgroundColor: C.card, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 9, borderWidth: 1, borderColor: C.lineSoft },
@@ -449,23 +453,23 @@ const s = StyleSheet.create({
   cAttach: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.accentSoft, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 },
   cAttachT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.accentInk },
   cPost: { backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 20, paddingVertical: 10 },
-  cPostT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: '#fff' },
+  cPostT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.onInk },
   card: { backgroundColor: C.paper, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, padding: 14 },
   miniAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
-  miniAvatarT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: '#fff' },
+  miniAvatarT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: C.onInk },
   cardT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 15.5, letterSpacing: -0.2, color: C.ink },
   cardD: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.faint, marginTop: 1 },
   cardB: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13.5, lineHeight: 20, color: C.soft, marginTop: 8 },
   cardImg: { width: '100%', height: 170, borderRadius: R.md, marginTop: 10 },
   designBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 17, paddingVertical: 10 },
-  designBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: '#fff' },
+  designBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.onInk },
   postBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft, borderRadius: 999, paddingHorizontal: 17, paddingVertical: 10 },
   postBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.ink },
   empty: { backgroundColor: C.card, borderRadius: R.lg, padding: 28, alignItems: 'center' },
   emptyT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 16, color: C.ink },
   emptyS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, color: C.muted, marginTop: 6, textAlign: 'center', lineHeight: 19 },
   tplCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.accent, borderRadius: R.md + 2, paddingVertical: 16, paddingHorizontal: 20 },
-  tplCtaT: { fontFamily: 'PlusJakartaSans_700Bold', color: '#fff', fontSize: 15 },
+  tplCtaT: { fontFamily: 'PlusJakartaSans_700Bold', color: C.onInk, fontSize: 15 },
   hint: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 19, color: C.muted, marginTop: 12 },
   secT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 19, letterSpacing: -0.4, color: C.ink },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.line },
@@ -473,7 +477,7 @@ const s = StyleSheet.create({
   rowT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15.5, letterSpacing: -0.2, color: C.ink },
   rowS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, color: C.muted },
   useBtn: { backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 15, paddingVertical: 8 },
-  useBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: '#fff' },
+  useBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.onInk },
   sheetBg: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
   sheet: { backgroundColor: C.paper, borderTopLeftRadius: R.xl, borderTopRightRadius: R.xl, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 30, maxHeight: '92%' },
   sheetT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 17, letterSpacing: -0.3, color: C.ink, marginBottom: 6 },
