@@ -1,5 +1,4 @@
-import * as AuthSession from 'expo-auth-session';
-import Constants from 'expo-constants';
+import * as WebBrowser from 'expo-web-browser';
 import {
   META_APP_ID, META_APP_SECRET, graph,
   FB_AUTH_ENDPOINT, FB_SCOPES,
@@ -8,34 +7,61 @@ import {
 } from './metaConfig';
 import { saveMetaState } from './metaStore';
 
-// Expo Go can't receive custom schemes back from Meta, so it goes through
-// the Expo proxy (real https — the only thing Meta's URI field accepts).
-// Standalone builds use the app scheme directly.
-const PROXY_URL = 'https://auth.expo.io/@naqibhusainiis-team/zap';
+WebBrowser.maybeCompleteAuthSession();
 
-export const redirectUri = () =>
-  Constants.appOwnership === 'expo'
-    ? PROXY_URL
-    : AuthSession.makeRedirectUri({ scheme: 'zap', path: 'redirect' });
+// Meta rejects custom schemes (zap://…) as OAuth redirect URIs — every one
+// of the three dashboards requires https. So we bounce through a tiny static
+// bridge page (auth.html, hosted on GitHub Pages) which forwards ?code=…
+// straight back into zap://redirect, where openAuthSessionAsync captures it.
+// Add this exact URL as a Valid OAuth Redirect URI in all three Meta apps:
+//   Facebook Login settings, Instagram app OAuth settings, Threads Redirect URIs.
+export const BRIDGE_URL = 'https://egateworldwide.github.io/Zap/auth.html';
+const RETURN_URL = 'zap://redirect';
+
+export const redirectUri = () => BRIDGE_URL;
 
 function errMsg(j: any, fallback: string): string {
   const m = j?.error?.message || j?.error_description;
   return typeof m === 'string' && m.length > 0 ? m : fallback;
 }
 
-/* ---------------- Facebook / Instagram (shared login) ---------------- */
+/** zap://redirect?code=… → code. Throws the provider's error when denied. */
+function parseCode(returnUrl: string): string {
+  const afterQ = returnUrl.split('?')[1] ?? '';
+  const query = afterQ.split('#')[0];
+  const parts = query.split('&');
+  let code: string | null = null;
+  let err: string | null = null;
+  for (const p of parts) {
+    const eq = p.indexOf('=');
+    if (eq < 0) continue;
+    const k = p.slice(0, eq);
+    const v = decodeURIComponent(p.slice(eq + 1).replace(/\+/g, ' '));
+    if (k === 'code') code = v;
+    if (k === 'error_description') err = v;
+    else if (k === 'error' && !err) err = v;
+  }
+  if (code) return code;
+  throw new Error(err || 'Login was cancelled.');
+}
 
-export function useFacebookAuth() {
-  const [request, response, promptAsync] = AuthSession.useAuthRequest(
-    {
-      clientId: META_APP_ID,
-      scopes: FB_SCOPES,
-      redirectUri: redirectUri(),
-      responseType: AuthSession.ResponseType.Code,
-    },
-    { authorizationEndpoint: FB_AUTH_ENDPOINT },
-  );
-  return { request, response, promptAsync };
+async function loginWithCode(authUrl: string): Promise<string> {
+  const res = await WebBrowser.openAuthSessionAsync(authUrl, RETURN_URL);
+  if (res.type !== 'success' || !('url' in res) || !res.url) {
+    throw new Error('Login was cancelled.');
+  }
+  return parseCode(res.url);
+}
+
+/* ---------------- Facebook ---------------- */
+
+export async function loginFacebook(): Promise<string> {
+  const url =
+    `${FB_AUTH_ENDPOINT}?client_id=${encodeURIComponent(META_APP_ID)}` +
+    `&redirect_uri=${encodeURIComponent(BRIDGE_URL)}` +
+    `&response_type=code` +
+    `&scope=${encodeURIComponent(FB_SCOPES.join(','))}`;
+  return loginWithCode(url);
 }
 
 /** code -> short token -> 60-day token. Throws a human message on failure. */
@@ -82,17 +108,13 @@ export async function pickPage(p: FbPage): Promise<void> {
 
 /* ---------------- Instagram Business Login (own OAuth, own app) ---------------- */
 
-export function useInstagramAuth() {
-  const [request, response, promptAsync] = AuthSession.useAuthRequest(
-    {
-      clientId: IG_APP_ID,
-      scopes: IG_SCOPES,
-      redirectUri: redirectUri(),
-      responseType: AuthSession.ResponseType.Code,
-    },
-    { authorizationEndpoint: IG_AUTH_ENDPOINT },
-  );
-  return { request, response, promptAsync };
+export async function loginInstagram(): Promise<string> {
+  const url =
+    `${IG_AUTH_ENDPOINT}?client_id=${encodeURIComponent(IG_APP_ID)}` +
+    `&redirect_uri=${encodeURIComponent(BRIDGE_URL)}` +
+    `&response_type=code` +
+    `&scope=${encodeURIComponent(IG_SCOPES.join(','))}`;
+  return loginWithCode(url);
 }
 
 /** code -> 1h token -> 60d token, plus the scoped IG user id. */
@@ -134,17 +156,13 @@ export async function fetchInstagramProfile(token: string): Promise<{ id: string
 
 /* ---------------- Threads (separate OAuth) ---------------- */
 
-export function useThreadsAuth() {
-  const [request, response, promptAsync] = AuthSession.useAuthRequest(
-    {
-      clientId: THREADS_APP_ID,
-      scopes: THREADS_SCOPES,
-      redirectUri: redirectUri(),
-      responseType: AuthSession.ResponseType.Code,
-    },
-    { authorizationEndpoint: THREADS_AUTH_ENDPOINT },
-  );
-  return { request, response, promptAsync };
+export async function loginThreads(): Promise<string> {
+  const url =
+    `${THREADS_AUTH_ENDPOINT}?client_id=${encodeURIComponent(THREADS_APP_ID)}` +
+    `&redirect_uri=${encodeURIComponent(BRIDGE_URL)}` +
+    `&response_type=code` +
+    `&scope=${encodeURIComponent(THREADS_SCOPES.join(','))}`;
+  return loginWithCode(url);
 }
 
 /** code -> short token -> 60-day token, plus the Threads user id. */
