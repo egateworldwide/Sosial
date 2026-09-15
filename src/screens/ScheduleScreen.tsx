@@ -309,10 +309,7 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
         composer={{ title: tTitle, caption: tBody, onCaption: setTBody, onTitle: setTTitle }}
         media={{ items: tUri ? [{ uri: tUri, kind: tKind }] : [], onPick: pickMedia, onRemove: () => setTUri(undefined) }}
         onSave={save}
-        onPublish={sheet?.post ? publish : undefined}
-        publishBusy={publishing}
         onDelete={sheet?.post ? remove : undefined}
-        onPosted={sheet?.post ? markPosted : undefined}
         onClose={() => setSheet(null)}
       />
     </View>

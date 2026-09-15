@@ -53,16 +53,10 @@ interface Props {
   composer?: Composer;
   media?: SheetMedia;
   onDelete?: () => void;
-  onPosted?: () => void;
-  publishLabel?: string;
-  publishBusy?: boolean;
-  onPublish?: () => void;
   onSave: (at: number, platforms: string[]) => void;
   onPostNow?: (plats: string[]) => void;
   draftLabel?: string;
   onDraft?: () => void;
-  approveLabel?: string;
-  onApprove?: () => void;
   onClose: () => void;
   /** Sent posts open read-only: static summary + Delete, no editing or re-sending. */
   readOnly?: boolean;
@@ -70,7 +64,7 @@ interface Props {
 }
 
 /** Buffer-style sheet: channels (multi) + title/description + time. */
-export default function ScheduleSheet({ visible, initialAt, initialPlatforms, title, bulkCount, composer, media, onDelete, onPosted, publishLabel, publishBusy, onPublish, draftLabel, onDraft, approveLabel, onApprove, onSave, onPostNow, onClose, readOnly, readOnlyNote }: Props) {
+export default function ScheduleSheet({ visible, initialAt, initialPlatforms, title, bulkCount, composer, media, onDelete, draftLabel, onDraft, onSave, onPostNow, onClose, readOnly, readOnlyNote }: Props) {
   const { C, mode: themeMode } = useTheme();
   const st = makeSt(C);
   const [plats, setPlats] = useState<string[]>(['any']);
@@ -132,11 +126,6 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
       } else {
         setMode('date');
       }
-    }
-    // iOS: date → time → stay visible
-    if (Platform.OS === 'ios' && mode === 'date' && !pickingTime) {
-      setMode('time');
-      setPickingTime(true);
     }
   };
 
@@ -344,9 +333,29 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
                 minimumDate={new Date()}
               />
               {Platform.OS === 'ios' ? (
-                <TouchableOpacity onPress={() => { setShowPicker(false); setPickingTime(false); setMode('date'); }} style={st.pickerDone} activeOpacity={0.7}>
-                  <Text style={st.pickerDoneT}>Done</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                  {mode === 'time' ? (
+                    <TouchableOpacity onPress={() => { setMode('date'); setPickingTime(false); }} style={st.pickerBack} activeOpacity={0.7}>
+                      <Text style={st.pickerBackT}>‹ Back to date</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (mode === 'date') {
+                        setMode('time');
+                        setPickingTime(true);
+                      } else {
+                        setShowPicker(false);
+                        setPickingTime(false);
+                        setMode('date');
+                      }
+                    }}
+                    style={st.pickerDone}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={st.pickerDoneT}>{mode === 'date' ? 'Next: Time' : 'Done'}</Text>
+                  </TouchableOpacity>
+                </View>
               ) : null}
             </View>
           ) : null}
@@ -362,36 +371,10 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
               <GhostBtn label={draftLabel ?? 'Save as draft'} onPress={onDraft} />
             </View>
           ) : null}
-          {onApprove ? (
-            <TouchableOpacity
-              onPress={onApprove}
-              style={{ backgroundColor: C.accentSoft, borderRadius: R.lg, paddingVertical: 14, alignItems: 'center' }}
-              activeOpacity={0.85}
-            >
-              <Text style={{ fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 15, color: C.accentInk }}>
-                {approveLabel ?? 'Send to approvals'}
-              </Text>
-            </TouchableOpacity>
-          ) : null}
-          {onPublish ? (
-            <TouchableOpacity
-              onPress={onPublish}
-              disabled={!!publishBusy}
-              style={{ backgroundColor: C.accent, borderRadius: R.lg, paddingVertical: 14, alignItems: 'center', opacity: publishBusy ? 0.6 : 1 }}
-              activeOpacity={0.85}
-            >
-              <Text style={{ fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 15, color: C.onInk }}>
-                {publishBusy ? 'Publishing…' : (publishLabel ?? 'Publish now')}
-              </Text>
-            </TouchableOpacity>
-          ) : null}
           </>
           )}
-          {!readOnly && (onPosted || onDelete) ? (
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              {onPosted ? <View style={{ flex: 1 }}><GhostBtn label="Posted ✓" onPress={onPosted} /></View> : null}
-              {onDelete ? <View style={{ flex: 1 }}><GhostBtn label="Delete" danger onPress={onDelete} /></View> : null}
-            </View>
+          {!readOnly && onDelete ? (
+            <GhostBtn label="Delete" danger onPress={onDelete} />
           ) : null}
           {readOnly && onDelete ? (
             <GhostBtn label="Delete" danger onPress={onDelete} />
@@ -486,6 +469,8 @@ const makeSt = (C: Palette) => ({
   mini: { backgroundColor: C.paper, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 } as const,
   miniWide: { backgroundColor: C.card, borderRadius: R.lg, paddingVertical: 11, alignItems: 'center' } as const,
   miniT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.accentInk } as const,
-  pickerDone: { marginTop: 12, backgroundColor: C.accent, borderRadius: R.md, paddingVertical: 12, paddingHorizontal: 28 } as const,
+  pickerDone: { backgroundColor: C.accent, borderRadius: R.md, paddingVertical: 12, paddingHorizontal: 28 } as const,
   pickerDoneT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: C.onInk } as const,
+  pickerBack: { backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft, borderRadius: R.md, paddingVertical: 12, paddingHorizontal: 20 } as const,
+  pickerBackT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: C.ink } as const,
 });

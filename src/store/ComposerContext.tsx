@@ -318,12 +318,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
         draftLabel="Save as draft"
         onDraft={saveDraft}
         onPostNow={postNow}
-        onPublish={sheet?.post && sheet.post.status !== 'sent' ? publish : undefined}
-        publishBusy={publishing}
-        approveLabel={sheet?.post?.status === 'approval' ? 'Approve & queue' : sheet?.post ? 'Send to approvals' : undefined}
-        onApprove={approveAction}
         onDelete={sheet?.post ? remove : undefined}
-        onPosted={sheet?.post && sheet.post.status !== 'sent' ? markSent : undefined}
         onClose={() => setSheet(null)}
       />
     </Ctx.Provider>
