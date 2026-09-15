@@ -257,6 +257,24 @@ async function thComments(m: MetaState, stats: PerPost[]): Promise<FeedComment[]
 
 /* ---------------- TikTok (Display API — counts only, no reply threads) ---------------- */
 
+async function ttGet(path: string, token: string): Promise<{ status: number; body: any }> {
+  let r: Response;
+  try {
+    r = await fetch(`${TT_API}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  } catch {
+    throw new Error('Could not reach TikTok — check your connection and retry.');
+  }
+  const body: any = await r.json().catch(() => ({}));
+  return { status: r.status, body };
+}
+
+function ttDetail(resp: { status: number; body: any }): string {
+  const code = resp.body?.error?.code;
+  const msg = resp.body?.error?.message;
+  if (code && code !== 'ok') return `${msg || 'request failed'} [${code}]`;
+  return `HTTP ${resp.status}`;
+}
+
 async function ttStats(m: MetaState, start: number, end: number): Promise<ChannelStats> {
   const base: ChannelStats = {
     channel: 'tiktok', label: m.ttName ?? 'TikTok',
@@ -270,25 +288,34 @@ async function ttStats(m: MetaState, start: number, end: number): Promise<Channe
   } catch (e: any) {
     return { ...base, note: e?.message ?? 'TikTok session expired — reconnect TikTok.' };
   }
-  const auth = { Authorization: `Bearer ${token}` };
+  // 1) basic identity — same minimal fields login uses, must succeed
+  let openId = '';
   try {
-    const r = await fetch(`${TT_API}/v2/user/info/?fields=open_id,display_name,follower_count,following_count,likes_count,video_count`, { headers: auth });
-    const p: any = await r.json().catch(() => ({}));
-    const u = p?.data?.user;
-    if (!u?.open_id) throw new Error('Could not read your TikTok profile.');
-    base.followers = num(u.follower_count) || null;
+    const r = await ttGet(`/v2/user/info/?fields=open_id,display_name,avatar_url`, token);
+    const u = r.body?.data?.user;
+    if (!u?.open_id) throw new Error(`Could not read your TikTok profile (${ttDetail(r)}).`);
+    openId = String(u.open_id);
     if (u.display_name) base.label = `@${u.display_name}`;
   } catch (e: any) {
     return { ...base, note: e?.message ?? 'TikTok request failed.' };
   }
+  // 2) follower counts — may exceed granted scopes; never fatal
+  try {
+    const r = await ttGet(`/v2/user/info/?fields=follower_count,following_count,likes_count,video_count`, token);
+    const u = r.body?.data?.user;
+    if (u) base.followers = num(u.follower_count) || null;
+    else base.note = `TikTok counts unavailable (${ttDetail(r)}).`;
+  } catch (e: any) {
+    base.note = e?.message ?? 'TikTok follower counts unavailable.';
+  }
   // per-video stats need the video.list scope — tokens granted before it existed skip this
-  if (m.ttOpenId) {
+  if (openId) {
     try {
       const r = await fetch(`${TT_API}/v2/video/list/`, {
         method: 'POST',
-        headers: { ...auth, 'Content-Type': 'application/json; charset=UTF-8' },
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json; charset=UTF-8' },
         body: JSON.stringify({
-          open_id: m.ttOpenId, cursor: 0, max_count: 20,
+          open_id: openId, cursor: 0, max_count: 20,
           fields: ['id', 'title', 'create_time', 'view_count', 'like_count', 'comment_count', 'share_count'],
         }),
       });
@@ -313,7 +340,7 @@ async function ttStats(m: MetaState, start: number, end: number): Promise<Channe
       base.views = v > 0 ? v : null;
       if (base.followers) base.engagementRate = ((base.reactions + base.comments) / base.followers) * 100;
     } catch {
-      base.note = 'Reconnect TikTok to include per-video stats.';
+      if (!base.note) base.note = 'Reconnect TikTok to include per-video stats.';
     }
   }
   return base;
