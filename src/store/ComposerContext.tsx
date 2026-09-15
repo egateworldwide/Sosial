@@ -167,6 +167,39 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
   const publish = async () => {
     const p = sheetRef.current?.post;
     if (!p || publishing) return;
+    const r = await runPublish(p);
+    if (!r) return;
+    await finishPublish(p, r.done, r.errs, r.manual);
+  };
+
+  /** "Post now": save the new post, then publish it immediately through the same loop. */
+  const postNow = async (plats: string[]) => {
+    if (!sheetRef.current || publishing) return;
+    if (plats.some((p) => p === 'tiktok' || p === 'instagram') && !tUri) {
+      Alert.alert('TikTok & Instagram need media', 'Attach a photo or video — text-only posts can’t go to those channels.');
+      return;
+    }
+    let rec = buildRec(Date.now(), plats, 'queued');
+    await saveManagedPost(rec);
+    setSheet({ post: rec });
+    const r = await runPublish(rec);
+    if (!r) return;
+    if (!(r.done.length > 0 && r.errs.length === 0 && r.manual.length === 0)) {
+      // failed — leave it queued to retry in a minute, reminder armed silently
+      const retryAt = Date.now() + 60000;
+      rec = { ...rec, scheduledAt: retryAt };
+      await saveManagedPost(rec);
+      setSheet({ post: rec });
+      try {
+        if ((await notificationsSupported()) && (await ensureNotifPermission())) {
+          await schedulePostReminder({ id: rec.id, title: rec.title, platforms: plats, at: retryAt });
+        }
+      } catch {}
+    }
+    await finishPublish(rec, r.done, r.errs, r.manual);
+  };
+
+  const runPublish = async (p: ManagedPost): Promise<{ done: string[]; errs: string[]; manual: string[] } | null> => {
     const plats = p.platforms?.length ? p.platforms : ['any'];
     const m = await loadMetaState();
     const caption = [p.title, p.body].filter((x) => x && x.trim()).join('\n\n');
@@ -181,7 +214,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
         try {
           ttPrivacy = await askTikTokPrivacy();
         } catch (e: any) {
-          if (String(e?.message ?? '') === 'Login was cancelled.') return; // backed out, stay silent
+          if (String(e?.message ?? '') === 'Login was cancelled.') return null; // backed out, stay silent
           throw e;
         }
       }
@@ -218,6 +251,10 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setPublishing(false);
     }
+    return { done, errs, manual };
+  };
+
+  const finishPublish = async (p: ManagedPost, done: string[], errs: string[], manual: string[]) => {
     const lines = [
       done.length ? `Posted: ${done.join(', ')}` : '',
       manual.length ? `Post yourself: ${manual.join(', ')}` : '',
@@ -258,6 +295,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
         onSave={save}
         draftLabel="Save as draft"
         onDraft={saveDraft}
+        onPostNow={postNow}
         onPublish={sheet?.post ? publish : undefined}
         publishBusy={publishing}
         approveLabel={sheet?.post?.status === 'approval' ? 'Approve & queue' : sheet?.post ? 'Send to approvals' : undefined}

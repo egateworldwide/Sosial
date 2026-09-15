@@ -53,6 +53,7 @@ interface Props {
   publishBusy?: boolean;
   onPublish?: () => void;
   onSave: (at: number, platforms: string[]) => void;
+  onPostNow?: (plats: string[]) => void;
   draftLabel?: string;
   onDraft?: () => void;
   approveLabel?: string;
@@ -61,7 +62,7 @@ interface Props {
 }
 
 /** Buffer-style sheet: channels (multi) + title/description + time. */
-export default function ScheduleSheet({ visible, initialAt, initialPlatforms, title, bulkCount, composer, media, onDelete, onPosted, publishLabel, publishBusy, onPublish, draftLabel, onDraft, approveLabel, onApprove, onSave, onClose }: Props) {
+export default function ScheduleSheet({ visible, initialAt, initialPlatforms, title, bulkCount, composer, media, onDelete, onPosted, publishLabel, publishBusy, onPublish, draftLabel, onDraft, approveLabel, onApprove, onSave, onPostNow, onClose }: Props) {
   const { C, mode: themeMode } = useTheme();
   const st = makeSt(C);
   const [plats, setPlats] = useState<string[]>(['any']);
@@ -263,8 +264,8 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
 
           <View style={{ marginTop: 10 }}>
             <PrimaryBtn
-              label={bulkCount ? `Queue ${bulkCount} page${bulkCount > 1 ? 's' : ''}` : preset === 'now' ? 'Queue now' : `Queue for ${fmtDateTime(at)}`}
-              onPress={save}
+              label={bulkCount ? `Queue ${bulkCount} page${bulkCount > 1 ? 's' : ''}` : preset === 'now' ? 'Post now' : `Queue for ${fmtDateTime(at)}`}
+              onPress={preset === 'now' && onPostNow && !bulkCount ? () => onPostNow(plats) : save}
             />
           </View>
           {onDraft ? (
