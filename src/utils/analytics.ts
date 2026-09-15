@@ -206,7 +206,6 @@ async function thStats(m: MetaState, start: number, end: number): Promise<Channe
       const f: any = await jget(`${THREADS_API}/me?fields=followers_count&access_token=${tok}`);
       if (!f.error && typeof f.followers_count === 'number') base.followers = f.followers_count;
     } catch {}
-    if (base.followers === null) base.note = 'Threads doesn’t expose follower counts to this app yet.';
     const list: any = await jget(
       `${THREADS_API}/${m.threadsId}/threads?fields=id,text,timestamp,like_count,reply_count,repost_count,view_count&limit=25&access_token=${tok}`,
     );
@@ -228,6 +227,10 @@ async function thStats(m: MetaState, start: number, end: number): Promise<Channe
     base.comments = base.perPost.reduce((a, p) => a + p.comments, 0);
     const v = base.perPost.reduce((a, p) => a + (p.views ?? 0), 0);
     base.views = v > 0 ? v : null;
+    const extras: string[] = [];
+    if (base.followers === null) extras.push('Threads doesn’t expose follower counts to this app yet.');
+    if (base.posts === 0) extras.push(`No threads found for ${base.label} in this range — try a wider range.`);
+    if (extras.length) base.note = extras.join(' ');
   } catch (e: any) {
     base.note = e?.message ?? 'Threads request failed.';
   }
