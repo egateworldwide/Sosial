@@ -304,6 +304,30 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
               </TouchableOpacity>
             </View>
           ) : null}
+          {!thOn ? (
+            <View style={s.sub}>
+              <TouchableOpacity onPress={() => setTtManualOpen((v) => !v)} activeOpacity={0.7} style={s.pageRow}>
+                <Text style={s.pageT}>Paste a dashboard token instead</Text>
+              </TouchableOpacity>
+              {ttManualOpen ? (
+                <View style={{ gap: 8 }}>
+                  <TextInput
+                    value={ttManualToken}
+                    onChangeText={setTtManualToken}
+                    placeholder="Long-press → paste the full token…"
+                    placeholderTextColor={C.faint}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    multiline
+                    style={s.tokenInput}
+                  />
+                  <TouchableOpacity onPress={saveTtManual} style={s.saveBtn} activeOpacity={0.8}>
+                    <Text style={s.saveBtnT}>Verify & connect</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
 
           {/* TikTok */}
           <TouchableOpacity onPress={() => tap('tiktok', ttOn, () => { if (ttConfigured) void doTikTok(); })} style={[s.row, s.rowDiv]} activeOpacity={0.7}>
