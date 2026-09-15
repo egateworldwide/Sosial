@@ -22,8 +22,8 @@ export function defaultTitle(): PostTitle {
 }
 
 export function defaultPfp(): PfpStyle {
-  return { pfpY: 'top', size: 40, shape: 'circle', socialPos: 'below', badgeBg: true,
-badgeRows: 1, handleColor: '#FFFFFF', handleSize: 7.5, iconSize: 24, iconOutline: false, socialGap: 6, align: 'left',
+  return { pfpY: 'bottom', size: 40, shape: 'circle', socialPos: 'right', badgeBg: true,
+badgeRows: 1, handleColor: '#FFFFFF', handleSize: 7.5, iconSize: 24, iconOutline: false, socialGap: 6, align: 'center',
 borderW: 0, username: '' };
 }
 
