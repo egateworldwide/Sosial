@@ -3,10 +3,8 @@ import {
   TT_CLIENT_KEY, TT_CLIENT_SECRET, TT_AUTH_ENDPOINT, TT_TOKEN_ENDPOINT,
   TT_API, TT_SCOPES,
 } from './tiktokConfig';
-import { BRIDGE_URL } from './metaAuth';
+import { BRIDGE_URL, appReturnUrl } from './metaAuth';
 import { loadMetaState, saveMetaState } from './metaStore';
-
-const RETURN_URL = 'sosial://redirect';
 
 /** TikTok nests errors as { error: { code, message } } with code 'ok' on success. */
 function terr(j: any, fallback: string): string {
@@ -49,8 +47,8 @@ export async function loginTikTok(): Promise<string> {
     `&scope=${encodeURIComponent(TT_SCOPES.join(','))}` +
     `&response_type=code` +
     `&redirect_uri=${encodeURIComponent(BRIDGE_URL)}` +
-    `&state=sosial_${Date.now().toString(36)}`;
-  const res = await WebBrowser.openAuthSessionAsync(url, RETURN_URL);
+    `&state=${encodeURIComponent(appReturnUrl())}`;
+  const res = await WebBrowser.openAuthSessionAsync(url, appReturnUrl());
   if (res.type !== 'success' || !('url' in res) || !res.url) {
     throw new Error('Login was cancelled.');
   }

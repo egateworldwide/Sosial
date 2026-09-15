@@ -21,11 +21,17 @@
   <a id="back" href="#">Open Sosial</a>
 </div>
 <script>
-  // Meta appends ?code=… (or ?error=…) — forward everything, query + hash,
-  // into the app's custom scheme so expo-web-browser can capture it.
+  // Providers append ?code=… (or ?error=…) plus our `state`, which carries the
+  // address the app asked to be sent back to (exp://… in Expo Go,
+  // sosial://redirect in standalone builds). Forward everything there so
+  // expo-web-browser captures it and closes the session automatically.
+  var params = null;
+  try { params = new URLSearchParams(location.search || ''); } catch (e) { params = null; }
+  var base = params ? params.get('state') : null;
+  if (!base || base.indexOf('://') < 0) base = 'sosial://redirect';
   var q = location.search || '';
   var h = location.hash || '';
-  var deep = 'sosial://redirect' + q + h;
+  var deep = base + q + h;
   document.getElementById('back').href = deep;
   // auto-redirect; the manual button is the fallback if the browser blocks it
   setTimeout(function () { location.replace(deep); }, 300);

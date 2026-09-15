@@ -1,4 +1,5 @@
 import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 import {
   META_APP_ID, META_APP_SECRET, graph,
   FB_AUTH_ENDPOINT, FB_SCOPES,
@@ -16,7 +17,14 @@ WebBrowser.maybeCompleteAuthSession();
 // Add this exact URL as a Valid OAuth Redirect URI in all three Meta apps:
 //   Facebook Login settings, Instagram app OAuth settings, Threads Redirect URIs.
 export const BRIDGE_URL = 'https://egateworldwide.github.io/Sosial/auth.html';
-const RETURN_URL = 'sosial://redirect';
+
+/**
+ * Where the bridge page must send the user back. Expo Go can't receive the
+ * custom scheme — it needs its exp:// URL — while standalone builds use
+ * sosial://redirect. Linking.createURL resolves correctly in both, and the
+ * address travels to the bridge inside the OAuth `state` param.
+ */
+export const appReturnUrl = () => Linking.createURL('redirect');
 
 export const redirectUri = () => BRIDGE_URL;
 
@@ -46,7 +54,7 @@ function parseCode(returnUrl: string): string {
 }
 
 async function loginWithCode(authUrl: string): Promise<string> {
-  const res = await WebBrowser.openAuthSessionAsync(authUrl, RETURN_URL);
+  const res = await WebBrowser.openAuthSessionAsync(authUrl, appReturnUrl());
   if (res.type !== 'success' || !('url' in res) || !res.url) {
     throw new Error('Login was cancelled.');
   }
@@ -60,7 +68,8 @@ export async function loginFacebook(): Promise<string> {
     `${FB_AUTH_ENDPOINT}?client_id=${encodeURIComponent(META_APP_ID)}` +
     `&redirect_uri=${encodeURIComponent(BRIDGE_URL)}` +
     `&response_type=code` +
-    `&scope=${encodeURIComponent(FB_SCOPES.join(','))}`;
+    `&scope=${encodeURIComponent(FB_SCOPES.join(','))}` +
+    `&state=${encodeURIComponent(appReturnUrl())}`;
   return loginWithCode(url);
 }
 
@@ -113,7 +122,8 @@ export async function loginInstagram(): Promise<string> {
     `${IG_AUTH_ENDPOINT}?client_id=${encodeURIComponent(IG_APP_ID)}` +
     `&redirect_uri=${encodeURIComponent(BRIDGE_URL)}` +
     `&response_type=code` +
-    `&scope=${encodeURIComponent(IG_SCOPES.join(','))}`;
+    `&scope=${encodeURIComponent(IG_SCOPES.join(','))}` +
+    `&state=${encodeURIComponent(appReturnUrl())}`;
   return loginWithCode(url);
 }
 
@@ -161,7 +171,8 @@ export async function loginThreads(): Promise<string> {
     `${THREADS_AUTH_ENDPOINT}?client_id=${encodeURIComponent(THREADS_APP_ID)}` +
     `&redirect_uri=${encodeURIComponent(BRIDGE_URL)}` +
     `&response_type=code` +
-    `&scope=${encodeURIComponent(THREADS_SCOPES.join(','))}`;
+    `&scope=${encodeURIComponent(THREADS_SCOPES.join(','))}` +
+    `&state=${encodeURIComponent(appReturnUrl())}`;
   return loginWithCode(url);
 }
 
