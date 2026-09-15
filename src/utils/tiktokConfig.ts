@@ -14,8 +14,8 @@
  *
  * Paste your client key/secret from developers.tiktok.com → your app → Basic.
  */
-export const TT_CLIENT_KEY = 'PASTE_TIKTOK_CLIENT_KEY';
-export const TT_CLIENT_SECRET = 'PASTE_TIKTOK_CLIENT_SECRET';
+export const TT_CLIENT_KEY = 'sbawibhbkll46bubal';
+export const TT_CLIENT_SECRET = '92bBuEtvOM6R2mfZYzdkawx39K7m5E06';
 
 export const TT_AUTH_ENDPOINT = 'https://www.tiktok.com/v2/auth/authorize/';
 export const TT_TOKEN_ENDPOINT = 'https://open.tiktokapis.com/v2/oauth/token/';
