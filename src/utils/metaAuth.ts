@@ -9,14 +9,14 @@ import { saveMetaState } from './metaStore';
 
 WebBrowser.maybeCompleteAuthSession();
 
-// Meta rejects custom schemes (zap://…) as OAuth redirect URIs — every one
+// Meta rejects custom schemes (sosial://…) as OAuth redirect URIs — every one
 // of the three dashboards requires https. So we bounce through a tiny static
 // bridge page (auth.html, hosted on GitHub Pages) which forwards ?code=…
-// straight back into zap://redirect, where openAuthSessionAsync captures it.
+// straight back into sosial://redirect, where openAuthSessionAsync captures it.
 // Add this exact URL as a Valid OAuth Redirect URI in all three Meta apps:
 //   Facebook Login settings, Instagram app OAuth settings, Threads Redirect URIs.
 export const BRIDGE_URL = 'https://egateworldwide.github.io/Zap/auth.html';
-const RETURN_URL = 'zap://redirect';
+const RETURN_URL = 'sosial://redirect';
 
 export const redirectUri = () => BRIDGE_URL;
 
@@ -25,7 +25,7 @@ function errMsg(j: any, fallback: string): string {
   return typeof m === 'string' && m.length > 0 ? m : fallback;
 }
 
-/** zap://redirect?code=… → code. Throws the provider's error when denied. */
+/** sosial://redirect?code=… → code. Throws the provider's error when denied. */
 function parseCode(returnUrl: string): string {
   const afterQ = returnUrl.split('?')[1] ?? '';
   const query = afterQ.split('#')[0];

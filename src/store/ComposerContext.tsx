@@ -203,7 +203,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
             if (!m.ttRefreshToken && !m.ttAccessToken) throw new Error('TikTok not connected');
             if (!p.videoUri) throw new Error('TikTok needs a video — photos publish manually for now');
             await publishTikTokVideo({
-              title: caption.slice(0, 150) || 'Zap post',
+              title: caption.slice(0, 150) || 'Sosial post',
               privacyLevel: ttPrivacy as string,
               videoUri: p.videoUri,
             });

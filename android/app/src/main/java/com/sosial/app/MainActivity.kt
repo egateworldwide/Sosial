@@ -1,4 +1,4 @@
-package com.zap.app
+package com.sosial.app
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

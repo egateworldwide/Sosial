@@ -6,7 +6,7 @@ import {
 import { BRIDGE_URL } from './metaAuth';
 import { loadMetaState, saveMetaState } from './metaStore';
 
-const RETURN_URL = 'zap://redirect';
+const RETURN_URL = 'sosial://redirect';
 
 /** TikTok nests errors as { error: { code, message } } with code 'ok' on success. */
 function terr(j: any, fallback: string): string {
@@ -22,7 +22,7 @@ function qs(p: Record<string, string>): string {
     .join('&');
 }
 
-/** zap://redirect?code=… → code. Throws the provider's error when denied. */
+/** sosial://redirect?code=… → code. Throws the provider's error when denied. */
 function parseCode(returnUrl: string): string {
   const afterQ = returnUrl.split('?')[1] ?? '';
   const query = afterQ.split('#')[0];
@@ -49,7 +49,7 @@ export async function loginTikTok(): Promise<string> {
     `&scope=${encodeURIComponent(TT_SCOPES.join(','))}` +
     `&response_type=code` +
     `&redirect_uri=${encodeURIComponent(BRIDGE_URL)}` +
-    `&state=zap_${Date.now().toString(36)}`;
+    `&state=sosial_${Date.now().toString(36)}`;
   const res = await WebBrowser.openAuthSessionAsync(url, RETURN_URL);
   if (res.type !== 'success' || !('url' in res) || !res.url) {
     throw new Error('Login was cancelled.');

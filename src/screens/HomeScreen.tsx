@@ -189,7 +189,7 @@ export default function HomeScreen({ onNew, onOpen, onQueue, onPrivacy, onConnec
         <View style={s.masthead}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Image source={require('../../assets/bolt.png')} style={{ width: 22, height: 28 }} resizeMode="contain" />
-            <Text style={s.wordmark}>Zap</Text>
+            <Text style={s.wordmark}>Sosial</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <TouchableOpacity onPress={onConnect} activeOpacity={0.8} style={s.queueBtn}>

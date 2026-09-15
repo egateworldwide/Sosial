@@ -18,7 +18,7 @@ export async function uploadPublic(uri: string, kind: 'image' | 'video'): Promis
   const form = new FormData();
   form.append('file', {
     uri,
-    name: kind === 'video' ? 'zap.mp4' : 'zap.jpg',
+    name: kind === 'video' ? 'sosial.mp4' : 'sosial.jpg',
     type: kind === 'video' ? 'video/mp4' : 'image/jpeg',
   } as any);
   const r = await fetch('https://0x0.st', { method: 'POST', body: form });
@@ -40,7 +40,7 @@ export async function publishFacebook(opts: {
 }): Promise<string> {
   if (opts.videoUri) {
     const form = new FormData();
-    form.append('source', { uri: opts.videoUri, name: 'zap.mp4', type: 'video/mp4' } as any);
+    form.append('source', { uri: opts.videoUri, name: 'sosial.mp4', type: 'video/mp4' } as any);
     form.append('description', opts.message);
     form.append('access_token', opts.pageToken);
     const r = await fetch(graph(`/${opts.pageId}/videos`), { method: 'POST', body: form });
@@ -50,7 +50,7 @@ export async function publishFacebook(opts: {
   }
   if (opts.imageUri) {
     const form = new FormData();
-    form.append('source', { uri: opts.imageUri, name: 'zap.jpg', type: 'image/jpeg' } as any);
+    form.append('source', { uri: opts.imageUri, name: 'sosial.jpg', type: 'image/jpeg' } as any);
     form.append('caption', opts.message);
     form.append('access_token', opts.pageToken);
     const r = await fetch(graph(`/${opts.pageId}/photos`), { method: 'POST', body: form });

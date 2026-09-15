@@ -1,4 +1,4 @@
-package com.zap.app
+package com.sosial.app
 
 import android.app.Application
 import android.content.res.Configuration

@@ -18,7 +18,7 @@ export function defaultBackground(): BackgroundStyle {
 }
 
 export function defaultTitle(): PostTitle {
-  return { text: 'My Zap title', position: 'top', color: '#111111', size: 28, align: 'center', font: 'jakarta', bold: true, italic: false, subtitle: '', subtitleSize: 15, subtitleColor: '#57534E' };
+  return { text: 'My Sosial title', position: 'top', color: '#111111', size: 28, align: 'center', font: 'jakarta', bold: true, italic: false, subtitle: '', subtitleSize: 15, subtitleColor: '#57534E' };
 }
 
 export function defaultPfp(): PfpStyle {

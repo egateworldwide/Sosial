@@ -6,11 +6,11 @@ import { useTheme, Palette, R, T } from '../theme';
 const SECTIONS: { title: string; body: string }[] = [
   {
     title: 'Local-first, no accounts',
-    body: 'Zap works entirely on your device. There are no accounts, no sign-ups, and no servers receiving your content. Your designs, posts, templates and schedules are stored only in your phone’s local storage.',
+    body: 'Sosial works entirely on your device. There are no accounts, no sign-ups, and no servers receiving your content. Your designs, posts, templates and schedules are stored only in your phone’s local storage.',
   },
   {
     title: 'Your photos stay yours',
-    body: 'When you pick a profile picture, background, content image or video, the file stays on your device and is used only inside your designs. Exported images save straight to your photo library. Nothing is uploaded anywhere by Zap itself.',
+    body: 'When you pick a profile picture, background, content image or video, the file stays on your device and is used only inside your designs. Exported images save straight to your photo library. Nothing is uploaded anywhere by Sosial itself.',
   },
   {
     title: 'Reminders live on your phone',
@@ -18,7 +18,7 @@ const SECTIONS: { title: string; body: string }[] = [
   },
   {
     title: 'Sharing is manual',
-    body: 'Posting to social apps happens through your phone’s share sheet and official apps. Zap copies your caption to the clipboard and opens the app you choose — it never posts, reads, or accesses your social accounts on its own.',
+    body: 'Posting to social apps happens through your phone’s share sheet and official apps. Sosial copies your caption to the clipboard and opens the app you choose — it never posts, reads, or accesses your social accounts on its own.',
   },
   {
     title: 'Social connections (optional)',
@@ -26,11 +26,11 @@ const SECTIONS: { title: string; body: string }[] = [
   },
   {
     title: 'Analytics & tracking',
-    body: 'Zap collects no analytics, shows no ads, and embeds no third-party trackers.',
+    body: 'Sosial collects no analytics, shows no ads, and embeds no third-party trackers.',
   },
   {
     title: 'Children',
-    body: 'Zap is a general productivity tool with no age-gated content, and collects no personal data from anyone.',
+    body: 'Sosial is a general productivity tool with no age-gated content, and collects no personal data from anyone.',
   },
   {
     title: 'Changes',

@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Zap",
-    "slug": "zap",
-    "scheme": "zap",
+    "name": "Sosial",
+    "slug": "sosial",
+    "scheme": "sosial",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -15,7 +15,7 @@
       }
     },
     "android": {
-      "package": "com.zap.app",
+      "package": "com.sosial.app",
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_EXTERNAL_STORAGE",

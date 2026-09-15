@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-/** Zap — print-studio editorial theme.
+/** Sosial — print-studio editorial theme.
  * Warm paper, ink, one persimmon accent. App chrome type: Space Grotesk
  * display + Inter UI. NOTE: custom families must never be paired with
  * fontWeight (iOS drops the font) — use the Bold family files instead.

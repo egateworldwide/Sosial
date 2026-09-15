@@ -58,7 +58,7 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
     }
   }, [view]);
 
-  const planName = plan === 'pro' ? 'Zap Pro' : plan === 'team' ? 'Zap Team' : 'Free plan';
+  const planName = plan === 'pro' ? 'Sosial Pro' : plan === 'team' ? 'Sosial Team' : 'Free plan';
 
   const initial = (email || team || 'Z')[0].toUpperCase();
   const title = view === 'main' ? 'Account' : (
@@ -96,11 +96,11 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
   };
 
   const deleteAccount = () => {
-    Alert.alert('Delete Zap account?', 'This wipes everything on this device: designs, templates, ideas, posts, channels and settings. This cannot be undone.', [
+    Alert.alert('Delete Sosial account?', 'This wipes everything on this device: designs, templates, ideas, posts, channels and settings. This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete everything', style: 'destructive',
-        onPress: () => Alert.alert('Last chance', 'Really delete all Zap data?', [
+        onPress: () => Alert.alert('Last chance', 'Really delete all Sosial data?', [
           { text: 'Keep it', style: 'cancel' },
           { text: 'Delete', style: 'destructive', onPress: async () => { await wipeAllData(); onLoggedOut(); } },
         ]),
@@ -109,8 +109,8 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
   };
 
   const rateApp = () => {
-    Linking.openURL('https://play.google.com/store/apps/details?id=com.zap.app').catch(() => {
-      Alert.alert('Rate Zap', 'Zap isn’t on the Play Store yet — this link will work after release.');
+    Linking.openURL('https://play.google.com/store/apps/details?id=com.sosial.app').catch(() => {
+      Alert.alert('Rate Sosial', 'Sosial isn’t on the Play Store yet — this link will work after release.');
     });
   };
 
@@ -223,14 +223,14 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
               {row('card-outline', 'Subscription plan', planName, () => setView('plan'))}
               {plan === 'team' ? row('people-outline', 'Team', members.length ? `${members.length} teammate${members.length === 1 ? '' : 's'} · invite & roles` : 'Invite people & assign channels', () => setView('team')) : null}
               {row('refresh-outline', 'Restore purchase', undefined, () => Alert.alert('Restore purchase', 'No purchases found on this device.'))}
-              {row('star-outline', 'Rate Zap', 'Review on the Play Store', rateApp)}
+              {row('star-outline', 'Rate Sosial', 'Review on the Play Store', rateApp)}
               {row('sparkles-outline', "What's new", 'Changelog', () => setView('changelog'))}
             </View>
             <View style={s.list}>
               {row('shield-checkmark-outline', 'Privacy policy', undefined, onPrivacy)}
               {row('document-text-outline', 'Terms of use', undefined, () => setView('terms'))}
               {row('scale-outline', 'Legal', undefined, () => setView('legal'))}
-              {row('trash-outline', 'Delete Zap account', 'Wipe everything on-device', deleteAccount, true)}
+              {row('trash-outline', 'Delete Sosial account', 'Wipe everything on-device', deleteAccount, true)}
             </View>
           </>
         ) : null}
@@ -265,7 +265,7 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
 
         {view === 'password' ? (
           <View style={{ gap: 12, marginTop: 16 }}>
-            <Text style={s.note}>Zap accounts live on this device only — there’s no cloud password. Your social accounts keep their own passwords with Meta. Setting one here just confirms it’s you on this phone.</Text>
+            <Text style={s.note}>Sosial accounts live on this device only — there’s no cloud password. Your social accounts keep their own passwords with Meta. Setting one here just confirms it’s you on this phone.</Text>
             <View>
               <Text style={s.label}>New password</Text>
               <Txt value={pw1} onChangeText={setPw1} placeholder="••••••••" secureTextEntry />
@@ -313,7 +313,7 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
             </View>
 
             <View style={[s.plan, plan === 'pro' && { borderColor: C.accent, borderWidth: 1.5 }]}>
-              <Text style={s.planT}>Zap Pro{plan === 'pro' ? ' · current' : ''}</Text>
+              <Text style={s.planT}>Sosial Pro{plan === 'pro' ? ' · current' : ''}</Text>
               <Text style={s.planS}>Pay per channel — add or drop channels anytime.</Text>
               <Text style={[s.planS, { color: C.ink, fontFamily: 'PlusJakartaSans_700Bold' }]}>
                 {yearly
@@ -324,18 +324,18 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
               <Text style={s.planS}>Everything in Free, plus: unlimited scheduled posts · approvals · no export badge</Text>
               <Text style={s.planS}>500 AI generations / month · 1-year analytics + comments</Text>
               {plan === 'free' ? (
-                <TouchableOpacity onPress={() => choosePlan('pro', `Zap Pro (${proTotal})`)} style={[s.save, { marginTop: 8 }]} activeOpacity={0.85}>
+                <TouchableOpacity onPress={() => choosePlan('pro', `Sosial Pro (${proTotal})`)} style={[s.save, { marginTop: 8 }]} activeOpacity={0.85}>
                   <Text style={s.saveT}>Upgrade to Pro · {proTotal}</Text>
                 </TouchableOpacity>
               ) : plan === 'team' ? (
-                <View style={{ marginTop: 8 }}><GhostBtn label="Switch to Pro" onPress={() => choosePlan('pro', 'Zap Pro')} /></View>
+                <View style={{ marginTop: 8 }}><GhostBtn label="Switch to Pro" onPress={() => choosePlan('pro', 'Sosial Pro')} /></View>
               ) : (
                 <Text style={s.currentTag}>Current plan</Text>
               )}
             </View>
 
             <View style={[s.plan, plan === 'team' && { borderColor: C.accent, borderWidth: 1.5 }]}>
-              <Text style={s.planT}>Zap Team{plan === 'team' ? ' · current' : ''}</Text>
+              <Text style={s.planT}>Sosial Team{plan === 'team' ? ' · current' : ''}</Text>
               <Text style={s.planS}>Everything in Pro, plus seats for the whole crew.</Text>
               <Text style={[s.planS, { color: C.ink, fontFamily: 'PlusJakartaSans_700Bold' }]}>
                 {yearly
@@ -346,7 +346,7 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
               <Text style={s.planS}>Unlimited seats · owner assigns members to specific channels (or all)</Text>
               <Text style={s.planS}>1,000 AI generations / month · approvals · priority support</Text>
               {plan !== 'team' ? (
-                <TouchableOpacity onPress={() => choosePlan('team', `Zap Team (${teamTotal})`)} style={[s.save, { marginTop: 8 }]} activeOpacity={0.85}>
+                <TouchableOpacity onPress={() => choosePlan('team', `Sosial Team (${teamTotal})`)} style={[s.save, { marginTop: 8 }]} activeOpacity={0.85}>
                   <Text style={s.saveT}>{plan === 'free' ? 'Upgrade' : 'Switch'} to Team · {teamTotal}</Text>
                 </TouchableOpacity>
               ) : (
@@ -369,7 +369,7 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
           plan !== 'team' ? (
             <View style={{ marginTop: 16, gap: 12 }}>
               <View style={s.empty}>
-                <Text style={s.emptyT}>Team needs Zap Team</Text>
+                <Text style={s.emptyT}>Team needs Sosial Team</Text>
                 <Text style={s.emptyS}>The roster, roles and per-channel assignment unlock on the Team plan.</Text>
                 <TouchableOpacity onPress={() => setView('plan')} style={[s.save, { marginTop: 12 }]} activeOpacity={0.85}>
                   <Text style={s.saveT}>See plans</Text>
@@ -541,9 +541,9 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
         {view === 'terms' ? (
           <View style={{ marginTop: 16 }}>
             <Text style={s.body}>
-              Zap is a personal content studio. Your designs, ideas and posts are stored on your own device; social tokens are kept in the device keychain and used only to publish where you ask us to.{'\n\n'}
+              Sosial is a personal content studio. Your designs, ideas and posts are stored on your own device; social tokens are kept in the device keychain and used only to publish where you ask us to.{'\n\n'}
               Don’t publish content you don’t own or have rights to. Publishing to Facebook, Instagram and Threads is also governed by Meta’s terms.{'\n\n'}
-              Zap is provided as-is, without warranties.
+              Sosial is provided as-is, without warranties.
             </Text>
           </View>
         ) : null}
@@ -551,7 +551,7 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
         {view === 'legal' ? (
           <View style={{ marginTop: 16 }}>
             <Text style={s.body}>
-              © 2026 Zap. All rights reserved.{'\n\n'}
+              © 2026 Sosial. All rights reserved.{'\n\n'}
               Facebook, Instagram and Threads are trademarks of Meta Platforms, Inc. This app is not affiliated with or endorsed by Meta.{'\n\n'}
               Open-source licenses for bundled libraries are available in the project repository.
             </Text>

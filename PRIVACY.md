@@ -1,15 +1,15 @@
-# Privacy Policy — Zap
+# Privacy Policy — Sosial
 
 **Last updated: September 2026.**
 **Short version: everything stays on your phone.**
 
 ## Local-first, no accounts
 
-Zap works entirely on your device. There are no accounts, no sign-ups, and no servers receiving your content. Your designs, posts, templates and schedules are stored only in your phone's local storage.
+Sosial works entirely on your device. There are no accounts, no sign-ups, and no servers receiving your content. Your designs, posts, templates and schedules are stored only in your phone's local storage.
 
 ## Your photos stay yours
 
-When you pick a profile picture, background, content image or video, the file stays on your device and is used only inside your designs. Exported images save straight to your photo library. Nothing is uploaded anywhere by Zap itself.
+When you pick a profile picture, background, content image or video, the file stays on your device and is used only inside your designs. Exported images save straight to your photo library. Nothing is uploaded anywhere by Sosial itself.
 
 ## Reminders live on your phone
 
@@ -17,7 +17,7 @@ Scheduled post alerts are local notifications created and fired by your own devi
 
 ## Sharing is manual
 
-Posting to social apps happens through your phone's share sheet and official apps. Zap copies your caption to the clipboard and opens the app you choose — it never posts, reads, or accesses your social accounts on its own.
+Posting to social apps happens through your phone's share sheet and official apps. Sosial copies your caption to the clipboard and opens the app you choose — it never posts, reads, or accesses your social accounts on its own.
 
 ## Social connections (optional)
 
@@ -25,11 +25,11 @@ If you connect a Facebook, Instagram or Threads account in the future, login tok
 
 ## Analytics & tracking
 
-Zap collects no analytics, shows no ads, and embeds no third-party trackers.
+Sosial collects no analytics, shows no ads, and embeds no third-party trackers.
 
 ## Children
 
-Zap is a general productivity tool with no age-gated content, and collects no personal data from anyone.
+Sosial is a general productivity tool with no age-gated content, and collects no personal data from anyone.
 
 ## Changes
 

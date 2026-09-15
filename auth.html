@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Zap — returning to app…</title>
+<title>Sosial — returning to app…</title>
 <style>
   body { font-family: -apple-system, system-ui, sans-serif; background: #F2EDE2; color: #1C1917;
          display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
@@ -15,17 +15,17 @@
 </head>
 <body>
 <div class="card">
-  <img src="bolt.png" alt="Zap" width="72" style="display:block;margin:0 auto">
+  <img src="bolt.png" alt="Sosial" width="72" style="display:block;margin:0 auto">
   <h2>Login complete</h2>
-  <p>Returning to Zap…</p>
-  <a id="back" href="#">Open Zap</a>
+  <p>Returning to Sosial…</p>
+  <a id="back" href="#">Open Sosial</a>
 </div>
 <script>
   // Meta appends ?code=… (or ?error=…) — forward everything, query + hash,
   // into the app's custom scheme so expo-web-browser can capture it.
   var q = location.search || '';
   var h = location.hash || '';
-  var deep = 'zap://redirect' + q + h;
+  var deep = 'sosial://redirect' + q + h;
   document.getElementById('back').href = deep;
   // auto-redirect; the manual button is the fallback if the browser blocks it
   setTimeout(function () { location.replace(deep); }, 300);
