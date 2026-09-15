@@ -45,6 +45,7 @@ function errMsg(j: any, fallback: string): string {
  */
 export async function openAuth(authUrl: string, channel: AuthChannel): Promise<boolean> {
   await setPendingAuth(channel);
+  if (__DEV__) console.log(`[auth] opening ${channel}:`, authUrl.split('?')[0]);
   try {
     const res = await WebBrowser.openAuthSessionAsync(authUrl, appReturnUrl());
     if (res.type === 'success' && 'url' in res && res.url) {

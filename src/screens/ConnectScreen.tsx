@@ -115,19 +115,27 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
     return unsub;
   }, []);
 
+  const backedOut = (label: string) => {
+    setBusy(null);
+    Alert.alert(
+      `${label} login closed`,
+      'If the browser showed a login page instead of a permission screen, sign in there — after that one sign-in, Connect goes straight through every time.'
+    );
+  };
+
   const doFacebook = async () => {
     setBusy('Opening Facebook…');
-    if (!(await loginFacebook())) setBusy(null);
+    if (!(await loginFacebook())) backedOut('Facebook');
   };
 
   const doInstagram = async () => {
     setBusy('Opening Instagram…');
-    if (!(await loginInstagram())) setBusy(null);
+    if (!(await loginInstagram())) backedOut('Instagram');
   };
 
   const doThreads = async () => {
     setBusy('Opening Threads…');
-    if (!(await loginThreads())) setBusy(null);
+    if (!(await loginThreads())) backedOut('Threads');
   };
 
   const loadPages = async () => {
@@ -166,7 +174,7 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
 
   const doTikTok = async () => {
     setBusy('Opening TikTok…');
-    if (!(await loginTikTok())) setBusy(null);
+    if (!(await loginTikTok())) backedOut('TikTok');
   };
 
   const disconnectTikTok = async () => {
