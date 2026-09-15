@@ -159,7 +159,7 @@ export default function ExportScreen({ onBack }: { onBack: () => void }) {
           snapToAlignment="start"
           disableIntervalMomentum
           decelerationRate="normal"
-          contentContainerStyle={{ gap: 14, marginTop: 22, paddingRight: 24 }}
+          contentContainerStyle={{ gap: 14, marginTop: 22, paddingRight: 24, ...(post.pages.length === 1 ? { flexGrow: 1, justifyContent: 'center' } : {}) }}
         >
           {post.pages.map((p, i) => (
             <View key={p.id} style={{ gap: 10 }}>
