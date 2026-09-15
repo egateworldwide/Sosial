@@ -4,7 +4,7 @@ import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { usePost } from '../store/PostContext';
 import PostCanvas, { CANVAS_W } from '../components/PostCanvas';
 import { capturePage, saveUrisToGallery, shareSingleFile, saveAllImages } from '../utils/export';
-import { genericShare, openSocialApp } from '../utils/socialShare';
+import { genericShare, openSocialApp, copyCaption } from '../utils/socialShare';
 import { useComposer } from '../store/ComposerContext';
 import type { ManagedPost } from '../utils/managed';
 import { useTheme, Palette, T, R } from '../theme';
@@ -109,7 +109,13 @@ export default function ExportScreen({ onBack }: { onBack: () => void }) {
         uris = await captureAll();
         setSavedUris(uris);
       }
-      await genericShare(post.pages[index]?.title.text ?? post.name, post.pages[index]?.caption ?? '');
+      if (!uris[index]) {
+        Alert.alert('Nothing to share', 'Could not capture this page.');
+        return;
+      }
+      // caption goes to clipboard silently, then ONE system sheet with the picture —
+      // stay on this page the whole time
+      await copyCaption(post.pages[index]?.title.text ?? post.name, post.pages[index]?.caption ?? '');
       await shareSingleFile(uris[index]);
     } finally {
       setBusy(false);
@@ -168,8 +174,8 @@ export default function ExportScreen({ onBack }: { onBack: () => void }) {
                 <PostCanvas page={p} ratio={sizeRatio} scale={pvScale} />
               </View>
               <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TouchableOpacity onPress={() => onSaveOne(i)} style={s.saveMini} disabled={busy} activeOpacity={0.8}>
-                  <Text style={s.saveMiniT}>Save</Text>
+                <TouchableOpacity onPress={() => onSaveOne(i)} style={[s.saveMini, savedUris[i] && s.saveMiniDone]} disabled={busy} activeOpacity={0.8}>
+                  <Text style={[s.saveMiniT, savedUris[i] && s.saveMiniDoneT]}>{savedUris[i] ? 'Saved ✓' : 'Save'}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => onShareFile(i)} style={s.shareMini} disabled={busy} activeOpacity={0.8}>
                   <Text style={s.shareMiniT}>Share page {i + 1}</Text>
@@ -244,6 +250,8 @@ const makeS = (C: Palette) => StyleSheet.create({
   shareMiniT: { fontFamily: 'PlusJakartaSans_700Bold', color: C.ink, fontSize: 12 },
   saveMini: { backgroundColor: C.accent, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8 },
   saveMiniT: { fontFamily: 'PlusJakartaSans_700Bold', color: C.onInk, fontSize: 12 },
+  saveMiniDone: { backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft },
+  saveMiniDoneT: { color: C.accentInk },
   save: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.ink, borderRadius: R.md + 2, paddingVertical: 17, paddingHorizontal: 20, marginTop: 22 },
   saveT: { fontFamily: 'PlusJakartaSans_700Bold', color: C.onInk, fontSize: 15 },
   postDesign: { backgroundColor: C.accent, marginTop: 10 },

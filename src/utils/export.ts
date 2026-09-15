@@ -185,7 +185,7 @@ export async function shareSingleFile(uri: string) {
       Alert.alert('Sharing unavailable', 'Sharing is not available on this device.');
       return;
     }
-    await Sharing.shareAsync(uri, { dialogTitle: 'Share your Sosial' });
+    await Sharing.shareAsync(uri, { dialogTitle: 'Share your Sosial', mimeType: 'image/png', UTI: 'public.png' });
   } catch {
     Alert.alert('Share failed', 'Could not share file.');
   }
