@@ -207,20 +207,17 @@ async function thStats(m: MetaState, start: number, end: number): Promise<Channe
       const f: any = await jget(`${THREADS_API}/v1.0/me?fields=followers_count&access_token=${tok}`, tth);
       if (!f.error && typeof f.followers_count === 'number') base.followers = f.followers_count;
     } catch {}
-    // followers live behind the insights permission — try it, stay null otherwise
+    // followers_count is a Total Value metric: { total_value: { value } } —
+    // no values[] array, and per docs it rejects since/until params.
     if (base.followers === null) {
       try {
-        const since = Math.floor((Date.now() - 30 * 86400000) / 1000);
-        const until = Math.floor(Date.now() / 1000);
         const ins: any = await jget(
-          `${THREADS_API}/v1.0/${m.threadsId}/threads_insights?metric=followers_count&since=${since}&until=${until}&access_token=${tok}`,
+          `${THREADS_API}/v1.0/${m.threadsId}/threads_insights?metric=followers_count&access_token=${tok}`,
           tth,
         );
         const arr = Array.isArray(ins?.data) ? ins.data : [];
         const entry = arr.find((v: any) => /follower/i.test(String(v?.name ?? ''))) ?? arr[0];
-        const points = Array.isArray(entry?.values) ? entry.values : [];
-        const last = points.length ? points[points.length - 1] : entry;
-        const n = Number(last?.value);
+        const n = Number(entry?.total_value?.value ?? entry?.value);
         if (isFinite(n) && n > 0) base.followers = n;
       } catch {}
     }

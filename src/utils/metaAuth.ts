@@ -190,15 +190,10 @@ export async function exchangeThreadsCode(code: string): Promise<{ token: string
   });
   const j1: any = await r1.json().catch(() => ({}));
   if (!j1.access_token) throw new Error(errMsg(j1, 'Threads login exchange failed.'));
-  const r2 = await fetch(`${THREADS_API}/access_token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body({
-      grant_type: 'th_exchange_token',
-      client_secret: THREADS_APP_SECRET,
-      access_token: j1.access_token,
-    }),
-  });
+  // NOTE: this endpoint is GET-only per docs — POSTing here makes the router
+  // treat "access_token" as an object ID ("Unsupported post request…").
+  const q2 = `grant_type=th_exchange_token&client_secret=${encodeURIComponent(THREADS_APP_SECRET)}&access_token=${encodeURIComponent(j1.access_token)}`;
+  const r2 = await fetch(`${THREADS_API}/access_token?${q2}`);
   const j2: any = await r2.json().catch(() => ({}));
   if (!j2.access_token) throw new Error(errMsg(j2, 'Could not get a long-lived Threads token.'));
   return { token: j2.access_token as string, userId: String(j1.user_id ?? '') };
