@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R, T } from '../theme';
@@ -37,8 +37,6 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
   const [pages, setPages] = useState<FbPage[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [openCh, setOpenCh] = useState<string | null>(null);
-  const [ttManualOpen, setTtManualOpen] = useState(false);
-  const [ttManualToken, setTtManualToken] = useState('');
   useEffect(() => {
     loadMetaState().then(setMeta);
   }, []);
@@ -180,30 +178,6 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
     setOpenCh(null);
   };
 
-  /** Dashboard User Token Generator tokens are already long-lived — verify
-   *  against /me and store directly, skipping the OAuth exchange entirely. */
-  const saveTtManual = async () => {
-    const token = ttManualToken.trim();
-    if (!token) {
-      Alert.alert('Empty token', 'Paste the token from the dashboard first — use its Copy button, the dialog text is cut off.');
-      return;
-    }
-    setBusy('Checking token…');
-    try {
-      const prof = await fetchThreadsProfile(token);
-      const st = await saveMetaState({ threadsToken: token, threadsId: prof.id, threadsName: prof.username });
-      setMeta(st);
-      setTtManualToken('');
-      setTtManualOpen(false);
-      setOpenCh('threads');
-      Alert.alert('Threads connected', prof.username ? `Connected as ${prof.username}.` : 'Connected.');
-    } catch (e: any) {
-      Alert.alert('Token didn’t work', e?.message ?? 'That token was rejected. Copy the full token with the dashboard Copy button and try again.');
-    } finally {
-      setBusy(null);
-    }
-  };
-
   const configured = META_APP_ID.length > 0;
   const ttConfigured = TT_CLIENT_KEY.length > 0 && !TT_CLIENT_KEY.startsWith('PASTE_');
   const fbOn = !!meta.fbUserToken;
@@ -314,30 +288,6 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
               </TouchableOpacity>
             </View>
           ) : null}
-          {!thOn ? (
-            <View style={s.sub}>
-              <TouchableOpacity onPress={() => setTtManualOpen((v) => !v)} activeOpacity={0.7} style={s.pageRow}>
-                <Text style={s.pageT}>Paste a dashboard token instead</Text>
-              </TouchableOpacity>
-              {ttManualOpen ? (
-                <View style={{ gap: 8 }}>
-                  <TextInput
-                    value={ttManualToken}
-                    onChangeText={setTtManualToken}
-                    placeholder="Long-press → paste the full token…"
-                    placeholderTextColor={C.faint}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    multiline
-                    style={s.tokenInput}
-                  />
-                  <TouchableOpacity onPress={saveTtManual} style={s.saveBtn} activeOpacity={0.8}>
-                    <Text style={s.saveBtnT}>Verify & connect</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-            </View>
-          ) : null}
 
           {/* TikTok */}
           <TouchableOpacity onPress={() => tap('tiktok', ttOn, () => { if (ttConfigured) void doTikTok(); })} style={[s.row, s.rowDiv]} activeOpacity={0.7}>
@@ -431,9 +381,6 @@ const makeS = (C: Palette) => StyleSheet.create({
   pageT: { flex: 1, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13.5, color: C.ink },
   disc: { alignItems: 'center', paddingVertical: 10 },
   discT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.redText },
-  tokenInput: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, color: C.ink, backgroundColor: C.paper, borderRadius: R.md, borderWidth: 1, borderColor: C.lineSoft, paddingHorizontal: 13, paddingVertical: 11, minHeight: 70, textAlignVertical: 'top' },
-  saveBtn: { backgroundColor: C.ink, borderRadius: R.md, paddingVertical: 13, alignItems: 'center' },
-  saveBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: C.onInk },
   soonHead: { borderTopWidth: 1, borderTopColor: C.lineSoft, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 2 },
   soonHeadT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, letterSpacing: 0.6, textTransform: 'uppercase', color: C.faint },
   soon: { backgroundColor: C.accentSoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
