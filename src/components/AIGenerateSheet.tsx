@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R } from '../theme';
@@ -7,10 +7,11 @@ import PostCanvas from './PostCanvas';
 import { RULES } from '../utils/ai/rules';
 import { ContentBrief, DEFAULT_BRIEF, GenResult } from '../utils/ai/types';
 import { generate } from '../utils/ai/provider';
+import { getAiKey, setAiKey } from '../utils/ai/key';
 import { applyGenResult } from '../utils/ai/apply';
 import { PostPage } from '../types';
 
-/** Prompt → generate → visual preview → apply. Mock engine for now (no key yet). */
+/** Prompt → generate → visual preview → apply. Real Gemini when a key is saved, offline draft engine otherwise. */
 export default function AIGenerateSheet({ visible, template, ratio, onClose, onApply }: {
   visible: boolean;
   template: PostPage;
@@ -25,9 +26,19 @@ export default function AIGenerateSheet({ visible, template, ratio, onClose, onA
   const [maxWords, setMaxWords] = useState(DEFAULT_BRIEF.maxWordsPerPage);
   const [maxBlocks, setMaxBlocks] = useState(DEFAULT_BRIEF.maxBlocksPerPage);
   const [includeImages, setIncludeImages] = useState(false);
+  const [grounding, setGrounding] = useState(false);
+  const [key, setKey] = useState('');
+  const [hasKey, setHasKey] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [result, setResult] = useState<GenResult | null>(null);
+
+  useEffect(() => {
+    if (visible) getAiKey().then((k) => {
+      setKey(k ?? '');
+      setHasKey(!!k);
+    });
+  }, [visible]);
 
   const brief: ContentBrief = {
     prompt, language: 'English',
@@ -49,10 +60,15 @@ export default function AIGenerateSheet({ visible, template, ratio, onClose, onA
     setResult(null);
     setBusy(true);
     try {
-      setResult(await generate(brief));
+      setResult(await generate(brief, { grounding: grounding && hasKey }));
     } finally {
       setBusy(false);
     }
+  };
+
+  const saveKey = async () => {
+    await setAiKey(key);
+    setHasKey(!!key.trim());
   };
 
   const close = () => {
@@ -113,6 +129,25 @@ export default function AIGenerateSheet({ visible, template, ratio, onClose, onA
                 <Text style={st.toggleS}>Adds empty image blocks for you to fill and crop</Text>
               </View>
               <PillToggle on={includeImages} onPress={() => setIncludeImages((v) => !v)} />
+            </View>
+
+            <Section no="02" title="Model" hint={hasKey ? 'Gemini 2.5 Flash — your key, your bill.' : 'No key yet — the offline draft engine fills in.'} />
+            <Field label="Gemini API key" hint="Free from Google AI Studio. Stays on this device.">
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Txt value={key} onChangeText={setKey} placeholder="AIza…" secureTextEntry autoCapitalize="none" autoCorrect={false} />
+                </View>
+                <TouchableOpacity onPress={saveKey} style={[st.keyBtn, hasKey && { backgroundColor: C.accentSoft }]} activeOpacity={0.8}>
+                  <Text style={[st.keyBtnT, hasKey && { color: C.accentInk }]}>{hasKey ? 'Saved ✓' : 'Save'}</Text>
+                </TouchableOpacity>
+              </View>
+            </Field>
+            <View style={[st.toggleRow, !hasKey && { opacity: 0.5 }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={st.toggleT}>Latest info</Text>
+                <Text style={st.toggleS}>Google Search grounding for current facts{hasKey ? '' : ' (needs a key)'}</Text>
+              </View>
+              <PillToggle on={grounding && hasKey} onPress={() => hasKey && setGrounding((v) => !v)} />
             </View>
 
             <TouchableOpacity onPress={run} disabled={busy} style={[st.genBtn, busy && { opacity: 0.6 }]} activeOpacity={0.85}>
@@ -180,6 +215,8 @@ const makeSt = (C: Palette) => StyleSheet.create({
   toggleS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.muted, marginTop: 2 },
   genBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: C.ink, borderRadius: 999, paddingVertical: 12 },
   genT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: C.onInk },
+  keyBtn: { backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 16, justifyContent: 'center' },
+  keyBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.onInk },
   previewT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: C.ink },
   warn: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, lineHeight: 18, color: C.muted },
   err: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.redText },
