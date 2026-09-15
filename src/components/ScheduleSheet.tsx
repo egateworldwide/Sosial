@@ -5,6 +5,7 @@ import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R } from '../theme';
 import { PrimaryBtn, GhostBtn, Txt } from './ui';
 import { SocialGlyph } from './ui';
+import { SOCIAL_META } from '../constants';
 import { fmtDateTime } from '../utils/reminders';
 
 const CHANNELS = ['any', 'facebook', 'instagram', 'tiktok', 'threads', 'linkedin', 'bluesky', 'youtube', 'mastodon', 'pinterest', 'x'];
@@ -194,7 +195,9 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
                   {c === 'any' ? (
                     <Ionicons name="globe-outline" size={14} color={on ? C.onInk : C.muted} />
                   ) : (
-                    <SocialGlyph platform={c} size={14} color={on ? C.onInk : C.ink} />
+                    <View style={{ width: 22, height: 22, borderRadius: 7, backgroundColor: SOCIAL_META[c]?.bg ?? C.ink, alignItems: 'center', justifyContent: 'center' }}>
+                      <SocialGlyph platform={c} size={11} color="#fff" />
+                    </View>
                   )}
                   <Text style={[st.chipT, on && { color: C.onInk }]}>{label}</Text>
                   {soon ? <Text style={st.soonT}>Soon</Text> : null}
