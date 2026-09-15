@@ -331,7 +331,15 @@ export default function PostScreen({ email, team, onProfile, onConnect, composeS
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
         <View style={s.masthead}>
           <Text style={[T.h1, { color: C.ink, fontSize: 30, lineHeight: 36 }]}>Post</Text>
-          <AvatarButton email={email} team={team} onPress={onProfile} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity onPress={onConnect} activeOpacity={0.8} style={s.queueBtn}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                {(meta.pageId || meta.igId || meta.threadsId) ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#22C55E' }} /> : null}
+                <Text style={s.queueBtnT}>Connect</Text>
+              </View>
+            </TouchableOpacity>
+            <AvatarButton email={email} team={team} onPress={onProfile} />
+          </View>
         </View>
 
         {/* channel drawer trigger */}
@@ -452,6 +460,8 @@ export default function PostScreen({ email, team, onProfile, onConnect, composeS
 
 const makeS = (C: Palette) => StyleSheet.create({
   masthead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 20 },
+  queueBtn: { backgroundColor: C.card, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 9, borderWidth: 1, borderColor: C.lineSoft },
+  queueBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.accentInk },
   chanBtn: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, paddingHorizontal: 15, paddingVertical: 13 },
   chanBtnT: { flex: 1, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14.5, color: C.ink },
   tab: { borderRadius: 999, paddingHorizontal: 15, paddingVertical: 9, backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft },
