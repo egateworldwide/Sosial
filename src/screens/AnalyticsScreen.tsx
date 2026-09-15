@@ -86,6 +86,13 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
     { id: 'facebook', label: 'Facebook', sub: meta.pageName ?? 'Not connected', connected: !!meta.pageId },
     { id: 'instagram', label: 'Instagram', sub: meta.igName ?? 'Not connected', connected: !!meta.igId },
     { id: 'threads', label: 'Threads', sub: meta.threadsName ?? 'Not connected', connected: !!meta.threadsId },
+    { id: 'linkedin', label: 'LinkedIn', sub: 'Coming soon', connected: false, comingSoon: true },
+    { id: 'bluesky', label: 'Bluesky', sub: 'Coming soon', connected: false, comingSoon: true },
+    { id: 'youtube', label: 'YouTube', sub: 'Coming soon', connected: false, comingSoon: true },
+    { id: 'mastodon', label: 'Mastodon', sub: 'Coming soon', connected: false, comingSoon: true },
+    { id: 'pinterest', label: 'Pinterest', sub: 'Coming soon', connected: false, comingSoon: true },
+    { id: 'x', label: 'X', sub: 'Coming soon', connected: false, comingSoon: true },
+    { id: 'tiktok', label: 'TikTok', sub: 'Coming soon', connected: false, comingSoon: true },
   ];
   const channelLabel = channel === 'all' ? 'All channels' : channel[0].toUpperCase() + channel.slice(1);
 

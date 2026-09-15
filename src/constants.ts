@@ -31,6 +31,10 @@ export const SOCIAL_META: Record<string, { label: string; bg: string; glyph: str
   youtube: { label: 'YouTube', bg: '#FF0000', glyph: '▶' },
   whatsapp: { label: 'WhatsApp', bg: '#25D366', glyph: 'WA' },
   threads: { label: 'Threads', bg: '#000000', glyph: 'TH' },
+  linkedin: { label: 'LinkedIn', bg: '#0A66C2', glyph: 'in' },
+  bluesky: { label: 'Bluesky', bg: '#0285FF', glyph: 'BS' },
+  mastodon: { label: 'Mastodon', bg: '#6364FF', glyph: 'M' },
+  pinterest: { label: 'Pinterest', bg: '#E60023', glyph: 'P' },
 };
 
 export function uid(prefix = 'id'): string {

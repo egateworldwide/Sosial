@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, TextInputProps, Platform } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import FontAwesome6 from '@expo/vector-icons/build/FontAwesome6';
+import MaterialCommunityIcons from '@expo/vector-icons/build/MaterialCommunityIcons';
 import { useTheme, Palette, R } from '../theme';
 
 /** Real brand glyph for a social platform — optically balanced per brand */
@@ -13,17 +14,25 @@ const GLYPH_SCALE: Record<string, number> = {
   facebook: 1,
   youtube: 0.88,
   whatsapp: 1,
+  linkedin: 1,
+  pinterest: 1,
+  bluesky: 1.05,
+  mastodon: 1,
 };
 export function SocialGlyph({ platform, size = 14, color = '#fff' }: { platform: string; size?: number; color?: string }) {
   const s = size * (GLYPH_SCALE[platform] ?? 1);
   if (platform === 'x') return <FontAwesome6 name="x-twitter" size={s} color={color} />;
   if (platform === 'threads') return <FontAwesome6 name="threads" size={s} color={color} />;
+  if (platform === 'mastodon') return <FontAwesome6 name="mastodon" size={s} color={color} />;
+  if (platform === 'bluesky') return <MaterialCommunityIcons name="butterfly-outline" size={s} color={color} />;
   const map: Record<string, any> = {
     instagram: 'logo-instagram',
     tiktok: 'logo-tiktok',
     facebook: 'logo-facebook',
     youtube: 'logo-youtube',
     whatsapp: 'logo-whatsapp',
+    linkedin: 'logo-linkedin',
+    pinterest: 'logo-pinterest',
   };
   return <Ionicons name={map[platform] ?? 'ellipse'} size={s} color={color} />;
 }

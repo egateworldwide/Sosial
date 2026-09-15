@@ -245,6 +245,25 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
               </TouchableOpacity>
             </View>
           ) : null}
+
+          <View style={s.soonHead}>
+            <Text style={s.soonHeadT}>Coming soon</Text>
+          </View>
+          {['linkedin', 'bluesky', 'youtube', 'mastodon', 'pinterest', 'x', 'tiktok'].map((pl) => (
+            <TouchableOpacity
+              key={pl}
+              onPress={() => Alert.alert(`${SOCIAL_META[pl]?.label ?? pl} is coming soon`, 'We’re working on it — connect Facebook, Instagram or Threads for now.')}
+              style={[s.row, s.rowDiv, { opacity: 0.75 }]}
+              activeOpacity={0.7}
+            >
+              <ChannelIcon platform={pl} />
+              <View style={{ flex: 1 }}>
+                <Text style={s.rowT}>{SOCIAL_META[pl]?.label ?? pl}</Text>
+                <Text style={s.rowS} numberOfLines={1}>Not yet available</Text>
+              </View>
+              <View style={s.soon}><Text style={s.soonT}>Soon</Text></View>
+            </TouchableOpacity>
+          ))}
         </View>
 
         {busy ? (
@@ -274,4 +293,8 @@ const makeS = (C: Palette) => StyleSheet.create({
   pageT: { flex: 1, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13.5, color: C.ink },
   disc: { alignItems: 'center', paddingVertical: 10 },
   discT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.redText },
+  soonHead: { borderTopWidth: 1, borderTopColor: C.lineSoft, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 2 },
+  soonHeadT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, letterSpacing: 0.6, textTransform: 'uppercase', color: C.faint },
+  soon: { backgroundColor: C.accentSoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  soonT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11, color: C.accentInk },
 });

@@ -7,7 +7,8 @@ import { PrimaryBtn, GhostBtn, Txt } from './ui';
 import { SocialGlyph } from './ui';
 import { fmtDateTime } from '../utils/reminders';
 
-const CHANNELS = ['any', 'facebook', 'instagram', 'tiktok', 'threads', 'whatsapp'];
+const CHANNELS = ['any', 'facebook', 'instagram', 'tiktok', 'threads', 'whatsapp', 'linkedin', 'bluesky', 'youtube', 'mastodon', 'pinterest', 'x'];
+const COMING_SOON = ['linkedin', 'bluesky', 'youtube', 'mastodon', 'pinterest', 'x'];
 
 function slotToday(hour: number, min = 0): number {
   const d = new Date();
@@ -81,6 +82,11 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
   const togglePlat = (c: string) => {
     if (c === 'any') {
       setPlats(['any']);
+      return;
+    }
+    if ((COMING_SOON as string[]).includes(c)) {
+      const label = c[0].toUpperCase() + c.slice(1);
+      Alert.alert(`${label} is coming soon`, 'We’re working on it — pick a connected channel for now.');
       return;
     }
     setPlats((prev) => {
@@ -176,11 +182,13 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
             {CHANNELS.map((c) => {
               const on = plats.includes(c);
+              const soon = (COMING_SOON as string[]).includes(c);
+              const label = c === 'any' ? 'Anywhere' : c[0].toUpperCase() + c.slice(1);
               return (
                 <TouchableOpacity
                   key={c}
                   onPress={() => togglePlat(c)}
-                  style={[st.chip, on && { backgroundColor: C.ink, borderColor: C.ink }]}
+                  style={[st.chip, on && { backgroundColor: C.ink, borderColor: C.ink }, soon && { opacity: 0.75 }]}
                   activeOpacity={0.75}
                 >
                   {c === 'any' ? (
@@ -188,7 +196,8 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
                   ) : (
                     <SocialGlyph platform={c} size={14} color={on ? C.onInk : C.ink} />
                   )}
-                  <Text style={[st.chipT, on && { color: C.onInk }]}>{c === 'any' ? 'Anywhere' : c[0].toUpperCase() + c.slice(1)}</Text>
+                  <Text style={[st.chipT, on && { color: C.onInk }]}>{label}</Text>
+                  {soon ? <Text style={st.soonT}>Soon</Text> : null}
                 </TouchableOpacity>
               );
             })}
@@ -298,6 +307,7 @@ const makeSt = (C: Palette) => ({
   postT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 15, letterSpacing: -0.2, color: C.ink } as const,
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.card, borderRadius: 999, borderWidth: 1, borderColor: C.lineSoft, paddingHorizontal: 12, paddingVertical: 8 } as const,
   chipT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.ink, textTransform: 'capitalize' } as const,
+  soonT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 10.5, color: C.accentInk } as const,
   opt: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1.5, borderColor: C.lineSoft, padding: 12 } as const,
   radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: C.faint, alignItems: 'center', justifyContent: 'center' } as const,
   radioOn: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.accent } as const,

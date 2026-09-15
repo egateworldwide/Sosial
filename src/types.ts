@@ -64,7 +64,7 @@ export interface PfpStyle {
   username?: string; // universal display name under the photo
 }
 
-export type SocialPlatform = 'instagram' | 'tiktok' | 'threads' | 'x' | 'facebook' | 'youtube' | 'whatsapp';
+export type SocialPlatform = 'instagram' | 'tiktok' | 'threads' | 'x' | 'facebook' | 'youtube' | 'whatsapp' | 'linkedin' | 'bluesky' | 'mastodon' | 'pinterest';
 
 export interface SocialLink {
   id: string;

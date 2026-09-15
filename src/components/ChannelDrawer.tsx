@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Modal, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, StyleSheet, Alert } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R } from '../theme';
 import { SocialGlyph } from './ui';
@@ -9,6 +9,7 @@ export interface DrawerChannel {
   label: string;
   sub: string;
   connected: boolean;
+  comingSoon?: boolean;
 }
 
 /** Channel dropdown drawer: All + per-channel rows, add-channel + settings footer. */
@@ -23,10 +24,22 @@ export default function ChannelDrawer({ visible, channels, value, onPick, onAddC
 }) {
   const { C } = useTheme();
   const s = makeS(C);
-  const row = (id: string, label: string, sub: string, glyph: string | null, dot?: boolean) => {
+  const row = (id: string, label: string, sub: string, glyph: string | null, dot?: boolean, comingSoon?: boolean) => {
     const on = value === id;
     return (
-      <TouchableOpacity key={id} onPress={() => { onPick(id); onClose(); }} style={[s.row, on && { borderColor: C.accent, backgroundColor: C.accentSoft }]} activeOpacity={0.75}>
+      <TouchableOpacity
+        key={id}
+        onPress={() => {
+          if (comingSoon) {
+            Alert.alert(`${label} is coming soon`, 'We’re working on it — connect Facebook, Instagram or Threads for now.');
+            return;
+          }
+          onPick(id);
+          onClose();
+        }}
+        style={[s.row, on && !comingSoon && { borderColor: C.accent, backgroundColor: C.accentSoft }, comingSoon && { opacity: 0.75 }]}
+        activeOpacity={0.75}
+      >
         {glyph ? (
           <View style={{ width: 34, height: 34, borderRadius: 12, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }}>
             <SocialGlyph platform={glyph} size={15} color={C.onInk} />
@@ -40,7 +53,11 @@ export default function ChannelDrawer({ visible, channels, value, onPick, onAddC
           <Text style={s.rowT} numberOfLines={1}>{label}</Text>
           <Text style={s.rowS} numberOfLines={1}>{sub}</Text>
         </View>
-        {on ? <Ionicons name="checkmark-circle" size={20} color={C.accent} /> : null}
+        {comingSoon ? (
+          <View style={s.soon}><Text style={s.soonT}>Soon</Text></View>
+        ) : on ? (
+          <Ionicons name="checkmark-circle" size={20} color={C.accent} />
+        ) : null}
       </TouchableOpacity>
     );
   };
@@ -52,7 +69,7 @@ export default function ChannelDrawer({ visible, channels, value, onPick, onAddC
           <Text style={s.title}>Channels</Text>
           <View style={{ gap: 8, marginTop: 12 }}>
             {row('all', 'All channels', `${channels.filter((c) => c.connected).length} connected`, null, true)}
-            {channels.map((c) => row(c.id, c.label, c.sub, c.id))}
+            {channels.map((c) => row(c.id, c.label, c.sub, c.id, false, c.comingSoon))}
           </View>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
             <View style={{ flex: 1 }}>
@@ -81,5 +98,7 @@ const makeS = (C: Palette) => StyleSheet.create({
   globe: { width: 34, height: 34, borderRadius: 12, backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center' },
   add: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: C.ink, borderRadius: R.md, paddingVertical: 14 },
   addT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: C.onInk },
+  soon: { backgroundColor: C.accentSoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  soonT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11, color: C.accentInk },
   gear: { width: 52, borderRadius: R.md, backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft, alignItems: 'center', justifyContent: 'center' },
 });
