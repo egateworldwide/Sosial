@@ -184,9 +184,9 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
           <View style={{ marginTop: 16, gap: 12 }}>
             <View style={[s.plan, plan === 'free' && { borderColor: C.accent, borderWidth: 1.5 }]}>
               <Text style={s.planT}>Free{plan === 'free' ? ' · current' : ''}</Text>
-              <Text style={s.planS}>3 connected channels · 10 scheduled posts per channel</Text>
+              <Text style={s.planS}>2 connected channels · 10 scheduled posts per channel</Text>
               <Text style={s.planS}>Unlimited studio, templates & ideas (exports carry a small badge)</Text>
-              <Text style={s.planS}>10 AI generations / month · 7-day analytics</Text>
+              <Text style={s.planS}>No AI generation · 7-day analytics</Text>
             </View>
             <View style={[s.plan, plan === 'pro' && { borderColor: C.accent, borderWidth: 1.5 }]}>
               <Text style={s.planT}>Zap Pro{plan === 'pro' ? ' · current' : ''}</Text>
@@ -203,10 +203,10 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
               </Field>
               <Text style={[s.planS, { color: C.ink, fontFamily: 'PlusJakartaSans_700Bold' }]}>
                 {yearly
-                  ? `$${29 * proChannels}/yr ($2.42/mo per channel)`
-                  : `$${(2.99 * proChannels).toFixed(2)}/mo ($2.99 per channel)`}
+                  ? `$${49 * proChannels}/yr ($4.08/mo per channel)`
+                  : `$${(4.99 * proChannels).toFixed(2)}/mo ($4.99 per channel)`}
               </Text>
-              <Text style={s.planS}>MY: {yearly ? `RM ${129 * proChannels}/yr` : `RM ${(12.9 * proChannels).toFixed(2)}/mo`}</Text>
+              <Text style={s.planS}>MY: {yearly ? `RM ${219 * proChannels}/yr` : `RM ${(21.9 * proChannels).toFixed(2)}/mo`}</Text>
               <Text style={s.planS}>Everything in Free, plus: unlimited scheduled posts · approvals · no export badge</Text>
               <Text style={s.planS}>500 AI generations / month · 1-year analytics + comments</Text>
             </View>
