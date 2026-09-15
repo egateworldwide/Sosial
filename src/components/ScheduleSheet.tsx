@@ -59,10 +59,13 @@ interface Props {
   approveLabel?: string;
   onApprove?: () => void;
   onClose: () => void;
+  /** Sent posts open read-only: static summary + Delete, no editing or re-sending. */
+  readOnly?: boolean;
+  readOnlyNote?: string;
 }
 
 /** Buffer-style sheet: channels (multi) + title/description + time. */
-export default function ScheduleSheet({ visible, initialAt, initialPlatforms, title, bulkCount, composer, media, onDelete, onPosted, publishLabel, publishBusy, onPublish, draftLabel, onDraft, approveLabel, onApprove, onSave, onPostNow, onClose }: Props) {
+export default function ScheduleSheet({ visible, initialAt, initialPlatforms, title, bulkCount, composer, media, onDelete, onPosted, publishLabel, publishBusy, onPublish, draftLabel, onDraft, approveLabel, onApprove, onSave, onPostNow, onClose, readOnly, readOnlyNote }: Props) {
   const { C, mode: themeMode } = useTheme();
   const st = makeSt(C);
   const [plats, setPlats] = useState<string[]>(['any']);
@@ -132,30 +135,54 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
         <TouchableOpacity activeOpacity={1} onPress={() => {}} style={st.sheet}>
           <ScrollView style={{ flexShrink: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 10 }} keyboardShouldPersistTaps="handled">
           <Text style={st.title}>{title ?? 'Add to queue'}</Text>
+          {readOnly && readOnlyNote ? <Text style={st.sentNote}>✓ {readOnlyNote}</Text> : null}
 
           {composer ? (
             <View style={st.post}>
-              {composer.onTitle ? (
-                <Txt
-                  value={composer.title}
-                  onChangeText={composer.onTitle}
-                  placeholder="Post title…"
-                  style={{ fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 15 }}
-                />
+              {readOnly ? (
+                <>
+                  <Text style={st.postT} numberOfLines={2}>{composer.title || 'Untitled'}</Text>
+                  {composer.caption ? <Text style={st.postCap}>{composer.caption}</Text> : null}
+                </>
               ) : (
-                <Text style={st.postT} numberOfLines={2}>{composer.title || 'Untitled'}</Text>
+                <>
+                  {composer.onTitle ? (
+                    <Txt
+                      value={composer.title}
+                      onChangeText={composer.onTitle}
+                      placeholder="Post title…"
+                      style={{ fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 15 }}
+                    />
+                  ) : (
+                    <Text style={st.postT} numberOfLines={2}>{composer.title || 'Untitled'}</Text>
+                  )}
+                  <Txt
+                    value={composer.caption}
+                    onChangeText={composer.onCaption}
+                    placeholder="Write the description…"
+                    multiline
+                    style={{ minHeight: 64, textAlignVertical: 'top' }}
+                  />
+                </>
               )}
-              <Txt
-                value={composer.caption}
-                onChangeText={composer.onCaption}
-                placeholder="Write the description…"
-                multiline
-                style={{ minHeight: 64, textAlignVertical: 'top' }}
-              />
             </View>
           ) : null}
 
           {media ? (
+            readOnly ? (
+              media.uri ? (
+                <View>
+                  <Text style={st.label}>Photo or video</Text>
+                  {media.kind === 'video' ? (
+                    <View style={{ width: '100%', height: 150, borderRadius: R.lg, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center', marginTop: 8 }}>
+                      <Ionicons name="play-circle" size={44} color="#fff" />
+                    </View>
+                  ) : (
+                    <Image source={{ uri: media.uri }} style={{ width: '100%', height: 150, borderRadius: R.lg, marginTop: 8 }} resizeMode="cover" />
+                  )}
+                </View>
+              ) : null
+            ) : (
             <View>
               <Text style={st.label}>Photo or video</Text>
               {media.uri ? (
@@ -178,9 +205,29 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
                 </View>
               )}
             </View>
+            )
           ) : null}
 
-          <Text style={st.label}>Channels — pick any</Text>
+          <Text style={st.label}>Channels{readOnly ? '' : ' — pick any'}</Text>
+          {readOnly ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {plats.map((c) => {
+                const label = c === 'any' ? 'Anywhere' : c[0].toUpperCase() + c.slice(1);
+                return (
+                  <View key={c} style={st.chip}>
+                    {c === 'any' ? (
+                      <Ionicons name="globe-outline" size={14} color={C.muted} />
+                    ) : (
+                      <View style={{ width: 22, height: 22, borderRadius: 7, backgroundColor: SOCIAL_META[c]?.bg ?? C.ink, alignItems: 'center', justifyContent: 'center' }}>
+                        <SocialGlyph platform={c} size={11} color="#fff" />
+                      </View>
+                    )}
+                    <Text style={st.chipT}>{label}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
             {CHANNELS.map((c) => {
               const on = plats.includes(c);
@@ -206,7 +253,10 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
               );
             })}
           </ScrollView>
+          )}
 
+          {!readOnly && (
+          <>
           <Text style={[st.label, { marginTop: 6 }]}>Time</Text>
           {(
             [
@@ -296,11 +346,16 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
               </Text>
             </TouchableOpacity>
           ) : null}
-          {onPosted || onDelete ? (
+          </>
+          )}
+          {!readOnly && (onPosted || onDelete) ? (
             <View style={{ flexDirection: 'row', gap: 8 }}>
               {onPosted ? <View style={{ flex: 1 }}><GhostBtn label="Posted ✓" onPress={onPosted} /></View> : null}
               {onDelete ? <View style={{ flex: 1 }}><GhostBtn label="Delete" danger onPress={onDelete} /></View> : null}
             </View>
+          ) : null}
+          {readOnly && onDelete ? (
+            <GhostBtn label="Delete" danger onPress={onDelete} />
           ) : null}
           </ScrollView>
         </TouchableOpacity>
@@ -317,6 +372,8 @@ const makeSt = (C: Palette) => ({
   label: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: C.muted, textTransform: 'uppercase', letterSpacing: 0.6 } as const,
   post: { backgroundColor: C.card, borderRadius: R.lg, padding: 12, gap: 8 } as const,
   postT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 15, letterSpacing: -0.2, color: C.ink } as const,
+  postCap: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 14, lineHeight: 20, color: C.ink } as const,
+  sentNote: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.accentInk } as const,
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.card, borderRadius: 999, borderWidth: 1, borderColor: C.lineSoft, paddingHorizontal: 12, paddingVertical: 8 } as const,
   chipT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.ink, textTransform: 'capitalize' } as const,
   soonT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 10.5, color: C.accentInk } as const,

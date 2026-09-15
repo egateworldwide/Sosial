@@ -10,7 +10,7 @@ import { publishTikTokVideo, askTikTokPrivacy } from '../utils/tiktokPublish';
 import {
   cancelPostReminder,
   schedulePostReminder, ensureNotifPermission,
-  notificationsSupported, NO_NOTIF_MSG,
+  notificationsSupported, NO_NOTIF_MSG, fmtDateTime,
 } from '../utils/reminders';
 import { Alert } from 'react-native';
 
@@ -287,7 +287,9 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
       {children}
       <ScheduleSheet
         visible={sheet !== null}
-        title={sheet?.post ? 'Edit post' : 'New post'}
+        title={sheet?.post?.status === 'sent' ? 'Sent post' : sheet?.post ? 'Edit post' : 'New post'}
+        readOnly={sheet?.post?.status === 'sent'}
+        readOnlyNote={sheet?.post?.status === 'sent' && sheet.post.sentAt ? `Sent ${fmtDateTime(sheet.post.sentAt)}` : undefined}
         initialAt={sheet?.post?.scheduledAt}
         initialPlatforms={sheet?.post?.platforms}
         composer={{ title: tTitle, caption: tBody, onCaption: setTBody, onTitle: setTTitle }}
@@ -296,12 +298,12 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
         draftLabel="Save as draft"
         onDraft={saveDraft}
         onPostNow={postNow}
-        onPublish={sheet?.post ? publish : undefined}
+        onPublish={sheet?.post && sheet.post.status !== 'sent' ? publish : undefined}
         publishBusy={publishing}
         approveLabel={sheet?.post?.status === 'approval' ? 'Approve & queue' : sheet?.post ? 'Send to approvals' : undefined}
         onApprove={approveAction}
         onDelete={sheet?.post ? remove : undefined}
-        onPosted={sheet?.post ? markSent : undefined}
+        onPosted={sheet?.post && sheet.post.status !== 'sent' ? markSent : undefined}
         onClose={() => setSheet(null)}
       />
     </Ctx.Provider>
