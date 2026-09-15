@@ -337,7 +337,11 @@ export default function PostScreen({ email, team, onProfile, onConnect, composeS
         {/* channel drawer trigger */}
         <View style={{ paddingHorizontal: 24, marginTop: 14 }}>
           <TouchableOpacity onPress={() => setDrawer(true)} style={s.chanBtn} activeOpacity={0.75}>
-            <Ionicons name="globe-outline" size={18} color={C.accentInk} />
+            {channel === 'all' ? (
+              <Ionicons name="globe-outline" size={18} color={C.accentInk} />
+            ) : (
+              <SocialGlyph platform={channel} size={18} color={C.ink} />
+            )}
             <Text style={s.chanBtnT}>{channelLabel}</Text>
             <Ionicons name="chevron-down" size={18} color={C.faint} />
           </TouchableOpacity>

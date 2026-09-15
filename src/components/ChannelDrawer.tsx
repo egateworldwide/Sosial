@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Modal, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, StyleSheet, Alert, ScrollView } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R } from '../theme';
 import { SocialGlyph } from './ui';
@@ -67,10 +67,10 @@ export default function ChannelDrawer({ visible, channels, value, onPick, onAddC
       <TouchableOpacity activeOpacity={1} onPress={onClose} style={s.bg}>
         <TouchableOpacity activeOpacity={1} onPress={() => {}} style={s.sheet}>
           <Text style={s.title}>Channels</Text>
-          <View style={{ gap: 8, marginTop: 12 }}>
+          <ScrollView style={{ flexShrink: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 12 }}>
             {row('all', 'All channels', `${channels.filter((c) => c.connected).length} connected`, null, true)}
             {channels.map((c) => row(c.id, c.label, c.sub, c.id, false, c.comingSoon))}
-          </View>
+          </ScrollView>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
             <View style={{ flex: 1 }}>
               <TouchableOpacity onPress={() => { onClose(); onAddChannel(); }} style={s.add} activeOpacity={0.8}>

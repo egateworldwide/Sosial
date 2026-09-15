@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R, T } from '../theme';
 import { AvatarButton } from '../components/ProfileMenu';
+import { SocialGlyph } from '../components/ui';
 import ChannelDrawer from '../components/ChannelDrawer';
 import { SOCIAL_META } from '../constants';
 import { loadMetaState, MetaState } from '../utils/metaStore';
@@ -130,7 +131,11 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
 
         <View style={{ paddingHorizontal: 24, marginTop: 14 }}>
           <TouchableOpacity onPress={() => setDrawer(true)} style={s.chanBtn} activeOpacity={0.75}>
-            <Ionicons name="globe-outline" size={18} color={C.accentInk} />
+            {channel === 'all' ? (
+              <Ionicons name="globe-outline" size={18} color={C.accentInk} />
+            ) : (
+              <SocialGlyph platform={channel} size={18} color={C.ink} />
+            )}
             <Text style={s.chanBtnT}>{channelLabel}</Text>
             <Ionicons name="chevron-down" size={18} color={C.faint} />
           </TouchableOpacity>
