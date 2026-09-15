@@ -61,7 +61,7 @@ interface Props {
 
 /** Buffer-style sheet: channels (multi) + title/description + time. */
 export default function ScheduleSheet({ visible, initialAt, initialPlatforms, title, bulkCount, composer, media, onDelete, onPosted, publishLabel, publishBusy, onPublish, draftLabel, onDraft, approveLabel, onApprove, onSave, onClose }: Props) {
-  const { C } = useTheme();
+  const { C, mode: themeMode } = useTheme();
   const st = makeSt(C);
   const [plats, setPlats] = useState<string[]>(['any']);
   const [preset, setPreset] = useState<'today' | 'tomorrow' | 'custom'>('tomorrow');
@@ -242,7 +242,14 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
           })}
 
           {showPicker ? (
-            <DateTimePicker value={custom} mode={mode} display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={onPick} />
+            <DateTimePicker
+              value={custom}
+              mode={mode}
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={onPick}
+              themeVariant={themeMode}
+              textColor={C.ink}
+            />
           ) : null}
           {preset === 'custom' && Platform.OS === 'ios' && !showPicker ? (
             <TouchableOpacity onPress={() => setShowPicker(true)} style={st.miniWide} activeOpacity={0.7}>
