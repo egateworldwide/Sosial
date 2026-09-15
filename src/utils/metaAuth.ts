@@ -7,6 +7,7 @@ import {
   THREADS_APP_ID, THREADS_APP_SECRET, THREADS_AUTH_ENDPOINT, THREADS_SCOPES, THREADS_API,
 } from './metaConfig';
 import { saveMetaState } from './metaStore';
+import { setPendingAuth, clearPendingAuth, handleAuthUrl, AuthChannel } from './authFlow';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -33,37 +34,31 @@ function errMsg(j: any, fallback: string): string {
   return typeof m === 'string' && m.length > 0 ? m : fallback;
 }
 
-/** sosial://redirect?code=… → code. Throws the provider's error when denied. */
-function parseCode(returnUrl: string): string {
-  const afterQ = returnUrl.split('?')[1] ?? '';
-  const query = afterQ.split('#')[0];
-  const parts = query.split('&');
-  let code: string | null = null;
-  let err: string | null = null;
-  for (const p of parts) {
-    const eq = p.indexOf('=');
-    if (eq < 0) continue;
-    const k = p.slice(0, eq);
-    const v = decodeURIComponent(p.slice(eq + 1).replace(/\+/g, ' '));
-    if (k === 'code') code = v;
-    if (k === 'error_description') err = v;
-    else if (k === 'error' && !err) err = v;
-  }
-  if (code) return code;
-  throw new Error(err || 'Login was cancelled.');
-}
-
-async function loginWithCode(authUrl: string): Promise<string> {
-  const res = await WebBrowser.openAuthSessionAsync(authUrl, appReturnUrl());
-  if (res.type !== 'success' || !('url' in res) || !res.url) {
-    throw new Error('Login was cancelled.');
-  }
-  return parseCode(res.url);
+/**
+ * Open a provider's consent page, then feed whatever comes back into the global
+ * auth handler. Returns true when a result was published (caller should let the
+ * completion finish), false when the user backed out.
+ *
+ * Survives an Expo Go reload: the channel is persisted first, so if the app
+ * restarts mid-login, App.tsx replays the return URL and the Connect screen
+ * completes the exchange on the new instance.
+ */
+export async function openAuth(authUrl: string, channel: AuthChannel): Promise<boolean> {
+  await setPendingAuth(channel);
+  try {
+    const res = await WebBrowser.openAuthSessionAsync(authUrl, appReturnUrl());
+    if (res.type === 'success' && 'url' in res && res.url) {
+      await handleAuthUrl(res.url);
+      return true;
+    }
+  } catch {}
+  await clearPendingAuth();
+  return false;
 }
 
 /* ---------------- Facebook ---------------- */
 
-export async function loginFacebook(): Promise<string> {
+export async function loginFacebook(): Promise<boolean> {
   const url =
     `${FB_AUTH_ENDPOINT}?client_id=${encodeURIComponent(META_APP_ID)}` +
     `&redirect_uri=${encodeURIComponent(BRIDGE_URL)}` +
@@ -71,7 +66,7 @@ export async function loginFacebook(): Promise<string> {
     `&scope=${encodeURIComponent(FB_SCOPES.join(','))}` +
     `&auth_type=rerequest` +
     `&state=${encodeURIComponent(appReturnUrl())}`;
-  return loginWithCode(url);
+  return openAuth(url, 'facebook');
 }
 
 /** code -> short token -> 60-day token. Throws a human message on failure. */
@@ -116,14 +111,14 @@ export async function pickPage(p: FbPage): Promise<void> {
 
 /* ---------------- Instagram Business Login (own OAuth, own app) ---------------- */
 
-export async function loginInstagram(): Promise<string> {
+export async function loginInstagram(): Promise<boolean> {
   const url =
     `${IG_AUTH_ENDPOINT}?client_id=${encodeURIComponent(IG_APP_ID)}` +
     `&redirect_uri=${encodeURIComponent(BRIDGE_URL)}` +
     `&response_type=code` +
     `&scope=${encodeURIComponent(IG_SCOPES.join(','))}` +
     `&state=${encodeURIComponent(appReturnUrl())}`;
-  return loginWithCode(url);
+  return openAuth(url, 'instagram');
 }
 
 /** code -> 1h token -> 60d token, plus the scoped IG user id. */
@@ -165,14 +160,14 @@ export async function fetchInstagramProfile(token: string): Promise<{ id: string
 
 /* ---------------- Threads (separate OAuth) ---------------- */
 
-export async function loginThreads(): Promise<string> {
+export async function loginThreads(): Promise<boolean> {
   const url =
     `${THREADS_AUTH_ENDPOINT}?client_id=${encodeURIComponent(THREADS_APP_ID)}` +
     `&redirect_uri=${encodeURIComponent(BRIDGE_URL)}` +
     `&response_type=code` +
     `&scope=${encodeURIComponent(THREADS_SCOPES.join(','))}` +
     `&state=${encodeURIComponent(appReturnUrl())}`;
-  return loginWithCode(url);
+  return openAuth(url, 'threads');
 }
 
 /** code -> short token -> 60-day token, plus the Threads user id. */

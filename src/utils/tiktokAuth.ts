@@ -1,9 +1,8 @@
-import * as WebBrowser from 'expo-web-browser';
 import {
   TT_CLIENT_KEY, TT_CLIENT_SECRET, TT_AUTH_ENDPOINT, TT_TOKEN_ENDPOINT,
   TT_API, TT_SCOPES,
 } from './tiktokConfig';
-import { BRIDGE_URL, appReturnUrl } from './metaAuth';
+import { BRIDGE_URL, appReturnUrl, openAuth } from './metaAuth';
 import { loadMetaState, saveMetaState } from './metaStore';
 
 /** TikTok nests errors as { error: { code, message } } with code 'ok' on success. */
@@ -20,39 +19,16 @@ function qs(p: Record<string, string>): string {
     .join('&');
 }
 
-/** sosial://redirect?code=… → code. Throws the provider's error when denied. */
-function parseCode(returnUrl: string): string {
-  const afterQ = returnUrl.split('?')[1] ?? '';
-  const query = afterQ.split('#')[0];
-  let code: string | null = null;
-  let err: string | null = null;
-  for (const p of query.split('&')) {
-    const eq = p.indexOf('=');
-    if (eq < 0) continue;
-    const k = p.slice(0, eq);
-    const v = decodeURIComponent(p.slice(eq + 1).replace(/\+/g, ' '));
-    if (k === 'code') code = v;
-    if (k === 'error_description') err = v;
-    else if (k === 'error' && !err) err = v;
-  }
-  if (code) return code;
-  throw new Error(err || 'Login was cancelled.');
-}
-
 /* ---------------- Login (same bridge page as Meta — it forwards ?code=) ---------------- */
 
-export async function loginTikTok(): Promise<string> {
+export async function loginTikTok(): Promise<boolean> {
   const url =
     `${TT_AUTH_ENDPOINT}?client_key=${encodeURIComponent(TT_CLIENT_KEY)}` +
     `&scope=${encodeURIComponent(TT_SCOPES.join(','))}` +
     `&response_type=code` +
     `&redirect_uri=${encodeURIComponent(BRIDGE_URL)}` +
     `&state=${encodeURIComponent(appReturnUrl())}`;
-  const res = await WebBrowser.openAuthSessionAsync(url, appReturnUrl());
-  if (res.type !== 'success' || !('url' in res) || !res.url) {
-    throw new Error('Login was cancelled.');
-  }
-  return parseCode(res.url);
+  return openAuth(url, 'tiktok');
 }
 
 export interface TikTokTokens {

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { StatusBar, ActivityIndicator, View, Text, BackHandler, Platform, Alert } from 'react-native';
+import * as Linking from 'expo-linking';
 import Constants from 'expo-constants';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { PostProvider, usePost } from './src/store/PostContext';
@@ -18,6 +19,7 @@ import ProfileMenu from './src/components/ProfileMenu';
 import Grain from './src/components/Grain';
 import { useFontsLoaded } from './src/utils/fonts';
 import { loadAccount, saveAccount, Account } from './src/utils/account';
+import { handleAuthUrl, getPendingAuth } from './src/utils/authFlow';
 import { useTheme, ThemeProvider } from './src/theme';
 
 type Route = MainTab | 'size' | 'editor' | 'export' | 'connect' | 'privacy' | 'account';
@@ -45,6 +47,27 @@ function Shell() {
 
   React.useEffect(() => {
     loadAccount().then(setAccount);
+  }, []);
+
+  // OAuth return: Expo Go reloads the project on the exp:// redirect, so the
+  // pending channel is replayed here and the Connect screen finishes the login.
+  React.useEffect(() => {
+    let sub: { remove: () => void } | null = null;
+    const consume = async (url: string | null) => {
+      if (!url) return;
+      const r = await handleAuthUrl(url);
+      if (r) setRoute('connect');
+    };
+    (async () => {
+      try {
+        if (await getPendingAuth()) setRoute('connect');
+        await consume(await Linking.getInitialURL());
+      } catch {}
+    })();
+    sub = Linking.addEventListener('url', ({ url }) => {
+      void consume(url);
+    });
+    return () => sub?.remove();
   }, []);
 
   const patchAccount = async (patch: Partial<Account>) => {

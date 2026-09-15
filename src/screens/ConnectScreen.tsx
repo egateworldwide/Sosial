@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
@@ -14,6 +14,7 @@ import {
   BRIDGE_URL,
 } from '../utils/metaAuth';
 import { loginTikTok, completeTikTokLogin } from '../utils/tiktokAuth';
+import { subscribeAuthResult, flushAuthResults, clearPendingAuth, getPendingAuth, AuthResult } from '../utils/authFlow';
 import { IG_APP_ID } from '../utils/metaConfig';
 import { TT_CLIENT_KEY } from '../utils/tiktokConfig';
 
@@ -41,72 +42,93 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
     loadMetaState().then(setMeta);
   }, []);
 
-  const cancelled = (m: string) => m === 'Login was cancelled.';
+  const completeRef = useRef<(r: AuthResult) => void>(() => {});
+
+  /** Finishes an OAuth login no matter which app instance received the code —
+   *  the one that opened the browser, or a fresh one after Expo Go reloaded. */
+  const completeAuth = async (r: AuthResult) => {
+    if (r.error) {
+      await clearPendingAuth();
+      setBusy(null);
+      Alert.alert('Login cancelled', r.error);
+      return;
+    }
+    if (!r.code) {
+      await clearPendingAuth();
+      setBusy(null);
+      return;
+    }
+    setBusy('Exchanging token…');
+    try {
+      if (r.channel === 'facebook') {
+        const token = await exchangeFacebookCode(r.code);
+        const st = await saveMetaState({
+          fbUserToken: token,
+          pageId: undefined, pageName: undefined, pageToken: undefined,
+        });
+        setMeta(st);
+        const pgs = await fetchPages(token);
+        setPages(pgs);
+        setOpenCh('facebook');
+        if (pgs.length === 0) {
+          Alert.alert('No Pages found', 'Create a Facebook Page you manage first — posts publish as the Page.');
+        }
+      } else if (r.channel === 'instagram') {
+        const { token, userId } = await exchangeInstagramCode(r.code);
+        let name: string | undefined;
+        let id = userId;
+        try {
+          const prof = await fetchInstagramProfile(token);
+          id = prof.id || userId;
+          name = prof.username;
+        } catch {}
+        const st = await saveMetaState({ igToken: token, igId: id, igName: name });
+        setMeta(st);
+      } else if (r.channel === 'threads') {
+        const { token, userId } = await exchangeThreadsCode(r.code);
+        let name: string | undefined;
+        try {
+          const prof = await fetchThreadsProfile(token);
+          name = prof.username;
+        } catch {}
+        const st = await saveMetaState({ threadsToken: token, threadsId: userId, threadsName: name });
+        setMeta(st);
+      } else if (r.channel === 'tiktok') {
+        const { name } = await completeTikTokLogin(r.code);
+        setMeta(await loadMetaState());
+        setOpenCh('tiktok');
+        if (!name) Alert.alert('Connected', 'TikTok connected — we couldn’t read the display name yet.');
+      }
+    } catch (e: any) {
+      const label = r.channel[0].toUpperCase() + r.channel.slice(1);
+      Alert.alert(`${label} login failed`, e?.message ?? 'Try again.');
+    } finally {
+      await clearPendingAuth();
+      setBusy(null);
+    }
+  };
+  completeRef.current = completeAuth;
+
+  useEffect(() => {
+    const unsub = subscribeAuthResult((r) => { void completeRef.current(r); });
+    flushAuthResults((r) => { void completeRef.current(r); });
+    getPendingAuth().then((ch) => { if (ch) setBusy('Waiting for login…'); });
+    return unsub;
+  }, []);
 
   const doFacebook = async () => {
     setBusy('Opening Facebook…');
-    try {
-      const code = await loginFacebook();
-      setBusy('Exchanging token…');
-      const token = await exchangeFacebookCode(code);
-      const st = await saveMetaState({
-        fbUserToken: token,
-        pageId: undefined, pageName: undefined, pageToken: undefined,
-      });
-      setMeta(st);
-      const pgs = await fetchPages(token);
-      setPages(pgs);
-      setOpenCh('facebook');
-      if (pgs.length === 0) {
-        Alert.alert('No Pages found', 'Create a Facebook Page you manage first — posts publish as the Page.');
-      }
-    } catch (e: any) {
-      if (!cancelled(e?.message ?? '')) Alert.alert('Facebook login failed', e?.message ?? 'Try again.');
-    } finally {
-      setBusy(null);
-    }
+    if (!(await loginFacebook())) setBusy(null);
   };
 
   const doInstagram = async () => {
     setBusy('Opening Instagram…');
-    try {
-      const code = await loginInstagram();
-      setBusy('Exchanging token…');
-      const { token, userId } = await exchangeInstagramCode(code);
-      let name: string | undefined;
-      let id = userId;
-      try {
-        const prof = await fetchInstagramProfile(token);
-        id = prof.id || userId;
-        name = prof.username;
-      } catch {}
-      const st = await saveMetaState({ igToken: token, igId: id, igName: name });
-      setMeta(st);
-    } catch (e: any) {
-      if (!cancelled(e?.message ?? '')) Alert.alert('Instagram login failed', e?.message ?? 'Try again.');
-    } finally {
-      setBusy(null);
-    }
+    if (!(await loginInstagram())) setBusy(null);
   };
 
   const doThreads = async () => {
     setBusy('Opening Threads…');
-    try {
-      const code = await loginThreads();
-      setBusy('Exchanging token…');
-      const { token, userId } = await exchangeThreadsCode(code);
-      let name: string | undefined;
-      try {
-        const prof = await fetchThreadsProfile(token);
-        name = prof.username;
-      } catch {}
-      const st = await saveMetaState({ threadsToken: token, threadsId: userId, threadsName: name });
-      setMeta(st);
-    } catch (e: any) {
-      if (!cancelled(e?.message ?? '')) Alert.alert('Threads login failed', e?.message ?? 'Try again.');
-    } finally {
-      setBusy(null);
-    }
+    if (!(await loginThreads())) setBusy(null);
   };
 
   const loadPages = async () => {
@@ -145,20 +167,7 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
 
   const doTikTok = async () => {
     setBusy('Opening TikTok…');
-    try {
-      const code = await loginTikTok();
-      setBusy('Exchanging token…');
-      const { name } = await completeTikTokLogin(code);
-      setMeta(await loadMetaState());
-      setOpenCh('tiktok');
-      if (!name) {
-        Alert.alert('Connected', 'TikTok connected — we couldn’t read the display name yet.');
-      }
-    } catch (e: any) {
-      if (!cancelled(e?.message ?? '')) Alert.alert('TikTok login failed', e?.message ?? 'Try again.');
-    } finally {
-      setBusy(null);
-    }
+    if (!(await loginTikTok())) setBusy(null);
   };
 
   const disconnectTikTok = async () => {
