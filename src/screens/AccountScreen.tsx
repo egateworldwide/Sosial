@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Linking, Switch } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R, T } from '../theme';
-import { Txt } from '../components/ui';
+import { Txt, Field, Stepper, Seg } from '../components/ui';
 import { wipeAllData } from '../utils/account';
 
 type AcctView = 'main' | 'notif' | 'email' | 'password' | 'plan' | 'changelog' | 'terms' | 'legal';
@@ -28,6 +28,8 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
   const { C } = useTheme();
   const s = makeS(C);
   const [view, setView] = useState<AcctView>('main');
+  const [proChannels, setProChannels] = useState(3);
+  const [yearly, setYearly] = useState(true);
   const [draftEmail, setDraftEmail] = useState(email);
   const [draftTeam, setDraftTeam] = useState(team);
   const [pw1, setPw1] = useState('');
@@ -188,10 +190,24 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
             </View>
             <View style={[s.plan, plan === 'pro' && { borderColor: C.accent, borderWidth: 1.5 }]}>
               <Text style={s.planT}>Zap Pro{plan === 'pro' ? ' · current' : ''}</Text>
-              <Text style={[s.planS, { color: C.ink, fontFamily: 'PlusJakartaSans_700Bold' }]}>$9.99/mo · $59.99/yr</Text>
-              <Text style={s.planS}>MY: RM 19.90/mo · RM 119/yr</Text>
-              <Text style={s.planS}>Unlimited channels — every future channel included</Text>
-              <Text style={s.planS}>Unlimited scheduled posts · approvals · no export badge</Text>
+              <Text style={s.planS}>Pay per channel, like Buffer — roughly half the price. Add or drop channels anytime.</Text>
+              <Field label="Channels" hint={`${proChannels} channel${proChannels === 1 ? '' : 's'}`}>
+                <Stepper value={proChannels} onChange={setProChannels} step={1} min={1} max={10} format={(v) => `${v}`} />
+              </Field>
+              <Field label="Billing">
+                <Seg
+                  options={[{ value: 'yearly', label: 'Yearly · save ~20%' }, { value: 'monthly', label: 'Monthly' }]}
+                  value={yearly ? 'yearly' : 'monthly'}
+                  onChange={(v) => setYearly(v === 'yearly')}
+                />
+              </Field>
+              <Text style={[s.planS, { color: C.ink, fontFamily: 'PlusJakartaSans_700Bold' }]}>
+                {yearly
+                  ? `$${29 * proChannels}/yr ($2.42/mo per channel)`
+                  : `$${(2.99 * proChannels).toFixed(2)}/mo ($2.99 per channel)`}
+              </Text>
+              <Text style={s.planS}>MY: {yearly ? `RM ${129 * proChannels}/yr` : `RM ${(12.9 * proChannels).toFixed(2)}/mo`}</Text>
+              <Text style={s.planS}>Everything in Free, plus: unlimited scheduled posts · approvals · no export badge</Text>
               <Text style={s.planS}>500 AI generations / month · 1-year analytics + comments</Text>
             </View>
             {plan !== 'pro' ? (
