@@ -35,6 +35,6 @@ export const THREADS_SCOPES = ['threads_basic', 'threads_content_publish'];
 
 export const FB_AUTH_ENDPOINT = `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth`;
 export const THREADS_AUTH_ENDPOINT = 'https://www.threads.com/oauth/authorize';
-export const THREADS_API = 'https://graph.threads.com';
+export const THREADS_API = 'https://graph.threads.net';
 
 export const graph = (path: string) => `https://graph.facebook.com/${GRAPH_VERSION}${path}`;
