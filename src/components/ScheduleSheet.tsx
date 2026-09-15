@@ -74,10 +74,11 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
   const { C, mode: themeMode } = useTheme();
   const st = makeSt(C);
   const [plats, setPlats] = useState<string[]>(['any']);
-  const [preset, setPreset] = useState<'now' | 'today' | 'tomorrow' | 'custom'>('now');
+  const [preset, setPreset] = useState<'now' | 'custom'>('now');
   const [custom, setCustom] = useState(new Date(Date.now() + 86400000));
   const [showPicker, setShowPicker] = useState(false);
   const [mode, setMode] = useState<'date' | 'time'>('date');
+  const [pickingTime, setPickingTime] = useState(false);
   const [viewer, setViewer] = useState<number | null>(null);
 
   const vCount = media?.items.length ?? 0;
@@ -111,23 +112,32 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
     });
   };
 
-  const at = preset === 'now' ? Date.now() + 60000 : preset === 'today' ? slotToday(18) : preset === 'tomorrow' ? slotTomorrow(9) : custom.getTime();
+  const at = preset === 'now' ? Date.now() + 60000 : custom.getTime();
 
   const onPick = (_e: any, d?: Date) => {
     if (_e?.type === 'dismissed') {
       setShowPicker(false);
+      setMode('date');
+      setPickingTime(false);
       return;
     }
     if (!d) return;
-    if (mode === 'date' && Platform.OS === 'android') {
-      const merged = new Date(custom);
-      merged.setFullYear(d.getFullYear(), d.getMonth(), d.getDate());
-      setCustom(merged);
-      setMode('time');
-      return;
-    }
     setCustom(d);
-    if (Platform.OS === 'android') setShowPicker(false);
+    // Android: pick date, then reopen for time
+    if (Platform.OS === 'android') {
+      setShowPicker(false);
+      if (mode === 'date') {
+        setMode('time');
+        setTimeout(() => setShowPicker(true), 200);
+      } else {
+        setMode('date');
+      }
+    }
+    // iOS: date → time → stay visible
+    if (Platform.OS === 'ios' && mode === 'date' && !pickingTime) {
+      setMode('time');
+      setPickingTime(true);
+    }
   };
 
   const save = () => {
@@ -293,8 +303,6 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
           {(
             [
               { id: 'now', label: 'Now', sub: 'Reminder fires in about a minute' },
-              { id: 'today', label: 'Today', sub: fmtDateTime(slotToday(18)) },
-              { id: 'tomorrow', label: 'Tomorrow', sub: fmtDateTime(slotTomorrow(9)) },
               { id: 'custom', label: 'Custom', sub: fmtDateTime(custom.getTime()) },
             ] as const
           ).map((o) => {
@@ -306,7 +314,8 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
                   setPreset(o.id);
                   if (o.id === 'custom') {
                     setMode('date');
-                    if (Platform.OS === 'android') setShowPicker(true);
+                    setPickingTime(false);
+                    setShowPicker(true);
                   }
                 }}
                 style={[st.opt, on && { borderColor: C.accent, backgroundColor: C.accentSoft }]}
@@ -319,29 +328,27 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
                   <Text style={st.optT}>{o.label}</Text>
                   <Text style={st.optS}>{o.sub}</Text>
                 </View>
-                {o.id === 'custom' && Platform.OS === 'ios' ? (
-                  <TouchableOpacity onPress={() => setShowPicker((v) => !v)} style={st.mini} activeOpacity={0.7}>
-                    <Text style={st.miniT}>{showPicker ? 'Done' : 'Edit'}</Text>
-                  </TouchableOpacity>
-                ) : null}
               </TouchableOpacity>
             );
           })}
 
-          {showPicker ? (
-            <DateTimePicker
-              value={custom}
-              mode={mode}
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              onChange={onPick}
-              themeVariant={themeMode}
-              textColor={C.ink}
-            />
-          ) : null}
-          {preset === 'custom' && Platform.OS === 'ios' && !showPicker ? (
-            <TouchableOpacity onPress={() => setShowPicker(true)} style={st.miniWide} activeOpacity={0.7}>
-              <Text style={st.miniT}>Pick date & time</Text>
-            </TouchableOpacity>
+          {showPicker && preset === 'custom' ? (
+            <View style={{ alignItems: 'center', paddingVertical: 8 }}>
+              <DateTimePicker
+                value={custom}
+                mode={mode}
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={onPick}
+                themeVariant={themeMode}
+                textColor={C.ink}
+                minimumDate={new Date()}
+              />
+              {Platform.OS === 'ios' ? (
+                <TouchableOpacity onPress={() => { setShowPicker(false); setPickingTime(false); setMode('date'); }} style={st.pickerDone} activeOpacity={0.7}>
+                  <Text style={st.pickerDoneT}>Done</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
           ) : null}
 
           <View style={{ marginTop: 10 }}>
@@ -479,4 +486,6 @@ const makeSt = (C: Palette) => ({
   mini: { backgroundColor: C.paper, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 } as const,
   miniWide: { backgroundColor: C.card, borderRadius: R.lg, paddingVertical: 11, alignItems: 'center' } as const,
   miniT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.accentInk } as const,
+  pickerDone: { marginTop: 12, backgroundColor: C.accent, borderRadius: R.md, paddingVertical: 12, paddingHorizontal: 28 } as const,
+  pickerDoneT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: C.onInk } as const,
 });
