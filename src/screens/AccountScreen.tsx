@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Linking, Switch } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R, T } from '../theme';
-import { Txt, Field, Stepper, Seg } from '../components/ui';
+import { Txt, Field, Stepper, Seg, GhostBtn } from '../components/ui';
 import { wipeAllData } from '../utils/account';
 import { loadTeam, addTeamMember, removeTeamMember, memberChannelsLabel, assignableChannels, TeamMember } from '../utils/team';
 import { loadMetaState } from '../utils/metaStore';
@@ -132,6 +132,20 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
     ]);
   };
 
+  const proTotal = yearly ? `$${49 * proChannels}/yr` : `$${(4.99 * proChannels).toFixed(2)}/mo`;
+  const teamTotal = yearly ? `$${99 * proChannels}/yr` : `$${(9.99 * proChannels).toFixed(2)}/mo`;
+
+  /** Plan switching works today as a local flag; real Play Billing replaces the confirm. */
+  const choosePlan = (target: 'free' | 'pro' | 'team', label: string) => {
+    if (plan === target) return;
+    Alert.alert(`Switch to ${label}?`, target === 'free'
+      ? 'You’ll lose paid features on this device.'
+      : 'Billing is stubbed in this build — this flips the local plan flag only. Real Play Billing activates at launch.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Confirm', onPress: () => onUpdate({ plan: target }) },
+    ]);
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: C.bone }}>
       <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 40 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -242,6 +256,11 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
               <Text style={s.planS}>2 connected channels · 10 scheduled posts per channel</Text>
               <Text style={s.planS}>Unlimited studio, templates & ideas (exports carry a small badge)</Text>
               <Text style={s.planS}>No AI generation · 7-day analytics</Text>
+              {plan !== 'free' ? (
+                <View style={{ marginTop: 8 }}><GhostBtn label="Switch to Free" onPress={() => choosePlan('free', 'Free')} /></View>
+              ) : (
+                <Text style={s.currentTag}>Current plan</Text>
+              )}
             </View>
 
             <View style={[s.plan, plan === 'pro' && { borderColor: C.accent, borderWidth: 1.5 }]}>
@@ -255,6 +274,15 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
               <Text style={s.planS}>MY: {yearly ? `RM ${219 * proChannels}/yr` : `RM ${(21.9 * proChannels).toFixed(2)}/mo`}</Text>
               <Text style={s.planS}>Everything in Free, plus: unlimited scheduled posts · approvals · no export badge</Text>
               <Text style={s.planS}>500 AI generations / month · 1-year analytics + comments</Text>
+              {plan === 'free' ? (
+                <TouchableOpacity onPress={() => choosePlan('pro', `Zap Pro (${proTotal})`)} style={[s.save, { marginTop: 8 }]} activeOpacity={0.85}>
+                  <Text style={s.saveT}>Upgrade to Pro · {proTotal}</Text>
+                </TouchableOpacity>
+              ) : plan === 'team' ? (
+                <View style={{ marginTop: 8 }}><GhostBtn label="Switch to Pro" onPress={() => choosePlan('pro', 'Zap Pro')} /></View>
+              ) : (
+                <Text style={s.currentTag}>Current plan</Text>
+              )}
             </View>
 
             <View style={[s.plan, plan === 'team' && { borderColor: C.accent, borderWidth: 1.5 }]}>
@@ -268,23 +296,23 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
               <Text style={s.planS}>MY: {yearly ? `RM ${439 * proChannels}/yr` : `RM ${(43.9 * proChannels).toFixed(2)}/mo`}</Text>
               <Text style={s.planS}>Unlimited seats · owner assigns members to specific channels (or all)</Text>
               <Text style={s.planS}>1,000 AI generations / month · approvals · priority support</Text>
+              {plan !== 'team' ? (
+                <TouchableOpacity onPress={() => choosePlan('team', `Zap Team (${teamTotal})`)} style={[s.save, { marginTop: 8 }]} activeOpacity={0.85}>
+                  <Text style={s.saveT}>{plan === 'free' ? 'Upgrade' : 'Switch'} to Team · {teamTotal}</Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={s.currentTag}>Current plan</Text>
+              )}
             </View>
 
-            {plan === 'free' ? (
-              <TouchableOpacity
-                onPress={() => Alert.alert('Zap Pro & Team', 'Billing goes live with the Play Store release — these buttons will start the Google Play subscription then.')}
-                style={s.save} activeOpacity={0.85}
-              >
-                <Text style={s.saveT}>Upgrade</Text>
-              </TouchableOpacity>
-            ) : (
+            {plan !== 'free' ? (
               <TouchableOpacity
                 onPress={() => Alert.alert('Manage subscription', 'Subscriptions are managed in the Play Store app under Payments & subscriptions.')}
                 style={s.save} activeOpacity={0.85}
               >
                 <Text style={s.saveT}>Manage subscription</Text>
               </TouchableOpacity>
-            )}
+            ) : null}
             <Text style={s.note}>Need more AI without Pro? Credit packs ($4.99 / 100 generations) arrive at launch.</Text>
           </View>
         ) : null}
@@ -415,6 +443,7 @@ const makeS = (C: Palette) => StyleSheet.create({
   chan: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: C.paper, borderWidth: 1, borderColor: C.lineSoft },
   chanT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.muted },
   planT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 17, color: C.ink },
+  currentTag: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.accent, marginTop: 6 },
   planS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, lineHeight: 20, color: C.muted },
   body: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 14, lineHeight: 22, color: C.soft },
 });
