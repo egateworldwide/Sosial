@@ -183,6 +183,7 @@ function Shell() {
               onTemplate={newTemplate}
               onOpenProject={(p) => { loadPost(p); setRoute('editor'); }}
               onComposePost={composePost}
+              onPost={() => setRoute('post')}
             />
           ) : null}
           {route === 'post' ? (
