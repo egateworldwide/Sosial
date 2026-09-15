@@ -168,7 +168,7 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
         )}
 
         {/* channel drawer trigger */}
-        <View style={{ paddingHorizontal: 24, marginTop: bare ? 0 : 14 }}>
+        <View style={{ paddingHorizontal: 24, marginTop: 14 }}>
           <TouchableOpacity onPress={() => setDrawer(true)} style={st.chanBtn} activeOpacity={0.75}>
             {channel === 'all' ? (
               <Ionicons name="globe-outline" size={18} color={C.accentInk} />
