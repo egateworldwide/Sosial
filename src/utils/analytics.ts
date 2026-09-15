@@ -37,6 +37,7 @@ export interface PerPost {
   likes: number;
   comments: number;
   views: number | null;
+  shares?: number;
   ts: number;
 }
 
@@ -48,6 +49,7 @@ export interface ChannelStats {
   reactions: number;
   comments: number;
   views: number | null;
+  shares?: number;
   engagementRate: number | null;
   perPost: PerPost[];
   note?: string;
@@ -85,8 +87,11 @@ async function fbStats(m: MetaState, start: number, end: number): Promise<Channe
   try {
     const prof: any = await jget(graph(`/${m.pageId}?fields=fan_count,followers_count&access_token=${tok}`));
     if (!prof.error) base.followers = num(prof.followers_count) || num(prof.fan_count) || null;
+    // base list uses only fields that work with pages_read_engagement alone —
+    // likes/comments .summary() aggregations throw (#10) on some apps even
+    // WITH the permission granted (documented Meta platform quirk, Feb 2026).
     const feed: any = await jget(
-      graph(`/${m.pageId}/posts?fields=id,message,created_time,likes.summary(true),comments.summary(true)&limit=25&access_token=${tok}`),
+      graph(`/${m.pageId}/posts?fields=id,message,created_time,shares&limit=25&access_token=${tok}`),
     );
     if (feed.error) throw new Error(feed.error.message || 'Could not read Page posts.');
     const inRange = ((feed.data ?? []) as any[]).filter((p) => {
@@ -96,15 +101,34 @@ async function fbStats(m: MetaState, start: number, end: number): Promise<Channe
     base.perPost = inRange.map((p) => ({
       id: String(p.id),
       title: String(p.message ?? '').split('\n')[0].slice(0, 60) || 'Page post',
-      likes: num(p.likes?.summary?.total_count),
-      comments: num(p.comments?.summary?.total_count),
+      likes: 0,
+      comments: 0,
       views: null,
+      shares: num(p.shares?.count),
       ts: tsOf(p.created_time),
     }));
     base.posts = base.perPost.length;
-    base.reactions = base.perPost.reduce((a, p) => a + p.likes, 0);
-    base.comments = base.perPost.reduce((a, p) => a + p.comments, 0);
-    if (base.followers) base.engagementRate = ((base.reactions + base.comments) / base.followers) * 100;
+    base.shares = base.perPost.reduce((a, p) => a + (p.shares ?? 0), 0);
+    // enrichment: like/comment totals need pages_read_user_content on the token.
+    // Kept separate so a refusal here can never nuke the (working) list above.
+    try {
+      const enrich: any = await jget(
+        graph(`/${m.pageId}/posts?fields=id,likes.summary(true),comments.summary(true)&limit=25&access_token=${tok}`),
+      );
+      if (enrich.error) throw new Error(enrich.error.message);
+      const byId = new Map<string, any>(((enrich.data ?? []) as any[]).map((p) => [String(p.id), p]));
+      for (const p of base.perPost) {
+        const e = byId.get(p.id);
+        if (!e) continue;
+        p.likes = num(e.likes?.summary?.total_count);
+        p.comments = num(e.comments?.summary?.total_count);
+      }
+      base.reactions = base.perPost.reduce((a, p) => a + p.likes, 0);
+      base.comments = base.perPost.reduce((a, p) => a + p.comments, 0);
+      if (base.followers) base.engagementRate = ((base.reactions + base.comments) / base.followers) * 100;
+    } catch {
+      base.note = 'Like/comment counts need the pages_read_user_content permission on this login.';
+    }
   } catch (e: any) {
     base.note = e?.message ?? 'Facebook request failed.';
   }

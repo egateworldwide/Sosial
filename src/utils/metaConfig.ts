@@ -19,6 +19,7 @@ export const GRAPH_VERSION = 'v21.0';
 export const FB_SCOPES = [
   'pages_show_list',
   'pages_read_engagement',
+  'pages_read_user_content',
   'pages_manage_posts',
 ];
 

@@ -193,6 +193,7 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
               const parts = [`${c.posts} post${c.posts === 1 ? '' : 's'}`];
               if (c.reactions > 0) parts.push(`${compact(c.reactions)} reactions`);
               if (c.comments > 0) parts.push(`${compact(c.comments)} comments`);
+              if ((c.shares ?? 0) > 0) parts.push(`${compact(c.shares ?? 0)} shares`);
               if (c.views !== null) parts.push(`${compact(c.views)} views`);
               return (
                 <View key={c.channel} style={{ paddingHorizontal: 24, marginTop: 30 }}>
