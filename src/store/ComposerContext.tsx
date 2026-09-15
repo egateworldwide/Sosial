@@ -106,21 +106,21 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
       Alert.alert('TikTok & Instagram need media', 'Attach a photo or video — text-only posts can’t go to those channels.');
       return;
     }
-    if (!(await notificationsSupported())) {
-      Alert.alert('Needs the installed app', NO_NOTIF_MSG);
-      return;
-    }
-    const perm = await ensureNotifPermission();
-    if (!perm) {
-      Alert.alert('Notifications off', 'Allow notifications to get reminded at post time.');
-      return;
-    }
     const keepApproval = sheetRef.current.post?.status === 'approval';
     const rec = buildRec(at, plats, keepApproval ? 'approval' : 'queued');
     await saveManagedPost(rec);
-    await schedulePostReminder({ id: rec.id, title: rec.title, platforms: plats, at });
+    // Reminders are best-effort: the post queues regardless, then we try to arm one.
+    let reminded = false;
+    if (await notificationsSupported()) {
+      if (await ensureNotifPermission()) {
+        reminded = await schedulePostReminder({ id: rec.id, title: rec.title, platforms: plats, at });
+      }
+    }
     setSheet(null);
     bump();
+    if (!reminded) {
+      Alert.alert('Queued without reminder', NO_NOTIF_MSG);
+    }
   };
 
   const saveDraft = async () => {
