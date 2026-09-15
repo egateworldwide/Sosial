@@ -1,4 +1,6 @@
 import { graph, IG_GRAPH, THREADS_API } from './metaConfig';
+import { TT_API } from './tiktokConfig';
+import { getValidToken } from './tiktokAuth';
 import { MetaState } from './metaStore';
 
 export type RangeKey = 'today' | 'yesterday' | 'last7' | 'last30' | 'last90' | 'last180' | 'last365';
@@ -39,7 +41,7 @@ export interface PerPost {
 }
 
 export interface ChannelStats {
-  channel: 'facebook' | 'instagram' | 'threads';
+  channel: 'facebook' | 'instagram' | 'threads' | 'tiktok';
   label: string;
   followers: number | null;
   posts: number;
@@ -199,6 +201,12 @@ async function thStats(m: MetaState, start: number, end: number): Promise<Channe
   if (!m.threadsId || !m.threadsToken) return { ...base, note: 'Threads not connected.' };
   const tok = encodeURIComponent(m.threadsToken);
   try {
+    // follower counts aren't in the documented profile fields — best-effort only
+    try {
+      const f: any = await jget(`${THREADS_API}/me?fields=followers_count&access_token=${tok}`);
+      if (!f.error && typeof f.followers_count === 'number') base.followers = f.followers_count;
+    } catch {}
+    if (base.followers === null) base.note = 'Threads doesn’t expose follower counts to this app yet.';
     const list: any = await jget(
       `${THREADS_API}/${m.threadsId}/threads?fields=id,text,timestamp,like_count,reply_count,repost_count,view_count&limit=25&access_token=${tok}`,
     );
@@ -247,6 +255,70 @@ async function thComments(m: MetaState, stats: PerPost[]): Promise<FeedComment[]
   return out;
 }
 
+/* ---------------- TikTok (Display API — counts only, no reply threads) ---------------- */
+
+async function ttStats(m: MetaState, start: number, end: number): Promise<ChannelStats> {
+  const base: ChannelStats = {
+    channel: 'tiktok', label: m.ttName ?? 'TikTok',
+    followers: null, posts: 0, reactions: 0, comments: 0, views: null,
+    engagementRate: null, perPost: [],
+  };
+  if (!m.ttRefreshToken && !m.ttAccessToken) return { ...base, note: 'TikTok not connected.' };
+  let token: string;
+  try {
+    token = await getValidToken();
+  } catch (e: any) {
+    return { ...base, note: e?.message ?? 'TikTok session expired — reconnect TikTok.' };
+  }
+  const auth = { Authorization: `Bearer ${token}` };
+  try {
+    const r = await fetch(`${TT_API}/v2/user/info/?fields=open_id,display_name,follower_count,following_count,likes_count,video_count`, { headers: auth });
+    const p: any = await r.json().catch(() => ({}));
+    const u = p?.data?.user;
+    if (!u?.open_id) throw new Error('Could not read your TikTok profile.');
+    base.followers = num(u.follower_count) || null;
+    if (u.display_name) base.label = `@${u.display_name}`;
+  } catch (e: any) {
+    return { ...base, note: e?.message ?? 'TikTok request failed.' };
+  }
+  // per-video stats need the video.list scope — tokens granted before it existed skip this
+  if (m.ttOpenId) {
+    try {
+      const r = await fetch(`${TT_API}/v2/video/list/`, {
+        method: 'POST',
+        headers: { ...auth, 'Content-Type': 'application/json; charset=UTF-8' },
+        body: JSON.stringify({
+          open_id: m.ttOpenId, cursor: 0, max_count: 20,
+          fields: ['id', 'title', 'create_time', 'view_count', 'like_count', 'comment_count', 'share_count'],
+        }),
+      });
+      const j: any = await r.json().catch(() => ({}));
+      if (j?.error?.code !== 'ok') throw new Error('video.list not granted');
+      const inRange = ((j?.data?.videos ?? []) as any[]).filter((x) => {
+        const t = num(x.create_time) * 1000;
+        return t >= start && t < end;
+      });
+      base.perPost = inRange.map((x) => ({
+        id: String(x.id),
+        title: String(x.title ?? '').split('\n')[0].slice(0, 60) || 'TikTok video',
+        likes: num(x.like_count),
+        comments: num(x.comment_count),
+        views: typeof x.view_count === 'number' ? x.view_count : null,
+        ts: num(x.create_time) * 1000,
+      }));
+      base.posts = base.perPost.length;
+      base.reactions = base.perPost.reduce((a, p) => a + p.likes, 0);
+      base.comments = base.perPost.reduce((a, p) => a + p.comments, 0);
+      const v = base.perPost.reduce((a, p) => a + (p.views ?? 0), 0);
+      base.views = v > 0 ? v : null;
+      if (base.followers) base.engagementRate = ((base.reactions + base.comments) / base.followers) * 100;
+    } catch {
+      base.note = 'Reconnect TikTok to include per-video stats.';
+    }
+  }
+  return base;
+}
+
 /* ---------------- combined ---------------- */
 
 export interface Analytics {
@@ -256,8 +328,8 @@ export interface Analytics {
 
 export async function fetchAnalytics(m: MetaState, range: RangeKey): Promise<Analytics> {
   const { start, end } = rangeBounds(range);
-  const [fb, ig, th] = await Promise.all([fbStats(m, start, end), igStats(m, start, end), thStats(m, start, end)]);
+  const [fb, ig, th, tt] = await Promise.all([fbStats(m, start, end), igStats(m, start, end), thStats(m, start, end), ttStats(m, start, end)]);
   const [fc, ic, tc] = await Promise.all([fbComments(m, fb.perPost), igComments(m, ig.perPost), thComments(m, th.perPost)]);
   const comments = [...fc, ...ic, ...tc].sort((a, b) => b.ts - a.ts);
-  return { channels: [fb, ig, th], comments };
+  return { channels: [fb, ig, th, tt], comments };
 }

@@ -21,7 +21,7 @@ export const TT_AUTH_ENDPOINT = 'https://www.tiktok.com/v2/auth/authorize/';
 export const TT_TOKEN_ENDPOINT = 'https://open.tiktokapis.com/v2/oauth/token/';
 export const TT_API = 'https://open.tiktokapis.com';
 
-export const TT_SCOPES = ['user.info.basic', 'video.upload', 'video.publish'];
+export const TT_SCOPES = ['user.info.basic', 'video.upload', 'video.publish', 'video.list'];
 
 /** Privacy levels TikTok understands — always intersect with creator_info options. */
 export const TT_PRIVACY_LABELS: Record<string, string> = {

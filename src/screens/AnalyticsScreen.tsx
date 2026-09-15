@@ -35,7 +35,7 @@ function timeAgo(ts: number): string {
   return `${Math.round(d / 86400000)}d ago`;
 }
 
-/** Analytics tab: channel drawer + ranges + summary + bars + comments/mentions. */
+/** Analytics tab: hero totals, per-channel sections, ranked posts, comment feed. */
 export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
   email: string;
   team: string;
@@ -87,7 +87,7 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
     { id: 'facebook', label: 'Facebook', sub: meta.pageName ?? 'Not connected', connected: !!meta.pageId },
     { id: 'instagram', label: 'Instagram', sub: meta.igName ?? 'Not connected', connected: !!meta.igId },
     { id: 'threads', label: 'Threads', sub: meta.threadsName ?? 'Not connected', connected: !!meta.threadsId },
-    { id: 'tiktok', label: 'TikTok', sub: meta.ttName ?? ((meta.ttAccessToken || meta.ttRefreshToken) ? 'Connected' : 'Analytics coming soon'), connected: !!(meta.ttAccessToken || meta.ttRefreshToken) },
+    { id: 'tiktok', label: 'TikTok', sub: meta.ttName ?? ((meta.ttAccessToken || meta.ttRefreshToken) ? 'Connected' : 'Not connected'), connected: !!(meta.ttAccessToken || meta.ttRefreshToken) },
     { id: 'linkedin', label: 'LinkedIn', sub: 'Coming soon', connected: false, comingSoon: true },
     { id: 'bluesky', label: 'Bluesky', sub: 'Coming soon', connected: false, comingSoon: true },
     { id: 'youtube', label: 'YouTube', sub: 'Coming soon', connected: false, comingSoon: true },
@@ -98,7 +98,9 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
   const channelLabel = channel === 'all' ? 'All channels' : channel[0].toUpperCase() + channel.slice(1);
 
   const chans = (data?.channels ?? []).filter((c) => (channel === 'all' ? true : c.channel === channel));
+  const live = chans.filter((c) => !(c.note ?? '').endsWith('not connected.'));
   const totals = agg(chans);
+  const rangeLabel = RANGES.find((r) => r.key === range)?.label ?? '';
   const bars = chans
     .flatMap((c) => c.perPost.map((p) => ({ ...p, channel: c.channel })))
     .map((p) => ({ ...p, score: p.likes + p.comments }))
@@ -109,13 +111,16 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
   const notes = chans.map((c) => c.note).filter(Boolean) as string[];
   const anyConnected = drawerChannels.some((c) => c.connected);
 
-  const statCard = (label: string, value: string, icon: string) => (
-    <View style={s.stat}>
-      <Ionicons name={icon as any} size={18} color={C.accent} />
-      <Text style={s.statV}>{value}</Text>
-      <Text style={s.statL}>{label}</Text>
-    </View>
-  );
+  const hero = totals.followers !== null
+    ? { v: compact(totals.followers), l: totals.followers === 1 ? 'follower' : 'followers' }
+    : totals.reactions + totals.comments > 0
+      ? { v: compact(totals.reactions + totals.comments), l: 'interactions' }
+      : { v: compact(totals.posts), l: totals.posts === 1 ? 'post' : 'posts' };
+  const heroSub: string[] = [`${totals.posts} post${totals.posts === 1 ? '' : 's'}`];
+  if (totals.reactions > 0) heroSub.push(`${compact(totals.reactions)} reactions`);
+  if (totals.comments > 0) heroSub.push(`${compact(totals.comments)} comments`);
+  if (totals.views !== null) heroSub.push(`${compact(totals.views)} views`);
+  if (totals.engagement !== null) heroSub.push(`${totals.engagement.toFixed(1)}% engagement`);
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bone }}>
@@ -158,7 +163,7 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
           <View style={{ paddingHorizontal: 24, marginTop: 16 }}>
             <View style={s.empty}>
               <Text style={s.emptyT}>No channels connected</Text>
-              <Text style={s.emptyS}>Connect Facebook, Instagram or Threads to see followers, reactions and comments.</Text>
+              <Text style={s.emptyS}>Connect Facebook, Instagram, Threads or TikTok to see followers, reactions and comments.</Text>
               <TouchableOpacity onPress={onConnect} style={s.connectBtn} activeOpacity={0.8}>
                 <Text style={s.connectBtnT}>Connect a channel</Text>
               </TouchableOpacity>
@@ -171,48 +176,97 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
           </View>
         ) : (
           <>
-            <View style={s.grid}>
-              {statCard('Posts', compact(totals.posts), 'send-outline')}
-              {statCard('Followers', compact(totals.followers), 'people-outline')}
-              {statCard('Reactions', compact(totals.reactions), 'heart-outline')}
-              {statCard('Comments', compact(totals.comments), 'chatbubble-outline')}
-              {statCard('Engagement', totals.engagement === null ? '—' : `${totals.engagement.toFixed(1)}%`, 'trending-up-outline')}
-              {statCard('Views', compact(totals.views), 'eye-outline')}
+            {/* hero */}
+            <View style={{ paddingHorizontal: 24, marginTop: 22 }}>
+              <Text style={s.eyebrow}>{rangeLabel} · {live.length} channel{live.length === 1 ? '' : 's'}</Text>
+              <Text style={s.heroNum}>{hero.v}</Text>
+              <Text style={s.heroLabel}>{hero.l}</Text>
+              <Text style={s.heroSub}>{heroSub.join('  ·  ')}</Text>
             </View>
 
-            {/* performance bars */}
-            <View style={{ paddingHorizontal: 24, marginTop: 22 }}>
+            {/* per-channel sections */}
+            {live.map((c) => {
+              const brand = SOCIAL_META[c.channel]?.bg ?? C.ink;
+              const name = SOCIAL_META[c.channel]?.label ?? c.channel;
+              const scores = c.perPost.map((p) => p.likes + p.comments);
+              const max = Math.max(1, ...scores);
+              const parts = [`${c.posts} post${c.posts === 1 ? '' : 's'}`];
+              if (c.reactions > 0) parts.push(`${compact(c.reactions)} reactions`);
+              if (c.comments > 0) parts.push(`${compact(c.comments)} comments`);
+              if (c.views !== null) parts.push(`${compact(c.views)} views`);
+              return (
+                <View key={c.channel} style={{ paddingHorizontal: 24, marginTop: 30 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={[s.tile, { backgroundColor: brand }]}>
+                      <SocialGlyph platform={c.channel} size={17} color="#fff" />
+                    </View>
+                    <View style={{ flex: 1, gap: 1 }}>
+                      <Text style={s.chanName}>{name}</Text>
+                      <Text style={s.chanHandle} numberOfLines={1}>{c.label}</Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={s.chanBig}>{compact(c.followers)}</Text>
+                      <Text style={s.chanSmall}>followers</Text>
+                    </View>
+                  </View>
+                  {scores.length > 0 ? (
+                    <View style={s.spark}>
+                      {c.perPost.slice(0, 14).map((p) => {
+                        const sc = p.likes + p.comments;
+                        return (
+                          <View
+                            key={p.id}
+                            style={[s.sparkBar, { height: Math.max(3, (sc / max) * 40), backgroundColor: brand, opacity: sc > 0 ? 1 : 0.25 }]}
+                          />
+                        );
+                      })}
+                    </View>
+                  ) : null}
+                  <Text style={s.statStrip}>{parts.join('  ·  ')}</Text>
+                  {c.note ? <Text style={s.note}>{c.note}</Text> : null}
+                </View>
+              );
+            })}
+
+            {/* top posts */}
+            <View style={{ paddingHorizontal: 24, marginTop: 30 }}>
               <Text style={s.secT}>Top posts</Text>
               {bars.length === 0 ? (
                 <Text style={s.hint}>No posts in this range yet.</Text>
               ) : (
-                <View style={{ gap: 10, marginTop: 12 }}>
-                  {bars.map((b) => (
-                    <View key={`${b.channel}-${b.id}`} style={s.barRow}>
-                      <View style={[s.dot, { backgroundColor: SOCIAL_META[b.channel]?.bg ?? C.ink }]} />
-                      <View style={{ flex: 1, gap: 5 }}>
-                        <Text style={s.barT} numberOfLines={1}>{b.title}</Text>
-                        <View style={s.track}>
-                          <View style={[s.fill, { width: `${Math.max(4, (b.score / maxScore) * 100)}%` }]} />
+                <View style={{ marginTop: 4 }}>
+                  {bars.map((b, i) => {
+                    const brand = SOCIAL_META[b.channel]?.bg ?? C.ink;
+                    return (
+                      <View key={`${b.channel}-${b.id}`} style={s.rankRow}>
+                        <Text style={s.rankNo}>{String(i + 1).padStart(2, '0')}</Text>
+                        <View style={{ flex: 1, gap: 6 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                            <View style={[s.dot, { backgroundColor: brand }]} />
+                            <Text style={s.barT} numberOfLines={1}>{b.title}</Text>
+                          </View>
+                          <View style={s.track}>
+                            <View style={[s.trackFill, { width: `${Math.max(4, (b.score / maxScore) * 100)}%`, backgroundColor: brand }]} />
+                          </View>
                         </View>
+                        <Text style={s.barV}>{compact(b.score)}</Text>
                       </View>
-                      <Text style={s.barV}>{compact(b.score)}</Text>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </View>
               )}
             </View>
 
             {/* comments & mentions */}
-            <View style={{ paddingHorizontal: 24, marginTop: 22 }}>
+            <View style={{ paddingHorizontal: 24, marginTop: 30 }}>
               <Text style={s.secT}>Comments & mentions</Text>
               {comments.length === 0 ? (
                 <Text style={s.hint}>No comments found on recent posts.</Text>
               ) : (
-                <View style={{ gap: 10, marginTop: 12 }}>
+                <View style={{ marginTop: 4 }}>
                   {comments.slice(0, 30).map((c, i) => (
-                    <View key={`${c.channel}-${i}`} style={s.comment}>
-                      <View style={[s.dot, { backgroundColor: SOCIAL_META[c.channel]?.bg ?? C.ink }]} />
+                    <View key={`${c.channel}-${i}`} style={s.feedRow}>
+                      <View style={[s.dot, { backgroundColor: SOCIAL_META[c.channel]?.bg ?? C.ink, marginTop: 5 }]} />
                       <View style={{ flex: 1, gap: 2 }}>
                         <Text style={s.commentA} numberOfLines={1}>
                           {c.author} <Text style={s.commentOn}>on {c.postTitle}</Text>
@@ -256,19 +310,28 @@ const makeS = (C: Palette) => StyleSheet.create({
   chanBtnT: { flex: 1, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14.5, color: C.ink },
   range: { borderRadius: 999, paddingHorizontal: 15, paddingVertical: 9, backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft },
   rangeT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.muted },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 24, marginTop: 16 },
-  stat: { width: '31%', backgroundColor: C.card, borderRadius: R.md, borderWidth: 1, borderColor: C.lineSoft, padding: 12, gap: 4 },
-  statV: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 19, letterSpacing: -0.4, color: C.ink, marginTop: 4 },
-  statL: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11.5, color: C.muted },
+  eyebrow: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11.5, letterSpacing: 1.6, textTransform: 'uppercase', color: C.accent },
+  heroNum: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 52, letterSpacing: -2, lineHeight: 56, color: C.ink, marginTop: 6 },
+  heroLabel: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15, color: C.soft, marginTop: 2 },
+  heroSub: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 19, color: C.muted, marginTop: 8 },
+  tile: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  chanName: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 17, letterSpacing: -0.3, color: C.ink },
+  chanHandle: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, color: C.muted, marginTop: 1 },
+  chanBig: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 24, letterSpacing: -0.6, color: C.ink },
+  chanSmall: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11.5, color: C.muted },
+  spark: { flexDirection: 'row', alignItems: 'flex-end', gap: 5, height: 44, marginTop: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.lineSoft, paddingBottom: 0 },
+  sparkBar: { flex: 1, borderRadius: 2 },
+  statStrip: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 20, color: C.muted, marginTop: 10 },
   secT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 19, letterSpacing: -0.4, color: C.ink },
   hint: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 19, color: C.muted, marginTop: 8 },
-  barRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.card, borderRadius: R.md, borderWidth: 1, borderColor: C.lineSoft, padding: 12 },
+  rankRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.lineSoft },
+  rankNo: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: C.accent, width: 22 },
   dot: { width: 10, height: 10, borderRadius: 5 },
-  barT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.ink },
-  track: { height: 8, borderRadius: 4, backgroundColor: C.surface, overflow: 'hidden' },
-  fill: { height: 8, borderRadius: 4, backgroundColor: C.accent },
+  barT: { flex: 1, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.ink },
+  track: { height: 5, borderRadius: 3, backgroundColor: C.surface, overflow: 'hidden' },
+  trackFill: { height: 5, borderRadius: 3 },
   barV: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: C.ink, minWidth: 40, textAlign: 'right' },
-  comment: { flexDirection: 'row', gap: 10, backgroundColor: C.card, borderRadius: R.md, borderWidth: 1, borderColor: C.lineSoft, padding: 12 },
+  feedRow: { flexDirection: 'row', gap: 10, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.lineSoft },
   commentA: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.ink },
   commentOn: { fontFamily: 'PlusJakartaSans_400Regular', color: C.muted },
   commentX: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13.5, lineHeight: 19, color: C.soft },
