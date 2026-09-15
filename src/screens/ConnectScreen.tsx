@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R, T } from '../theme';
 import { SocialGlyph } from '../components/ui';
@@ -10,6 +11,7 @@ import {
   loginFacebook, exchangeFacebookCode, fetchPages, pickPage, FbPage,
   loginInstagram, exchangeInstagramCode, fetchInstagramProfile,
   loginThreads, exchangeThreadsCode, fetchThreadsProfile,
+  BRIDGE_URL,
 } from '../utils/metaAuth';
 import { loginTikTok, completeTikTokLogin } from '../utils/tiktokAuth';
 import { IG_APP_ID } from '../utils/metaConfig';
@@ -330,6 +332,23 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
             <Text style={s.rowS}>{busy}</Text>
           </View>
         ) : null}
+
+        <TouchableOpacity
+          onPress={async () => {
+            try {
+              await Clipboard.setStringAsync(BRIDGE_URL);
+              Alert.alert('Copied', 'Paste this exact URL as a Valid OAuth Redirect URI in every app dashboard.');
+            } catch {}
+          }}
+          style={s.uriCard}
+          activeOpacity={0.7}
+        >
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={s.uriT}>Login redirect URI — tap to copy</Text>
+            <Text style={s.uriU} numberOfLines={2}>{BRIDGE_URL}</Text>
+          </View>
+          <Ionicons name="copy-outline" size={18} color={C.faint} />
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -355,4 +374,7 @@ const makeS = (C: Palette) => StyleSheet.create({
   soonHeadT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, letterSpacing: 0.6, textTransform: 'uppercase', color: C.faint },
   soon: { backgroundColor: C.accentSoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   soonT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11, color: C.accentInk },
+  uriCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, padding: 14, marginTop: 18 },
+  uriT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.ink },
+  uriU: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.muted, marginTop: 2 },
 });
