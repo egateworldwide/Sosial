@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SOCIAL_META, uid } from '../constants';
 
-export type TeamRole = 'owner' | 'member';
+export type TeamRole = 'owner' | 'admin' | 'member';
 
 export interface TeamMember {
   id: string;
@@ -11,6 +11,12 @@ export interface TeamMember {
   /** channel ids the member may post to, or ['all'] for every channel */
   channels: string[];
   createdAt: number;
+}
+
+/** Who is acting in the Team screen. Owner is the device holder (account email). */
+export interface Actor {
+  id: string | null;
+  role: TeamRole;
 }
 
 const KEY = 'zap_team_v1';
@@ -47,9 +53,36 @@ export async function addTeamMember(m: { name: string; email: string; channels: 
   return persist(list);
 }
 
+export async function updateMember(id: string, patch: Partial<Pick<TeamMember, 'name' | 'email' | 'role' | 'channels'>>): Promise<TeamMember[]> {
+  const list = await loadTeam();
+  return persist(list.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+}
+
 export async function removeTeamMember(id: string): Promise<TeamMember[]> {
   const list = await loadTeam();
   return persist(list.filter((x) => x.id !== id));
+}
+
+/* ---------------- permissions (mirrored by the backend later) ---------------- */
+
+/** Owner removes anyone; admin removes members only (never self, never admins). */
+export function canRemoveMember(actor: Actor, target: TeamMember): boolean {
+  if (actor.role === 'owner') return target.role !== 'owner';
+  if (actor.role === 'admin') return target.role === 'member' && target.id !== actor.id;
+  return false;
+}
+
+/** Owner assigns anyone; admin assigns members only. */
+export function canAssignChannels(actor: Actor, target: TeamMember): boolean {
+  if (actor.role === 'owner') return true;
+  if (actor.role === 'admin') return target.role === 'member' && target.id !== actor.id;
+  return false;
+}
+
+/** Only the owner moves people between admin and member (never creates owners). */
+export function canChangeRole(actor: Actor, target: TeamMember, next: 'admin' | 'member'): boolean {
+  if (actor.role !== 'owner') return false;
+  return target.role !== 'owner' && target.role !== next;
 }
 
 /** 'All channels' or 'Facebook +2' style label. */

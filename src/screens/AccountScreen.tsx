@@ -4,7 +4,7 @@ import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R, T } from '../theme';
 import { Txt, Field, Stepper, Seg, GhostBtn } from '../components/ui';
 import { wipeAllData } from '../utils/account';
-import { loadTeam, addTeamMember, removeTeamMember, memberChannelsLabel, assignableChannels, TeamMember } from '../utils/team';
+import { loadTeam, addTeamMember, removeTeamMember, updateMember, memberChannelsLabel, assignableChannels, canRemoveMember, canAssignChannels, canChangeRole, TeamMember, Actor } from '../utils/team';
 import { loadMetaState } from '../utils/metaStore';
 
 type AcctView = 'main' | 'notif' | 'email' | 'password' | 'plan' | 'team' | 'changelog' | 'terms' | 'legal';
@@ -41,6 +41,15 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
   const [mEmail, setMEmail] = useState('');
   const [mChannels, setMChannels] = useState<string[]>(['all']);
   const [chanList, setChanList] = useState<{ id: string; label: string; sub: string }[]>([]);
+  const [actingAs, setActingAs] = useState<string>('owner');
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+
+  const actor: Actor = actingAs === 'owner'
+    ? { id: null, role: 'owner' }
+    : (() => {
+        const m = members.find((x) => x.id === actingAs);
+        return m ? { id: m.id, role: m.role } : { id: null, role: 'owner' as const };
+      })();
 
   useEffect(() => {
     loadTeam().then(setMembers);
@@ -128,8 +137,48 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
   const dropMember = (m: TeamMember) => {
     Alert.alert('Remove teammate', `Remove ${m.name} from the team?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: async () => setMembers(await removeTeamMember(m.id)) },
+      { text: 'Remove', style: 'destructive', onPress: async () => {
+        setMembers(await removeTeamMember(m.id));
+        resetActingIfGone(m.id);
+      } },
     ]);
+  };
+
+  const resetActingIfGone = (id: string) => {
+    if (actingAs === id) setActingAs('owner');
+    if (assigningId === id) setAssigningId(null);
+  };
+
+  const leaveTeam = (m: TeamMember) => {
+    Alert.alert('Leave team?', 'You’ll lose access to these channels on this device.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Leave', style: 'destructive', onPress: async () => {
+        setMembers(await removeTeamMember(m.id));
+        resetActingIfGone(m.id);
+      } },
+    ]);
+  };
+
+  const stepDown = (m: TeamMember) => {
+    Alert.alert('Step down?', `${m.name} will become a regular member.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Step down', onPress: async () => setMembers(await updateMember(m.id, { role: 'member' })) },
+    ]);
+  };
+
+  const flipRole = async (m: TeamMember) => {
+    const next = m.role === 'admin' ? 'member' : 'admin';
+    setMembers(await updateMember(m.id, { role: next }));
+  };
+
+  const toggleMemberChannel = async (m: TeamMember, id: string) => {
+    let next: string[];
+    if (id === 'all') next = ['all'];
+    else {
+      const without = m.channels.filter((x) => x !== 'all' && x !== id);
+      next = m.channels.includes(id) ? (without.length ? without : ['all']) : [...without, id];
+    }
+    setMembers(await updateMember(m.id, { channels: next }));
   };
 
   const proTotal = yearly ? `$${49 * proChannels}/yr` : `$${(4.99 * proChannels).toFixed(2)}/mo`;
@@ -172,7 +221,7 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
             <View style={s.list}>
               {row('add-circle-outline', 'Connect new channel', 'Facebook, Instagram, Threads', onConnect)}
               {row('card-outline', 'Subscription plan', planName, () => setView('plan'))}
-              {row('people-outline', 'Team', members.length ? `${members.length} teammate${members.length === 1 ? '' : 's'} · invite & roles` : 'Invite people & assign channels', () => setView('team'))}
+              {plan === 'team' ? row('people-outline', 'Team', members.length ? `${members.length} teammate${members.length === 1 ? '' : 's'} · invite & roles` : 'Invite people & assign channels', () => setView('team')) : null}
               {row('refresh-outline', 'Restore purchase', undefined, () => Alert.alert('Restore purchase', 'No purchases found on this device.'))}
               {row('star-outline', 'Rate Zap', 'Review on the Play Store', rateApp)}
               {row('sparkles-outline', "What's new", 'Changelog', () => setView('changelog'))}
@@ -317,8 +366,33 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
         ) : null}
 
         {view === 'team' ? (
+          plan !== 'team' ? (
+            <View style={{ marginTop: 16, gap: 12 }}>
+              <View style={s.empty}>
+                <Text style={s.emptyT}>Team needs Zap Team</Text>
+                <Text style={s.emptyS}>The roster, roles and per-channel assignment unlock on the Team plan.</Text>
+                <TouchableOpacity onPress={() => setView('plan')} style={[s.save, { marginTop: 12 }]} activeOpacity={0.85}>
+                  <Text style={s.saveT}>See plans</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
           <View style={{ marginTop: 16, gap: 12 }}>
             <Text style={s.note}>Roster lives on this device for now — real invites and cross-device sync arrive with the backend.</Text>
+
+            <Field label="Acting as" hint="Preview what each role can do.">
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                <TouchableOpacity onPress={() => { setActingAs('owner'); setAssigningId(null); }} style={[s.chan, actingAs === 'owner' && { backgroundColor: C.ink, borderColor: C.ink }]} activeOpacity={0.75}>
+                  <Text style={[s.chanT, actingAs === 'owner' && { color: C.onInk }]}>Owner (you)</Text>
+                </TouchableOpacity>
+                {members.map((m) => (
+                  <TouchableOpacity key={m.id} onPress={() => { setActingAs(m.id); setAssigningId(null); }} style={[s.chan, actingAs === m.id && { backgroundColor: C.ink, borderColor: C.ink }]} activeOpacity={0.75}>
+                    <Text style={[s.chanT, actingAs === m.id && { color: C.onInk }]}>{m.name} · {m.role}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </Field>
+
             <View style={s.head}>
               <View style={s.avatar}><Text style={s.avatarT}>{initial}</Text></View>
               <View style={{ flex: 1, gap: 2 }}>
@@ -327,59 +401,128 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
               </View>
             </View>
 
-            {members.map((m) => (
-              <View key={m.id} style={s.member}>
-                <View style={s.miniAvatar}><Text style={s.miniAvatarT}>{(m.name || m.email || '?')[0].toUpperCase()}</Text></View>
-                <View style={{ flex: 1, gap: 1 }}>
-                  <Text style={s.rowT} numberOfLines={1}>{m.name}</Text>
-                  <Text style={s.rowS} numberOfLines={1}>{m.email} · {memberChannelsLabel(m.channels)}</Text>
+            {members.map((m) => {
+              const isSelf = actor.id === m.id;
+              const showRoleFlip = !isSelf && canChangeRole(actor, m, m.role === 'admin' ? 'member' : 'admin');
+              const showChannels = !isSelf && canAssignChannels(actor, m);
+              const showTrash = !isSelf && canRemoveMember(actor, m);
+              return (
+                <View key={m.id} style={s.member}>
+                  <View style={s.miniAvatar}><Text style={s.miniAvatarT}>{(m.name || m.email || '?')[0].toUpperCase()}</Text></View>
+                  <View style={{ flex: 1, gap: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                      <Text style={s.rowT} numberOfLines={1}>{m.name}</Text>
+                      <View style={s.rolePill}><Text style={s.rolePillT}>{m.role}</Text></View>
+                    </View>
+                    <Text style={s.rowS} numberOfLines={1}>{m.email} · {memberChannelsLabel(m.channels)}</Text>
+                    {isSelf && actor.role === 'admin' ? (
+                      <View style={{ marginTop: 8 }}><GhostBtn label="Step down to member" onPress={() => stepDown(m)} /></View>
+                    ) : null}
+                    {isSelf && actor.role === 'member' ? (
+                      <View style={{ marginTop: 8 }}><GhostBtn label="Leave team" danger onPress={() => leaveTeam(m)} /></View>
+                    ) : null}
+                    {showRoleFlip ? (
+                      <View style={{ marginTop: 8 }}>
+                        <GhostBtn
+                          label={m.role === 'admin' ? 'Demote to member' : 'Make admin'}
+                          onPress={() => flipRole(m)}
+                        />
+                      </View>
+                    ) : null}
+                    {showChannels ? (
+                      <View style={{ marginTop: 8 }}>
+                        <GhostBtn
+                          label={assigningId === m.id ? 'Done assigning' : 'Assign channels'}
+                          onPress={() => setAssigningId(assigningId === m.id ? null : m.id)}
+                        />
+                      </View>
+                    ) : null}
+                  </View>
+                  {showTrash ? (
+                    <TouchableOpacity onPress={() => dropMember(m)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                      <Ionicons name="trash-outline" size={18} color={C.faint} />
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
-                <TouchableOpacity onPress={() => dropMember(m)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                  <Ionicons name="trash-outline" size={18} color={C.faint} />
-                </TouchableOpacity>
-              </View>
-            ))}
+              );
+            })}
             {members.length === 0 ? (
               <Text style={s.hint}>No teammates yet — invite your first below.</Text>
             ) : null}
-
-            <View style={s.plan}>
-              <Text style={s.planT}>Invite teammate</Text>
-              <Field label="Name">
-                <Txt value={mName} onChangeText={setMName} placeholder="e.g. Ain" />
-              </Field>
-              <Field label="Email">
-                <Txt value={mEmail} onChangeText={setMEmail} placeholder="teammate@studio.com" keyboardType="email-address" autoCapitalize="none" />
-              </Field>
-              <Field label="Channels they can post to" hint="All channels, or pick specific ones.">
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  <TouchableOpacity
-                    onPress={() => toggleMChannel('all')}
-                    style={[s.chan, mChannels.includes('all') && { backgroundColor: C.ink, borderColor: C.ink }]}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={[s.chanT, mChannels.includes('all') && { color: C.onInk }]}>All channels</Text>
-                  </TouchableOpacity>
-                  {chanList.map((c) => {
-                    const on = mChannels.includes(c.id);
-                    return (
+            {assigningId ? (
+              (() => {
+                const m = members.find((x) => x.id === assigningId);
+                if (!m || !canAssignChannels(actor, m)) return null;
+                return (
+                  <View style={s.plan}>
+                    <Text style={s.planT}>Channels for {m.name}</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
                       <TouchableOpacity
-                        key={c.id}
-                        onPress={() => toggleMChannel(c.id)}
-                        style={[s.chan, on && { backgroundColor: C.ink, borderColor: C.ink }]}
+                        onPress={() => toggleMemberChannel(m, 'all')}
+                        style={[s.chan, m.channels.includes('all') && { backgroundColor: C.ink, borderColor: C.ink }]}
                         activeOpacity={0.75}
                       >
-                        <Text style={[s.chanT, on && { color: C.onInk }]}>{c.label}</Text>
+                        <Text style={[s.chanT, m.channels.includes('all') && { color: C.onInk }]}>All channels</Text>
                       </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </Field>
-              <TouchableOpacity onPress={saveMember} style={[s.save, { marginTop: 12 }]} activeOpacity={0.85}>
-                <Text style={s.saveT}>Add teammate</Text>
-              </TouchableOpacity>
-            </View>
+                      {chanList.map((c) => {
+                        const on = m.channels.includes(c.id);
+                        return (
+                          <TouchableOpacity
+                            key={c.id}
+                            onPress={() => toggleMemberChannel(m, c.id)}
+                            style={[s.chan, on && { backgroundColor: C.ink, borderColor: C.ink }]}
+                            activeOpacity={0.75}
+                          >
+                            <Text style={[s.chanT, on && { color: C.onInk }]}>{c.label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                );
+              })()
+            ) : null}
+
+            {actor.role === 'owner' ? (
+              <View style={s.plan}>
+                <Text style={s.planT}>Invite teammate</Text>
+                <Field label="Name">
+                  <Txt value={mName} onChangeText={setMName} placeholder="e.g. Ain" />
+                </Field>
+                <Field label="Email">
+                  <Txt value={mEmail} onChangeText={setMEmail} placeholder="teammate@studio.com" keyboardType="email-address" autoCapitalize="none" />
+                </Field>
+                <Field label="Channels they can post to" hint="All channels, or pick specific ones.">
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    <TouchableOpacity
+                      onPress={() => toggleMChannel('all')}
+                      style={[s.chan, mChannels.includes('all') && { backgroundColor: C.ink, borderColor: C.ink }]}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={[s.chanT, mChannels.includes('all') && { color: C.onInk }]}>All channels</Text>
+                    </TouchableOpacity>
+                    {chanList.map((c) => {
+                      const on = mChannels.includes(c.id);
+                      return (
+                        <TouchableOpacity
+                          key={c.id}
+                          onPress={() => toggleMChannel(c.id)}
+                          style={[s.chan, on && { backgroundColor: C.ink, borderColor: C.ink }]}
+                          activeOpacity={0.75}
+                        >
+                          <Text style={[s.chanT, on && { color: C.onInk }]}>{c.label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </Field>
+                <TouchableOpacity onPress={saveMember} style={[s.save, { marginTop: 12 }]} activeOpacity={0.85}>
+                  <Text style={s.saveT}>Add teammate</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </View>
+          )
         ) : null}
 
         {view === 'changelog' ? (
@@ -441,6 +584,11 @@ const makeS = (C: Palette) => StyleSheet.create({
   miniAvatarT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14, color: C.onInk },
   chan: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: C.paper, borderWidth: 1, borderColor: C.lineSoft },
   chanT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.muted },
+  rolePill: { backgroundColor: C.accentSoft, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 },
+  rolePillT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 10.5, color: C.accentInk, textTransform: 'capitalize' },
+  empty: { backgroundColor: C.card, borderRadius: R.lg, padding: 28, alignItems: 'center' },
+  emptyT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 16, color: C.ink },
+  emptyS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, color: C.muted, marginTop: 6, textAlign: 'center', lineHeight: 19 },
   planT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 17, color: C.ink },
   currentTag: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.accent, marginTop: 6 },
   planS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, lineHeight: 20, color: C.muted },
