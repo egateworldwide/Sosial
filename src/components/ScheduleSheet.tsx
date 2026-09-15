@@ -210,22 +210,23 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
 
           <Text style={st.label}>Channels{readOnly ? '' : ' — pick any'}</Text>
           {readOnly ? (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {plats.map((c) => {
-                const label = c === 'any' ? 'Anywhere' : c[0].toUpperCase() + c.slice(1);
-                return (
-                  <View key={c} style={st.chip}>
-                    {c === 'any' ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                {plats.map((c, i) => (
+                  c === 'any' ? (
+                    <View key={c} style={[st.stackTile, { backgroundColor: C.card, borderColor: C.lineSoft, marginLeft: i === 0 ? 0 : -8 }]}>
                       <Ionicons name="globe-outline" size={14} color={C.muted} />
-                    ) : (
-                      <View style={{ width: 22, height: 22, borderRadius: 7, backgroundColor: SOCIAL_META[c]?.bg ?? C.ink, alignItems: 'center', justifyContent: 'center' }}>
-                        <SocialGlyph platform={c} size={11} color="#fff" />
-                      </View>
-                    )}
-                    <Text style={st.chipT}>{label}</Text>
-                  </View>
-                );
-              })}
+                    </View>
+                  ) : (
+                    <View key={c} style={[st.stackTile, { backgroundColor: SOCIAL_META[c]?.bg ?? C.ink, marginLeft: i === 0 ? 0 : -8 }]}>
+                      <SocialGlyph platform={c} size={12} color="#fff" />
+                    </View>
+                  )
+                ))}
+              </View>
+              <Text style={st.stackNames} numberOfLines={2}>
+                {plats.map((c) => (c === 'any' ? 'Anywhere' : c[0].toUpperCase() + c.slice(1))).join('  ·  ')}
+              </Text>
             </View>
           ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
@@ -374,6 +375,8 @@ const makeSt = (C: Palette) => ({
   postT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 15, letterSpacing: -0.2, color: C.ink } as const,
   postCap: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 14, lineHeight: 20, color: C.ink } as const,
   sentNote: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.accentInk } as const,
+  stackTile: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: C.paper } as const,
+  stackNames: { flex: 1, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.ink } as const,
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.card, borderRadius: 999, borderWidth: 1, borderColor: C.lineSoft, paddingHorizontal: 12, paddingVertical: 8 } as const,
   chipT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.ink, textTransform: 'capitalize' } as const,
   soonT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 10.5, color: C.accentInk } as const,
