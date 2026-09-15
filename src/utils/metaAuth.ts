@@ -15,7 +15,7 @@ WebBrowser.maybeCompleteAuthSession();
 // straight back into sosial://redirect, where openAuthSessionAsync captures it.
 // Add this exact URL as a Valid OAuth Redirect URI in all three Meta apps:
 //   Facebook Login settings, Instagram app OAuth settings, Threads Redirect URIs.
-export const BRIDGE_URL = 'https://egateworldwide.github.io/Zap/auth.html';
+export const BRIDGE_URL = 'https://egateworldwide.github.io/Sosial/auth.html';
 const RETURN_URL = 'sosial://redirect';
 
 export const redirectUri = () => BRIDGE_URL;
