@@ -6,7 +6,7 @@ import { uid } from '../constants';
 export interface Account {
   email: string;
   team: string;
-  plan: 'free' | 'pro';
+  plan: 'free' | 'pro' | 'team';
   notifPosts: boolean;
   notifComments: boolean;
   notifWeekly: boolean;
@@ -56,6 +56,7 @@ export async function wipeAllData(): Promise<void> {
     'quickpost_project_presets_v1',
     'zap_account_v1',
     'zap_ideas_v1',
+    'zap_team_v1',
     'quickpost_open_post',
     'quickpost_compose',
   ];

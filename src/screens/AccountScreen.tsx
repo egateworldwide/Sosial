@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Linking, Switch } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R, T } from '../theme';
 import { Txt, Field, Stepper, Seg } from '../components/ui';
 import { wipeAllData } from '../utils/account';
+import { loadTeam, addTeamMember, removeTeamMember, memberChannelsLabel, assignableChannels, TeamMember } from '../utils/team';
+import { loadMetaState } from '../utils/metaStore';
 
-type AcctView = 'main' | 'notif' | 'email' | 'password' | 'plan' | 'changelog' | 'terms' | 'legal';
+type AcctView = 'main' | 'notif' | 'email' | 'password' | 'plan' | 'team' | 'changelog' | 'terms' | 'legal';
 
 const CHANGELOG = [
   { v: '1.0.0', notes: ['Buffer-style app: Create, Post and Analytics tabs', 'Ideas feed with design-studio link', 'Queue / drafts / approvals / sent pipeline', 'Per-channel insights, top posts and comments', 'Meta login via secure bridge page'] },
@@ -15,11 +17,11 @@ const CHANGELOG = [
 export default function AccountScreen({ email, team, plan, notifPosts, notifComments, notifWeekly, onUpdate, onBack, onConnect, onPrivacy, onLoggedOut }: {
   email: string;
   team: string;
-  plan: 'free' | 'pro';
+  plan: 'free' | 'pro' | 'team';
   notifPosts: boolean;
   notifComments: boolean;
   notifWeekly: boolean;
-  onUpdate: (patch: { email?: string; team?: string; plan?: 'free' | 'pro'; notifPosts?: boolean; notifComments?: boolean; notifWeekly?: boolean }) => void;
+  onUpdate: (patch: { email?: string; team?: string; plan?: 'free' | 'pro' | 'team'; notifPosts?: boolean; notifComments?: boolean; notifWeekly?: boolean }) => void;
   onBack: () => void;
   onConnect: () => void;
   onPrivacy: () => void;
@@ -34,11 +36,25 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
   const [draftTeam, setDraftTeam] = useState(team);
   const [pw1, setPw1] = useState('');
   const [pw2, setPw2] = useState('');
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [mName, setMName] = useState('');
+  const [mEmail, setMEmail] = useState('');
+  const [mChannels, setMChannels] = useState<string[]>(['all']);
+  const [chanList, setChanList] = useState<{ id: string; label: string; sub: string }[]>([]);
+
+  useEffect(() => {
+    loadTeam().then(setMembers);
+    if (view === 'team') {
+      loadMetaState().then((m) => setChanList(assignableChannels(m)));
+    }
+  }, [view]);
+
+  const planName = plan === 'pro' ? 'Zap Pro' : plan === 'team' ? 'Zap Team' : 'Free plan';
 
   const initial = (email || team || 'Z')[0].toUpperCase();
   const title = view === 'main' ? 'Account' : (
     view === 'notif' ? 'Notifications' : view === 'email' ? 'Email settings' :
-    view === 'password' ? 'Change password' : view === 'plan' ? 'Subscription' :
+    view === 'password' ? 'Change password' : view === 'plan' ? 'Subscription' : view === 'team' ? 'Team' :
     view === 'changelog' ? "What's new" : view === 'terms' ? 'Terms of use' : 'Legal'
   );
 
@@ -89,6 +105,33 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
     });
   };
 
+  const toggleMChannel = (id: string) => {
+    setMChannels((prev) => {
+      if (id === 'all') return ['all'];
+      const without = prev.filter((x) => x !== 'all' && x !== id);
+      if (prev.includes(id)) return without.length ? without : ['all'];
+      return [...without, id];
+    });
+  };
+
+  const saveMember = async () => {
+    if (!mEmail.trim()) {
+      Alert.alert('Email needed', 'Add the teammate’s email so invites reach them.');
+      return;
+    }
+    setMembers(await addTeamMember({ name: mName, email: mEmail, channels: mChannels }));
+    setMName('');
+    setMEmail('');
+    setMChannels(['all']);
+  };
+
+  const dropMember = (m: TeamMember) => {
+    Alert.alert('Remove teammate', `Remove ${m.name} from the team?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: async () => setMembers(await removeTeamMember(m.id)) },
+    ]);
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: C.bone }}>
       <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 40 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -114,7 +157,8 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
             </View>
             <View style={s.list}>
               {row('add-circle-outline', 'Connect new channel', 'Facebook, Instagram, Threads', onConnect)}
-              {row('card-outline', 'Subscription plan', plan === 'pro' ? 'Zap Pro' : 'Free plan', () => setView('plan'))}
+              {row('card-outline', 'Subscription plan', planName, () => setView('plan'))}
+              {row('people-outline', 'Team', members.length ? `${members.length} teammate${members.length === 1 ? '' : 's'} · invite & roles` : 'Invite people & assign channels', () => setView('team'))}
               {row('refresh-outline', 'Restore purchase', undefined, () => Alert.alert('Restore purchase', 'No purchases found on this device.'))}
               {row('star-outline', 'Rate Zap', 'Review on the Play Store', rateApp)}
               {row('sparkles-outline', "What's new", 'Changelog', () => setView('changelog'))}
@@ -182,25 +226,27 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
 
         {view === 'plan' ? (
           <View style={{ marginTop: 16, gap: 12 }}>
+            <Field label="Channels" hint={`${proChannels} channel${proChannels === 1 ? '' : 's'} — applies to Pro & Team`}>
+              <Stepper value={proChannels} onChange={setProChannels} step={1} min={1} max={10} format={(v) => `${v}`} />
+            </Field>
+            <Field label="Billing">
+              <Seg
+                options={[{ value: 'yearly', label: 'Yearly · save ~20%' }, { value: 'monthly', label: 'Monthly' }]}
+                value={yearly ? 'yearly' : 'monthly'}
+                onChange={(v) => setYearly(v === 'yearly')}
+              />
+            </Field>
+
             <View style={[s.plan, plan === 'free' && { borderColor: C.accent, borderWidth: 1.5 }]}>
               <Text style={s.planT}>Free{plan === 'free' ? ' · current' : ''}</Text>
               <Text style={s.planS}>2 connected channels · 10 scheduled posts per channel</Text>
               <Text style={s.planS}>Unlimited studio, templates & ideas (exports carry a small badge)</Text>
               <Text style={s.planS}>No AI generation · 7-day analytics</Text>
             </View>
+
             <View style={[s.plan, plan === 'pro' && { borderColor: C.accent, borderWidth: 1.5 }]}>
               <Text style={s.planT}>Zap Pro{plan === 'pro' ? ' · current' : ''}</Text>
-              <Text style={s.planS}>Pay per channel, like Buffer — roughly half the price. Add or drop channels anytime.</Text>
-              <Field label="Channels" hint={`${proChannels} channel${proChannels === 1 ? '' : 's'}`}>
-                <Stepper value={proChannels} onChange={setProChannels} step={1} min={1} max={10} format={(v) => `${v}`} />
-              </Field>
-              <Field label="Billing">
-                <Seg
-                  options={[{ value: 'yearly', label: 'Yearly · save ~20%' }, { value: 'monthly', label: 'Monthly' }]}
-                  value={yearly ? 'yearly' : 'monthly'}
-                  onChange={(v) => setYearly(v === 'yearly')}
-                />
-              </Field>
+              <Text style={s.planS}>Pay per channel — add or drop channels anytime.</Text>
               <Text style={[s.planS, { color: C.ink, fontFamily: 'PlusJakartaSans_700Bold' }]}>
                 {yearly
                   ? `$${49 * proChannels}/yr ($4.08/mo per channel)`
@@ -210,12 +256,26 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
               <Text style={s.planS}>Everything in Free, plus: unlimited scheduled posts · approvals · no export badge</Text>
               <Text style={s.planS}>500 AI generations / month · 1-year analytics + comments</Text>
             </View>
-            {plan !== 'pro' ? (
+
+            <View style={[s.plan, plan === 'team' && { borderColor: C.accent, borderWidth: 1.5 }]}>
+              <Text style={s.planT}>Zap Team{plan === 'team' ? ' · current' : ''}</Text>
+              <Text style={s.planS}>Everything in Pro, plus seats for the whole crew.</Text>
+              <Text style={[s.planS, { color: C.ink, fontFamily: 'PlusJakartaSans_700Bold' }]}>
+                {yearly
+                  ? `$${99 * proChannels}/yr ($8.25/mo per channel)`
+                  : `$${(9.99 * proChannels).toFixed(2)}/mo ($9.99 per channel)`}
+              </Text>
+              <Text style={s.planS}>MY: {yearly ? `RM ${439 * proChannels}/yr` : `RM ${(43.9 * proChannels).toFixed(2)}/mo`}</Text>
+              <Text style={s.planS}>Unlimited seats · owner assigns members to specific channels (or all)</Text>
+              <Text style={s.planS}>1,000 AI generations / month · approvals · priority support</Text>
+            </View>
+
+            {plan === 'free' ? (
               <TouchableOpacity
-                onPress={() => Alert.alert('Zap Pro', 'Billing goes live with the Play Store release — this button will start the Google Play subscription then.')}
+                onPress={() => Alert.alert('Zap Pro & Team', 'Billing goes live with the Play Store release — these buttons will start the Google Play subscription then.')}
                 style={s.save} activeOpacity={0.85}
               >
-                <Text style={s.saveT}>Upgrade to Pro</Text>
+                <Text style={s.saveT}>Upgrade</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
@@ -226,6 +286,72 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
               </TouchableOpacity>
             )}
             <Text style={s.note}>Need more AI without Pro? Credit packs ($4.99 / 100 generations) arrive at launch.</Text>
+          </View>
+        ) : null}
+
+        {view === 'team' ? (
+          <View style={{ marginTop: 16, gap: 12 }}>
+            <Text style={s.note}>Roster lives on this device for now — real invites and cross-device sync arrive with the backend.</Text>
+            <View style={s.head}>
+              <View style={s.avatar}><Text style={s.avatarT}>{initial}</Text></View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={s.email} numberOfLines={1}>{email || 'No email set'}</Text>
+                <Text style={s.team} numberOfLines={1}>{team} · Owner</Text>
+              </View>
+            </View>
+
+            {members.map((m) => (
+              <View key={m.id} style={s.member}>
+                <View style={s.miniAvatar}><Text style={s.miniAvatarT}>{(m.name || m.email || '?')[0].toUpperCase()}</Text></View>
+                <View style={{ flex: 1, gap: 1 }}>
+                  <Text style={s.rowT} numberOfLines={1}>{m.name}</Text>
+                  <Text style={s.rowS} numberOfLines={1}>{m.email} · {memberChannelsLabel(m.channels)}</Text>
+                </View>
+                <TouchableOpacity onPress={() => dropMember(m)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <Ionicons name="trash-outline" size={18} color={C.faint} />
+                </TouchableOpacity>
+              </View>
+            ))}
+            {members.length === 0 ? (
+              <Text style={s.hint}>No teammates yet — invite your first below.</Text>
+            ) : null}
+
+            <View style={s.plan}>
+              <Text style={s.planT}>Invite teammate</Text>
+              <Field label="Name">
+                <Txt value={mName} onChangeText={setMName} placeholder="e.g. Ain" />
+              </Field>
+              <Field label="Email">
+                <Txt value={mEmail} onChangeText={setMEmail} placeholder="teammate@studio.com" keyboardType="email-address" autoCapitalize="none" />
+              </Field>
+              <Field label="Channels they can post to" hint="All channels, or pick specific ones.">
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <TouchableOpacity
+                    onPress={() => toggleMChannel('all')}
+                    style={[s.chan, mChannels.includes('all') && { backgroundColor: C.ink, borderColor: C.ink }]}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[s.chanT, mChannels.includes('all') && { color: C.onInk }]}>All channels</Text>
+                  </TouchableOpacity>
+                  {chanList.map((c) => {
+                    const on = mChannels.includes(c.id);
+                    return (
+                      <TouchableOpacity
+                        key={c.id}
+                        onPress={() => toggleMChannel(c.id)}
+                        style={[s.chan, on && { backgroundColor: C.ink, borderColor: C.ink }]}
+                        activeOpacity={0.75}
+                      >
+                        <Text style={[s.chanT, on && { color: C.onInk }]}>{c.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </Field>
+              <TouchableOpacity onPress={saveMember} style={[s.save, { marginTop: 12 }]} activeOpacity={0.85}>
+                <Text style={s.saveT}>Add teammate</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : null}
 
@@ -281,7 +407,13 @@ const makeS = (C: Palette) => StyleSheet.create({
   save: { backgroundColor: C.ink, borderRadius: R.md + 2, paddingVertical: 12, alignItems: 'center' },
   saveT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15, color: C.onInk },
   note: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 19, color: C.muted, margin: 14 },
+  hint: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 19, color: C.muted },
   plan: { backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, padding: 16, gap: 6 },
+  member: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, padding: 13 },
+  miniAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
+  miniAvatarT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14, color: C.onInk },
+  chan: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: C.paper, borderWidth: 1, borderColor: C.lineSoft },
+  chanT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.muted },
   planT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 17, color: C.ink },
   planS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, lineHeight: 20, color: C.muted },
   body: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 14, lineHeight: 22, color: C.soft },
