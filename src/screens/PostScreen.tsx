@@ -355,18 +355,19 @@ export default function PostScreen({ email, team, onProfile, onConnect, composeS
           })}
         </ScrollView>
 
-        {/* sorting */}
+        {/* sorting — sorters scroll, Post stays pinned on the right */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 24, marginTop: 12 }}>
           <Ionicons name="swap-vertical-outline" size={15} color={C.faint} />
-          {SORTS.map((o) => {
-            const on = sort === o.id;
-            return (
-              <TouchableOpacity key={o.id} onPress={() => setSort(o.id)} activeOpacity={0.7}>
-                <Text style={[s.sortT, on && { color: C.accentInk }]}>{o.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-          <View style={{ flex: 1 }} />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 4 }} style={{ flex: 1 }}>
+            {SORTS.map((o) => {
+              const on = sort === o.id;
+              return (
+                <TouchableOpacity key={o.id} onPress={() => setSort(o.id)} activeOpacity={0.7}>
+                  <Text style={[s.sortT, on && { color: C.accentInk }]}>{o.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
           <TouchableOpacity onPress={() => openSheet(null)} activeOpacity={0.85} style={s.addBtn}>
             <Ionicons name="add" size={16} color={C.onInk} />
             <Text style={s.addBtnT}>Post</Text>
