@@ -237,6 +237,9 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
               </TouchableOpacity>
             );
           })}
+          <TouchableOpacity onPress={onPost} style={s.tab} activeOpacity={0.75}>
+            <Text style={s.tabT}>Post</Text>
+          </TouchableOpacity>
         </View>
 
         {tab === 'ideas' ? (
@@ -329,10 +332,6 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
                 ))}
               </View>
             )}
-            <TouchableOpacity onPress={onPost} style={s.postCta} activeOpacity={0.85}>
-              <Text style={s.postCtaT}>Post</Text>
-              <Ionicons name="send-outline" size={18} color={C.onInk} />
-            </TouchableOpacity>
             <Text style={[s.secT, { marginTop: 26 }]}>Recent</Text>
             {projects.length === 0 ? (
               <Text style={s.hint}>Your recent designs land here.</Text>
@@ -467,8 +466,6 @@ const makeS = (C: Palette) => StyleSheet.create({
   emptyS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, color: C.muted, marginTop: 6, textAlign: 'center', lineHeight: 19 },
   tplCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.accent, borderRadius: R.md + 2, paddingVertical: 16, paddingHorizontal: 20 },
   tplCtaT: { fontFamily: 'PlusJakartaSans_700Bold', color: C.onInk, fontSize: 15 },
-  postCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.ink, borderRadius: R.md + 2, paddingVertical: 16, paddingHorizontal: 20, marginTop: 10 },
-  postCtaT: { fontFamily: 'PlusJakartaSans_700Bold', color: C.onInk, fontSize: 15 },
   hint: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 19, color: C.muted, marginTop: 12 },
   secT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 19, letterSpacing: -0.4, color: C.ink },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.line },
