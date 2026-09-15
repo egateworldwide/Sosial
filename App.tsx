@@ -37,7 +37,7 @@ function Shell() {
   const [privacyFrom, setPrivacyFrom] = useState<Route>('account');
   const [profileOpen, setProfileOpen] = useState(false);
   const [composeSignal, setComposeSignal] = useState(0);
-  const [account, setAccount] = useState<Account>({ email: '', team: 'My team', notifPosts: true, notifComments: true, notifWeekly: false });
+  const [account, setAccount] = useState<Account>({ email: '', team: 'My team', plan: 'free', notifPosts: true, notifComments: true, notifWeekly: false });
   const { loadPost, clearPost, setPageIndex } = usePost();
   const fontsLoaded = useFontsLoaded();
   const routeRef = React.useRef(route);
@@ -210,6 +210,7 @@ function Shell() {
             <AccountScreen
               email={account.email}
               team={account.team}
+              plan={account.plan}
               notifPosts={account.notifPosts}
               notifComments={account.notifComments}
               notifWeekly={account.notifWeekly}

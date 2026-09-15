@@ -12,13 +12,14 @@ const CHANGELOG = [
 ];
 
 /** Account settings: notifications, email, password, plan, legal… (all on-device, no backend). */
-export default function AccountScreen({ email, team, notifPosts, notifComments, notifWeekly, onUpdate, onBack, onConnect, onPrivacy, onLoggedOut }: {
+export default function AccountScreen({ email, team, plan, notifPosts, notifComments, notifWeekly, onUpdate, onBack, onConnect, onPrivacy, onLoggedOut }: {
   email: string;
   team: string;
+  plan: 'free' | 'pro';
   notifPosts: boolean;
   notifComments: boolean;
   notifWeekly: boolean;
-  onUpdate: (patch: { email?: string; team?: string; notifPosts?: boolean; notifComments?: boolean; notifWeekly?: boolean }) => void;
+  onUpdate: (patch: { email?: string; team?: string; plan?: 'free' | 'pro'; notifPosts?: boolean; notifComments?: boolean; notifWeekly?: boolean }) => void;
   onBack: () => void;
   onConnect: () => void;
   onPrivacy: () => void;
@@ -111,7 +112,7 @@ export default function AccountScreen({ email, team, notifPosts, notifComments, 
             </View>
             <View style={s.list}>
               {row('add-circle-outline', 'Connect new channel', 'Facebook, Instagram, Threads', onConnect)}
-              {row('card-outline', 'Subscription plan', 'Free plan', () => setView('plan'))}
+              {row('card-outline', 'Subscription plan', plan === 'pro' ? 'Zap Pro' : 'Free plan', () => setView('plan'))}
               {row('refresh-outline', 'Restore purchase', undefined, () => Alert.alert('Restore purchase', 'No purchases found on this device.'))}
               {row('star-outline', 'Rate Zap', 'Review on the Play Store', rateApp)}
               {row('sparkles-outline', "What's new", 'Changelog', () => setView('changelog'))}
@@ -178,14 +179,37 @@ export default function AccountScreen({ email, team, notifPosts, notifComments, 
         ) : null}
 
         {view === 'plan' ? (
-          <View style={{ marginTop: 16 }}>
-            <View style={s.plan}>
-              <Text style={s.planT}>Free plan</Text>
-              <Text style={s.planS}>Unlimited ideas, designs, scheduling and 3 channels.</Text>
+          <View style={{ marginTop: 16, gap: 12 }}>
+            <View style={[s.plan, plan === 'free' && { borderColor: C.accent, borderWidth: 1.5 }]}>
+              <Text style={s.planT}>Free{plan === 'free' ? ' · current' : ''}</Text>
+              <Text style={s.planS}>3 connected channels · 10 scheduled posts per channel</Text>
+              <Text style={s.planS}>Unlimited studio, templates & ideas (exports carry a small badge)</Text>
+              <Text style={s.planS}>10 AI generations / month · 7-day analytics</Text>
             </View>
-            <TouchableOpacity onPress={() => Alert.alert('Zap Pro', 'Pro with team approvals and unlimited history is coming soon.')} style={[s.save, { marginTop: 12 }]} activeOpacity={0.85}>
-              <Text style={s.saveT}>See Zap Pro</Text>
-            </TouchableOpacity>
+            <View style={[s.plan, plan === 'pro' && { borderColor: C.accent, borderWidth: 1.5 }]}>
+              <Text style={s.planT}>Zap Pro{plan === 'pro' ? ' · current' : ''}</Text>
+              <Text style={[s.planS, { color: C.ink, fontFamily: 'PlusJakartaSans_700Bold' }]}>$9.99/mo · $59.99/yr</Text>
+              <Text style={s.planS}>MY: RM 19.90/mo · RM 119/yr</Text>
+              <Text style={s.planS}>Unlimited channels — every future channel included</Text>
+              <Text style={s.planS}>Unlimited scheduled posts · approvals · no export badge</Text>
+              <Text style={s.planS}>500 AI generations / month · 1-year analytics + comments</Text>
+            </View>
+            {plan !== 'pro' ? (
+              <TouchableOpacity
+                onPress={() => Alert.alert('Zap Pro', 'Billing goes live with the Play Store release — this button will start the Google Play subscription then.')}
+                style={s.save} activeOpacity={0.85}
+              >
+                <Text style={s.saveT}>Upgrade to Pro</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={() => Alert.alert('Manage subscription', 'Subscriptions are managed in the Play Store app under Payments & subscriptions.')}
+                style={s.save} activeOpacity={0.85}
+              >
+                <Text style={s.saveT}>Manage subscription</Text>
+              </TouchableOpacity>
+            )}
+            <Text style={s.note}>Need more AI without Pro? Credit packs ($4.99 / 100 generations) arrive at launch.</Text>
           </View>
         ) : null}
 

@@ -6,6 +6,7 @@ import { uid } from '../constants';
 export interface Account {
   email: string;
   team: string;
+  plan: 'free' | 'pro';
   notifPosts: boolean;
   notifComments: boolean;
   notifWeekly: boolean;
@@ -16,6 +17,7 @@ const KEY = 'zap_account_v1';
 export const DEFAULT_ACCOUNT: Account = {
   email: '',
   team: 'My team',
+  plan: 'free',
   notifPosts: true,
   notifComments: true,
   notifWeekly: false,
