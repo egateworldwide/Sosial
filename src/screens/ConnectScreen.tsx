@@ -14,6 +14,7 @@ import {
   BRIDGE_URL,
 } from '../utils/metaAuth';
 import { loginTikTok, completeTikTokLogin } from '../utils/tiktokAuth';
+import { BUILD_TAG } from '../utils/build';
 import { subscribeAuthResult, flushAuthResults, clearPendingAuth, getPendingAuth, AuthResult } from '../utils/authFlow';
 import { IG_APP_ID } from '../utils/metaConfig';
 import { TT_CLIENT_KEY } from '../utils/tiktokConfig';
@@ -408,6 +409,7 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
           </View>
           <Ionicons name="copy-outline" size={18} color={C.faint} />
         </TouchableOpacity>
+        <Text style={s.buildTag}>build {BUILD_TAG}</Text>
       </ScrollView>
     </View>
   );
@@ -439,4 +441,5 @@ const makeS = (C: Palette) => StyleSheet.create({
   uriCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, padding: 14, marginTop: 18 },
   uriT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.ink },
   uriU: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.muted, marginTop: 2 },
+  buildTag: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11, color: C.faint, textAlign: 'center', marginTop: 14, marginBottom: 4 },
 });

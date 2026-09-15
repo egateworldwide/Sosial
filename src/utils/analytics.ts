@@ -204,7 +204,7 @@ async function thStats(m: MetaState, start: number, end: number): Promise<Channe
   try {
     // follower counts aren't in the documented profile fields — best-effort only
     try {
-      const f: any = await jget(`${THREADS_API}/me?fields=followers_count&access_token=${tok}`, tth);
+      const f: any = await jget(`${THREADS_API}/v1.0/me?fields=followers_count&access_token=${tok}`, tth);
       if (!f.error && typeof f.followers_count === 'number') base.followers = f.followers_count;
     } catch {}
     // followers live behind the insights permission — try it, stay null otherwise
@@ -213,7 +213,7 @@ async function thStats(m: MetaState, start: number, end: number): Promise<Channe
         const since = Math.floor((Date.now() - 30 * 86400000) / 1000);
         const until = Math.floor(Date.now() / 1000);
         const ins: any = await jget(
-          `${THREADS_API}/${m.threadsId}/threads_insights?metric=followers_count&since=${since}&until=${until}&access_token=${tok}`,
+          `${THREADS_API}/v1.0/${m.threadsId}/threads_insights?metric=followers_count&since=${since}&until=${until}&access_token=${tok}`,
           tth,
         );
         const arr = Array.isArray(ins?.data) ? ins.data : [];
@@ -225,7 +225,7 @@ async function thStats(m: MetaState, start: number, end: number): Promise<Channe
       } catch {}
     }
     const list: any = await jget(
-      `${THREADS_API}/${m.threadsId}/threads?fields=id,text,timestamp,like_count,reply_count,repost_count,view_count&limit=25&access_token=${tok}`,
+      `${THREADS_API}/v1.0/${m.threadsId}/threads?fields=id,text,timestamp,like_count,reply_count,repost_count,view_count&limit=25&access_token=${tok}`,
       tth,
     );
     if (list.error) throw new Error(list.error.message || 'Could not read Threads posts.');
@@ -263,7 +263,7 @@ async function thComments(m: MetaState, stats: PerPost[]): Promise<FeedComment[]
   const out: FeedComment[] = [];
   for (const p of stats.slice(0, 5)) {
     try {
-      const c: any = await jget(`${THREADS_API}/${p.id}/conversation?fields=username,text,timestamp&limit=10&access_token=${tok}`, tth);
+      const c: any = await jget(`${THREADS_API}/v1.0/${p.id}/conversation?fields=username,text,timestamp&limit=10&access_token=${tok}`, tth);
       for (const x of (c.data ?? []) as any[]) {
         out.push({
           channel: 'threads',
