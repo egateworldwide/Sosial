@@ -5,6 +5,8 @@ import { usePost } from '../store/PostContext';
 import PostCanvas, { CANVAS_W } from '../components/PostCanvas';
 import { capturePage, saveUrisToGallery, shareSingleFile, saveAllImages } from '../utils/export';
 import { genericShare, openSocialApp } from '../utils/socialShare';
+import { useComposer } from '../store/ComposerContext';
+import type { ManagedPost } from '../utils/managed';
 import { useTheme, Palette, T, R } from '../theme';
 import { SOCIAL_META } from '../constants';
 import { SocialGlyph } from '../components/ui';
@@ -18,6 +20,7 @@ export default function ExportScreen({ onBack }: { onBack: () => void }) {
   const [busy, setBusy] = useState(false);
   const [savedUris, setSavedUris] = useState<string[]>([]);
   const refs = useRef<any[]>([]);
+  const { openComposer } = useComposer();
 
   const caption = useMemo(() => {
     if (!post) return '';
@@ -56,8 +59,33 @@ export default function ExportScreen({ onBack }: { onBack: () => void }) {
     }
   };
 
-  const onSaveOne = async (index: number) => {
+  const onPostDesign = async () => {
     setBusy(true);
+    try {
+      const uris = await captureAll();
+      if (!uris.length) {
+        Alert.alert('Nothing captured', 'Save the pages first, then post.');
+        return;
+      }
+      const draft: ManagedPost = {
+        id: '',
+        title: post.name || 'Untitled',
+        body: caption,
+        attachments: uris.map((uri) => ({ uri, kind: 'image' as const })),
+        imageUri: uris[0],
+        platforms: ['any'],
+        createdAt: Date.now(),
+        status: 'draft',
+      };
+      openComposer(draft);
+    } catch (e: any) {
+      Alert.alert('Could not prepare post', e?.message ?? 'Could not capture pages.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onSaveOne = async (index: number) => {    setBusy(true);
     try {
       await new Promise((r) => setTimeout(r, 700));
       const uri = await capturePage(refs.current[index], `p${index}`);
@@ -160,6 +188,11 @@ export default function ExportScreen({ onBack }: { onBack: () => void }) {
           )}
         </TouchableOpacity>
 
+        <TouchableOpacity onPress={onPostDesign} style={[s.save, s.postDesign]} disabled={busy} activeOpacity={0.88}>
+          <Text style={s.saveT}>Post this design</Text>
+          <Ionicons name="send-outline" size={18} color={C.onInk} />
+        </TouchableOpacity>
+
         {/* share targets */}
         <Text style={[s.secT, { marginTop: 32 }]}>Post it</Text>
         <View style={s.list}>
@@ -213,6 +246,7 @@ const makeS = (C: Palette) => StyleSheet.create({
   saveMiniT: { fontFamily: 'PlusJakartaSans_700Bold', color: C.onInk, fontSize: 12 },
   save: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.ink, borderRadius: R.md + 2, paddingVertical: 17, paddingHorizontal: 20, marginTop: 22 },
   saveT: { fontFamily: 'PlusJakartaSans_700Bold', color: C.onInk, fontSize: 15 },
+  postDesign: { backgroundColor: C.accent, marginTop: 10 },
   secT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 19, letterSpacing: -0.4, color: C.ink, marginBottom: 12 },
   list: { backgroundColor: C.card, borderRadius: R.lg, overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 13, paddingHorizontal: 16, paddingVertical: 14 },

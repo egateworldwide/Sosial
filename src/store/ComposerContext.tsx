@@ -3,9 +3,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import ScheduleSheet from '../components/ScheduleSheet';
 import { uid } from '../constants';
-import { loadManagedPosts, saveManagedPost, deleteManagedPost, ManagedPost, PostStatus } from '../utils/managed';
+import { loadManagedPosts, saveManagedPost, deleteManagedPost, ManagedPost, PostStatus, MediaAttachment, postAttachments } from '../utils/managed';
 import { loadMetaState } from '../utils/metaStore';
-import { publishFacebook, publishInstagram, publishThreads } from '../utils/metaPublish';
+import { publishFacebook, publishInstagram, publishThreads, MAX_ATTACHMENTS } from '../utils/metaPublish';
 import { publishTikTokVideo, askTikTokPrivacy } from '../utils/tiktokPublish';
 import {
   cancelPostReminder,
@@ -38,16 +38,14 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
   const [refreshedAt, setRefreshedAt] = useState(0);
   const [tTitle, setTTitle] = useState('');
   const [tBody, setTBody] = useState('');
-  const [tUri, setTUri] = useState<string | undefined>(undefined);
-  const [tKind, setTKind] = useState<'image' | 'video'>('image');
+  const [tMedia, setTMedia] = useState<MediaAttachment[]>([]);
   const sheetRef = useRef(sheet);
   sheetRef.current = sheet;
 
   const openComposer = useCallback((p: ManagedPost | null) => {
     setTTitle(p?.title ?? '');
     setTBody(p?.body ?? '');
-    setTUri(p?.imageUri ?? p?.videoUri);
-    setTKind(p?.videoUri ? 'video' : 'image');
+    setTMedia(p ? postAttachments(p) : []);
     setSheet({ post: p });
   }, []);
 
@@ -79,30 +77,50 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
   }, [openComposer]);
 
   const pickMedia = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.All, quality: 0.9 });
-    if (res.canceled || !res.assets[0]) return;
-    const a = res.assets[0];
-    setTUri(a.uri);
-    setTKind(a.type === 'video' ? 'video' : 'image');
+    const remaining = MAX_ATTACHMENTS - tMedia.length;
+    if (remaining <= 0) {
+      Alert.alert(`${MAX_ATTACHMENTS} items max`, 'Remove one to add another.');
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.All, allowsMultipleSelection: true, selectionLimit: remaining, orderedSelection: true, quality: 0.9 });
+    if (res.canceled || !res.assets?.length) return;
+    const picked: MediaAttachment[] = res.assets.map((a) => ({
+      uri: a.uri,
+      kind: a.type === 'video' ? 'video' : 'image',
+    }));
+    const next = [...tMedia, ...picked].slice(0, MAX_ATTACHMENTS);
+    setTMedia(next);
+    if (res.assets.length > remaining) {
+      Alert.alert(`${MAX_ATTACHMENTS} items max`, `Kept the first ${MAX_ATTACHMENTS}.`);
+    }
   };
 
-  const buildRec = (at: number | undefined, plats: string[], status: PostStatus): ManagedPost => ({
-    id: sheetRef.current?.post?.id || uid('post'),
-    title: tTitle.trim() || 'Untitled',
-    body: tBody,
-    imageUri: tKind === 'image' ? tUri : undefined,
-    videoUri: tKind === 'video' ? tUri : undefined,
-    platforms: plats,
-    scheduledAt: at,
-    createdAt: sheetRef.current?.post?.createdAt ?? Date.now(),
-    status,
-  });
+  const removeMedia = (index: number) => {
+    setTMedia((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const buildRec = (at: number | undefined, plats: string[], status: PostStatus): ManagedPost => {
+    const firstImage = tMedia.find((m) => m.kind === 'image')?.uri;
+    const firstVideo = tMedia.find((m) => m.kind === 'video')?.uri;
+    return {
+      id: sheetRef.current?.post?.id || uid('post'),
+      title: tTitle.trim() || 'Untitled',
+      body: tBody,
+      imageUri: firstImage,
+      videoUri: firstVideo,
+      attachments: [...tMedia],
+      platforms: plats,
+      scheduledAt: at,
+      createdAt: sheetRef.current?.post?.createdAt ?? Date.now(),
+      status,
+    };
+  };
 
   const bump = () => setRefreshedAt(Date.now());
 
   const save = async (at: number, plats: string[]) => {
     if (!sheetRef.current) return;
-    if (plats.some((p) => p === 'tiktok' || p === 'instagram') && !tUri) {
+    if (plats.some((p) => p === 'tiktok' || p === 'instagram') && tMedia.length === 0) {
       Alert.alert('TikTok & Instagram need media', 'Attach a photo or video — text-only posts can’t go to those channels.');
       return;
     }
@@ -175,7 +193,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
   /** "Post now": save the new post, then publish it immediately through the same loop. */
   const postNow = async (plats: string[]) => {
     if (!sheetRef.current || publishing) return;
-    if (plats.some((p) => p === 'tiktok' || p === 'instagram') && !tUri) {
+    if (plats.some((p) => p === 'tiktok' || p === 'instagram') && tMedia.length === 0) {
       Alert.alert('TikTok & Instagram need media', 'Attach a photo or video — text-only posts can’t go to those channels.');
       return;
     }
@@ -203,6 +221,8 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
     const plats = p.platforms?.length ? p.platforms : ['any'];
     const m = await loadMetaState();
     const caption = [p.title, p.body].filter((x) => x && x.trim()).join('\n\n');
+    const atts = postAttachments(p);
+    const firstVideo = atts.find((a) => a.kind === 'video');
     const done: string[] = [];
     const errs: string[] = [];
     const manual: string[] = [];
@@ -222,23 +242,23 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
         try {
           if (ch === 'facebook') {
             if (!m.pageId || !m.pageToken) throw new Error('Facebook not connected');
-            await publishFacebook({ pageId: m.pageId, pageToken: m.pageToken, message: caption, imageUri: p.imageUri, videoUri: p.videoUri });
+            await publishFacebook({ pageId: m.pageId, pageToken: m.pageToken, message: caption, imageUri: p.imageUri, videoUri: p.videoUri, attachments: atts });
             done.push('Facebook');
           } else if (ch === 'instagram') {
             if (!m.igId || !m.igToken) throw new Error('Instagram not connected');
-            await publishInstagram({ igId: m.igId, igToken: m.igToken, caption, imageUri: p.imageUri, videoUri: p.videoUri });
+            await publishInstagram({ igId: m.igId, igToken: m.igToken, caption, imageUri: p.imageUri, videoUri: p.videoUri, attachments: atts });
             done.push('Instagram');
           } else if (ch === 'threads') {
             if (!m.threadsId || !m.threadsToken) throw new Error('Threads not connected');
-            await publishThreads({ threadsId: m.threadsId, token: m.threadsToken, text: caption, imageUri: p.imageUri, videoUri: p.videoUri });
+            await publishThreads({ threadsId: m.threadsId, token: m.threadsToken, text: caption, imageUri: p.imageUri, videoUri: p.videoUri, attachments: atts });
             done.push('Threads');
           } else if (ch === 'tiktok') {
             if (!m.ttRefreshToken && !m.ttAccessToken) throw new Error('TikTok not connected');
-            if (!p.videoUri) throw new Error('TikTok needs a video — photos publish manually for now');
+            if (!firstVideo) throw new Error('TikTok needs a video — photos publish manually for now');
             await publishTikTokVideo({
               title: caption.slice(0, 150) || 'Sosial post',
               privacyLevel: ttPrivacy as string,
-              videoUri: p.videoUri,
+              videoUri: firstVideo.uri,
             });
             done.push('TikTok');
           } else {
@@ -293,7 +313,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
         initialAt={sheet?.post?.scheduledAt}
         initialPlatforms={sheet?.post?.platforms}
         composer={{ title: tTitle, caption: tBody, onCaption: setTBody, onTitle: setTTitle }}
-        media={{ uri: tUri, kind: tKind, onPick: pickMedia, onRemove: () => setTUri(undefined) }}
+        media={{ items: tMedia, onPick: pickMedia, onRemove: removeMedia }}
         onSave={save}
         draftLabel="Save as draft"
         onDraft={saveDraft}

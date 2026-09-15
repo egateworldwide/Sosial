@@ -6,6 +6,7 @@ import { useTheme, Palette, R } from '../theme';
 import { PrimaryBtn, GhostBtn, Txt } from './ui';
 import { SocialGlyph } from './ui';
 import { SOCIAL_META } from '../constants';
+import { MAX_ATTACHMENTS } from '../utils/metaPublish';
 import { fmtDateTime } from '../utils/reminders';
 
 const CHANNELS = ['any', 'facebook', 'instagram', 'tiktok', 'threads', 'linkedin', 'bluesky', 'youtube', 'mastodon', 'pinterest', 'x'];
@@ -32,11 +33,15 @@ export interface Composer {
   onTitle?: (v: string) => void;
 }
 
+export interface SheetMediaItem {
+  uri: string;
+  kind: 'image' | 'video';
+}
+
 export interface SheetMedia {
-  uri?: string;
-  kind?: 'image' | 'video';
+  items: SheetMediaItem[];
   onPick: () => void;
-  onRemove: () => void;
+  onRemove: (index: number) => void;
 }
 
 interface Props {
@@ -73,6 +78,11 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
   const [custom, setCustom] = useState(new Date(Date.now() + 86400000));
   const [showPicker, setShowPicker] = useState(false);
   const [mode, setMode] = useState<'date' | 'time'>('date');
+  const [viewer, setViewer] = useState<number | null>(null);
+
+  const vCount = media?.items.length ?? 0;
+  const vIdx = viewer !== null && vCount > 0 ? Math.min(viewer, vCount - 1) : null;
+  const vItem = vIdx !== null ? media?.items[vIdx] : undefined;
 
   useEffect(() => {
     if (visible) {
@@ -129,6 +139,7 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
   };
 
   return (
+  <>
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
       <TouchableOpacity activeOpacity={1} onPress={onClose} style={st.bg}>
@@ -170,40 +181,60 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
 
           {media ? (
             readOnly ? (
-              media.uri ? (
+              media.items.length > 0 ? (
                 <View>
                   <Text style={st.label}>Photo or video</Text>
-                  {media.kind === 'video' ? (
-                    <View style={{ width: '100%', height: 150, borderRadius: R.lg, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center', marginTop: 8 }}>
-                      <Ionicons name="play-circle" size={44} color="#fff" />
-                    </View>
-                  ) : (
-                    <Image source={{ uri: media.uri }} style={{ width: '100%', height: 150, borderRadius: R.lg, marginTop: 8 }} resizeMode="cover" />
-                  )}
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginTop: 8, paddingRight: 4 }}>
+                    {media.items.map((it, i) => (
+                      <TouchableOpacity key={`${it.uri}-${i}`} onPress={() => setViewer(i)} activeOpacity={0.8}>
+                        {it.kind === 'video' ? (
+                          <View style={[st.thumb, { backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }]}>
+                            <Ionicons name="play" size={20} color="#fff" />
+                          </View>
+                        ) : (
+                          <Image source={{ uri: it.uri }} style={st.thumb} />
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
                 </View>
               ) : null
             ) : (
             <View>
-              <Text style={st.label}>Photo or video</Text>
-              {media.uri ? (
-                <View style={{ gap: 8, marginTop: 8 }}>
-                  {media.kind === 'video' ? (
-                    <View style={{ width: '100%', height: 150, borderRadius: R.lg, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }}>
-                      <Ionicons name="play-circle" size={44} color="#fff" />
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+                <Text style={st.label}>Photo or video</Text>
+                {media.items.length > 0 ? <Text style={st.countT}>{media.items.length}/{MAX_ATTACHMENTS}</Text> : null}
+              </View>
+              {media.items.length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginTop: 8, paddingRight: 4 }}>
+                  {media.items.map((it, i) => (
+                    <View key={`${it.uri}-${i}`}>
+                      <TouchableOpacity onPress={() => setViewer(i)} activeOpacity={0.8}>
+                        {it.kind === 'video' ? (
+                          <View style={[st.thumb, { backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }]}>
+                            <Ionicons name="play" size={20} color="#fff" />
+                          </View>
+                        ) : (
+                          <Image source={{ uri: it.uri }} style={st.thumb} />
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => media.onRemove(i)} style={st.thumbX} activeOpacity={0.7}>
+                        <Ionicons name="close" size={12} color="#fff" />
+                      </TouchableOpacity>
                     </View>
-                  ) : (
-                    <Image source={{ uri: media.uri }} style={{ width: '100%', height: 150, borderRadius: R.lg }} resizeMode="cover" />
-                  )}
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <View style={{ flex: 1 }}><GhostBtn label="Change" onPress={media.onPick} /></View>
-                    <View style={{ flex: 1 }}><GhostBtn label="Remove" danger onPress={media.onRemove} /></View>
-                  </View>
-                </View>
+                  ))}
+                  {media.items.length < MAX_ATTACHMENTS ? (
+                    <TouchableOpacity onPress={media.onPick} style={[st.thumb, st.thumbAdd]} activeOpacity={0.7}>
+                      <Ionicons name="add" size={22} color={C.accentInk} />
+                    </TouchableOpacity>
+                  ) : null}
+                </ScrollView>
               ) : (
                 <View style={{ marginTop: 8 }}>
                   <GhostBtn label="Attach photo or video" onPress={media.onPick} />
                 </View>
               )}
+              <Text style={st.limitHint}>Instagram · up to 10 photos as a carousel — Facebook · up to 10 photos — Threads & TikTok · first item only</Text>
             </View>
             )
           ) : null}
@@ -363,6 +394,48 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
       </TouchableOpacity>
       </KeyboardAvoidingView>
     </Modal>
+    <Modal visible={vIdx !== null} transparent animationType="fade" onRequestClose={() => setViewer(null)}>
+      {vItem ? (
+        <View style={st.viewerBg}>
+          <View style={st.viewerBar}>
+            <Text style={st.viewerCount}>{(vIdx ?? 0) + 1} / {vCount}</Text>
+            <TouchableOpacity onPress={() => setViewer(null)} style={st.viewerMin} activeOpacity={0.7}>
+              <Ionicons name="chevron-down" size={18} color="#fff" />
+              <Text style={st.viewerMinT}>Minimize</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={st.viewerBody}>
+            {vItem.kind === 'video' ? (
+              <View style={st.viewerVideo}>
+                <Ionicons name="play-circle" size={64} color="#fff" />
+                <Text style={st.viewerHint}>Video preview isn’t available — it posts fine.</Text>
+              </View>
+            ) : (
+              <Image source={{ uri: vItem.uri }} style={st.viewerImg} resizeMode="contain" />
+            )}
+          </View>
+          <View style={st.viewerNav}>
+            <TouchableOpacity
+              disabled={(vIdx ?? 0) <= 0}
+              onPress={() => setViewer(Math.max(0, (vIdx ?? 0) - 1))}
+              style={[st.viewerNavBtn, (vIdx ?? 0) <= 0 && st.viewerNavOff]}
+              activeOpacity={0.7}
+            >
+              <Text style={st.viewerNavBtnT}>‹ Prev</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              disabled={(vIdx ?? vCount) >= vCount - 1}
+              onPress={() => setViewer(Math.min(vCount - 1, (vIdx ?? 0) + 1))}
+              style={[st.viewerNavBtn, (vIdx ?? vCount) >= vCount - 1 && st.viewerNavOff]}
+              activeOpacity={0.7}
+            >
+              <Text style={st.viewerNavBtnT}>Next ›</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+    </Modal>
+    </>
   );
 }
 
@@ -380,6 +453,24 @@ const makeSt = (C: Palette) => ({
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.card, borderRadius: 999, borderWidth: 1, borderColor: C.lineSoft, paddingHorizontal: 12, paddingVertical: 8 } as const,
   chipT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.ink, textTransform: 'capitalize' } as const,
   soonT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 10.5, color: C.accentInk } as const,
+  countT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: C.muted } as const,
+  limitHint: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11.5, lineHeight: 16, color: C.faint, marginTop: 6 } as const,
+  thumb: { width: 64, height: 64, borderRadius: R.md } as const,
+  thumbAdd: { backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft, alignItems: 'center', justifyContent: 'center' } as const,
+  thumbX: { position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: 10, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' } as const,
+  viewerBg: { flex: 1, backgroundColor: '#000000EE', paddingTop: 48, paddingBottom: 32, paddingHorizontal: 20 } as const,
+  viewerBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' } as const,
+  viewerCount: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: '#fff' } as const,
+  viewerMin: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFFFFF22', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 } as const,
+  viewerMinT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: '#fff' } as const,
+  viewerBody: { flex: 1, alignItems: 'center', justifyContent: 'center', marginVertical: 16 } as const,
+  viewerImg: { width: '100%', height: '100%' } as const,
+  viewerVideo: { alignItems: 'center', justifyContent: 'center', gap: 10 } as const,
+  viewerHint: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, color: '#FFFFFFAA', textAlign: 'center' } as const,
+  viewerNav: { flexDirection: 'row', gap: 10 } as const,
+  viewerNavBtn: { flex: 1, backgroundColor: '#FFFFFF1A', borderRadius: R.md, paddingVertical: 13, alignItems: 'center' } as const,
+  viewerNavOff: { opacity: 0.3 } as const,
+  viewerNavBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: '#fff' } as const,
   opt: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1.5, borderColor: C.lineSoft, padding: 12 } as const,
   radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: C.faint, alignItems: 'center', justifyContent: 'center' } as const,
   radioOn: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.accent } as const,

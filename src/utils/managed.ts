@@ -3,18 +3,34 @@ import { uid } from '../constants';
 
 export type PostStatus = 'draft' | 'queued' | 'approval' | 'sent';
 
-/** A managed social post: title + optional photo/video + description + channels + time + pipeline status. */
+export interface MediaAttachment {
+  uri: string;
+  kind: 'image' | 'video';
+}
+
+/** A managed social post: title + photos/videos + description + channels + time + pipeline status. */
 export interface ManagedPost {
   id: string;
   title: string;
   body: string;
   imageUri?: string;
   videoUri?: string;
+  /** all attached media in order; legacy imageUri/videoUri mirror the first of each kind */
+  attachments?: MediaAttachment[];
   platforms: string[];
   scheduledAt?: number;
   createdAt: number;
   status?: PostStatus;
   sentAt?: number;
+}
+
+/** Attachments with legacy fallback (posts saved before multi-attach existed). */
+export function postAttachments(p: ManagedPost): MediaAttachment[] {
+  if (p.attachments && p.attachments.length) return p.attachments;
+  const out: MediaAttachment[] = [];
+  if (p.imageUri) out.push({ uri: p.imageUri, kind: 'image' });
+  if (p.videoUri) out.push({ uri: p.videoUri, kind: 'video' });
+  return out;
 }
 
 /** Backfill status for posts saved before the pipeline existed. */
