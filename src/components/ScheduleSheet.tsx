@@ -65,7 +65,7 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
   const { C, mode: themeMode } = useTheme();
   const st = makeSt(C);
   const [plats, setPlats] = useState<string[]>(['any']);
-  const [preset, setPreset] = useState<'today' | 'tomorrow' | 'custom'>('tomorrow');
+  const [preset, setPreset] = useState<'now' | 'today' | 'tomorrow' | 'custom'>('now');
   const [custom, setCustom] = useState(new Date(Date.now() + 86400000));
   const [showPicker, setShowPicker] = useState(false);
   const [mode, setMode] = useState<'date' | 'time'>('date');
@@ -73,7 +73,7 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
   useEffect(() => {
     if (visible) {
       setPlats(initialPlatforms && initialPlatforms.length > 0 ? initialPlatforms : ['any']);
-      setPreset('tomorrow');
+      setPreset('now');
       setCustom(new Date(initialAt ?? Date.now() + 86400000));
       setShowPicker(false);
       setMode('date');
@@ -97,7 +97,7 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
     });
   };
 
-  const at = preset === 'today' ? slotToday(18) : preset === 'tomorrow' ? slotTomorrow(9) : custom.getTime();
+  const at = preset === 'now' ? Date.now() + 60000 : preset === 'today' ? slotToday(18) : preset === 'tomorrow' ? slotTomorrow(9) : custom.getTime();
 
   const onPick = (_e: any, d?: Date) => {
     if (_e?.type === 'dismissed') {
@@ -209,6 +209,7 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
           <Text style={[st.label, { marginTop: 6 }]}>Time</Text>
           {(
             [
+              { id: 'now', label: 'Now', sub: 'Reminder fires in about a minute' },
               { id: 'today', label: 'Today', sub: fmtDateTime(slotToday(18)) },
               { id: 'tomorrow', label: 'Tomorrow', sub: fmtDateTime(slotTomorrow(9)) },
               { id: 'custom', label: 'Custom', sub: fmtDateTime(custom.getTime()) },
@@ -262,7 +263,7 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, ti
 
           <View style={{ marginTop: 10 }}>
             <PrimaryBtn
-              label={bulkCount ? `Queue ${bulkCount} page${bulkCount > 1 ? 's' : ''}` : `Queue for ${fmtDateTime(at)}`}
+              label={bulkCount ? `Queue ${bulkCount} page${bulkCount > 1 ? 's' : ''}` : preset === 'now' ? 'Queue now' : `Queue for ${fmtDateTime(at)}`}
               onPress={save}
             />
           </View>
