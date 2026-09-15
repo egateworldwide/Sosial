@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, Modal, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R } from '../theme';
 
-export type MainTab = 'create' | 'post' | 'analytics';
+export type MainTab = 'create' | 'analytics';
 
 /** Buffer-style bottom bar: Create | (+) | Analytics. + expands to Template / Post. */
 export default function BottomNav({ tab, onTab, onTemplate, onPost }: {

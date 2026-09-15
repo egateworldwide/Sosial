@@ -10,8 +10,8 @@ import { QuickPost } from '../types';
 import { uid } from '../constants';
 import { saveProject, loadProjects, deleteProject, renameProject } from './HomeScreen';
 import { loadIdeas, saveIdea, deleteIdea, Idea } from '../utils/ideas';
-import { loadManagedPosts, ManagedPost } from '../utils/managed';
-import { fmtDateTime, platformsLabel } from '../utils/reminders';
+import PostScreen from './PostScreen';
+import { useComposer } from '../store/ComposerContext';
 import { loadMetaState } from '../utils/metaStore';
 import { deleteProjectPreset, instantiatePreset, loadProjectPresets, renameProjectPreset,
   saveProjectPreset, ProjectPreset } from '../utils/presets';
@@ -35,21 +35,21 @@ function SheetRow({ label, onPress, danger }: { label: string; onPress: () => vo
 }
 
 /** Create tab: social-style ideas feed + saved templates. Masthead keeps Connect + avatar. */
-export default function CreateScreen({ email, team, onProfile, onConnect, onTemplate, onOpenProject, onComposePost, onPost }: {
+export default function CreateScreen({ email, team, onProfile, onConnect, onTemplate, onOpenProject, postSignal, onConsumePostSignal }: {
   email: string;
   team: string;
   onProfile: () => void;
   onConnect: () => void;
   onTemplate: () => void;
   onOpenProject: (p: QuickPost) => void;
-  onComposePost: () => void;
-  onPost: () => void;
+  postSignal: number;
+  onConsumePostSignal: () => void;
 }) {
   const { C } = useTheme();
   const s = makeS(C);
+  const { openComposer } = useComposer();
   const [tab, setTab] = useState<'ideas' | 'templates' | 'post'>('ideas');
   const [ideas, setIdeas] = useState<Idea[]>([]);
-  const [managed, setManaged] = useState<ManagedPost[]>([]);
   const [projects, setProjects] = useState<QuickPost[]>([]);
   const [presets, setPresets] = useState<ProjectPreset[]>([]);
   const [connected, setConnected] = useState(false);
@@ -71,23 +71,17 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
 
   const reload = () => {
     loadIdeas().then(setIdeas);
-    loadManagedPosts().then(setManaged);
     loadProjects().then(setProjects);
     loadProjectPresets().then(setPresets);
     loadMetaState().then((m) => setConnected(!!(m.pageId || m.igId || m.threadsId)));
   };
 
-  const statusOf = (p: ManagedPost) => p.status ?? 'draft';
-  const counts = {
-    queued: managed.filter((p) => statusOf(p) === 'queued').length,
-    draft: managed.filter((p) => statusOf(p) === 'draft').length,
-    approval: managed.filter((p) => statusOf(p) === 'approval').length,
-    sent: managed.filter((p) => statusOf(p) === 'sent').length,
-  };
-  const upcoming = managed
-    .filter((p) => statusOf(p) === 'queued' && !!p.scheduledAt)
-    .sort((a, b) => (a.scheduledAt as number) - (b.scheduledAt as number))
-    .slice(0, 3);
+  useEffect(() => {
+    if (postSignal > 0) {
+      setTab('post');
+      onConsumePostSignal();
+    }
+  }, [postSignal]);
 
   useEffect(() => {
     reload();
@@ -299,7 +293,7 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
                       <Ionicons name="color-palette-outline" size={15} color={C.onInk} />
                       <Text style={s.designBtnT}>Design</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={onComposePost} style={s.postBtn} activeOpacity={0.8}>
+                    <TouchableOpacity onPress={() => openComposer(null)} style={s.postBtn} activeOpacity={0.8}>
                       <Ionicons name="send-outline" size={15} color={C.ink} />
                       <Text style={s.postBtnT}>Post</Text>
                     </TouchableOpacity>
@@ -368,46 +362,8 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
             )}
           </View>
         ) : (
-          <View style={{ paddingHorizontal: 24, marginTop: 14 }}>
-            <TouchableOpacity onPress={onComposePost} style={s.tplCta} activeOpacity={0.85}>
-              <Text style={s.tplCtaT}>+ New post</Text>
-              <Ionicons name="arrow-forward" size={18} color={C.onInk} />
-            </TouchableOpacity>
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-              {([
-                { id: 'queued', label: 'Queue' },
-                { id: 'draft', label: 'Drafts' },
-                { id: 'approval', label: 'Approvals' },
-                { id: 'sent', label: 'Sent' },
-              ] as const).map((t) => (
-                <TouchableOpacity key={t.id} onPress={onPost} style={s.miniTab} activeOpacity={0.75}>
-                  <Text style={s.miniTabT}>{t.label} · {counts[t.id]}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={[s.secT, { marginTop: 22 }]}>Up next</Text>
-            {upcoming.length === 0 ? (
-              <Text style={s.hint}>Nothing scheduled — queue a post and it shows up here.</Text>
-            ) : (
-              <View style={{ marginTop: 6 }}>
-                {upcoming.map((u) => (
-                  <TouchableOpacity key={u.id} onPress={onPost} style={s.row} activeOpacity={0.7}>
-                    <View style={{ flex: 1, gap: 2 }}>
-                      <Text style={s.rowT} numberOfLines={1}>{u.title || 'Untitled'}</Text>
-                      <Text style={s.rowS} numberOfLines={1}>
-                        {u.scheduledAt ? fmtDateTime(u.scheduledAt) : 'Not scheduled'} · {platformsLabel(u.platforms ?? ['any'])}
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={18} color={C.faint} />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-            <TouchableOpacity onPress={onPost} style={[s.postBtn, { justifyContent: 'center', marginTop: 14, paddingVertical: 14 }]} activeOpacity={0.8}>
-              <Text style={s.postBtnT}>Open Post page</Text>
-              <Ionicons name="arrow-forward" size={16} color={C.ink} />
-            </TouchableOpacity>
-          </View>
+          /* the full Post pipeline, inline — same screen, no navigation */
+          <PostScreen bare email={email} team={team} onProfile={onProfile} onConnect={onConnect} />
         )}
       </ScrollView>
 
@@ -497,8 +453,6 @@ const makeS = (C: Palette) => StyleSheet.create({
   sub: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, color: C.muted, marginTop: 6 },
   tab: { borderRadius: 999, paddingHorizontal: 18, paddingVertical: 9, backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft },
   tabT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.muted },
-  miniTab: { flex: 1, borderRadius: 999, paddingVertical: 9, alignItems: 'center', backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft },
-  miniTabT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: C.muted },
   composer: { backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, padding: 13, gap: 2 },
   cTitle: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14 },
   cImg: { width: '100%', height: 150, borderRadius: R.md, marginTop: 8 },

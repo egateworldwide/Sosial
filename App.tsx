@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { StatusBar, ActivityIndicator, View, Text, BackHandler, Platform, Alert } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { PostProvider, usePost } from './src/store/PostContext';
+import { ComposerProvider, useComposer } from './src/store/ComposerContext';
 import { loadProjects } from './src/screens/HomeScreen';
 import CreateScreen from './src/screens/CreateScreen';
-import PostScreen from './src/screens/PostScreen';
 import AnalyticsScreen from './src/screens/AnalyticsScreen';
 import AccountScreen from './src/screens/AccountScreen';
 import SizeScreen from './src/screens/SizeScreen';
@@ -28,15 +27,16 @@ type Route = MainTab | 'size' | 'editor' | 'export' | 'connect' | 'privacy' | 'a
 // Android's extra font padding, which shifts every line box vs iOS.
 (Text as any).defaultProps = { ...((Text as any).defaultProps ?? {}), allowFontScaling: false, includeFontPadding: false };
 
-const TABS: MainTab[] = ['create', 'post', 'analytics'];
+const TABS: MainTab[] = ['create', 'analytics'];
 
 function Shell() {
   const { C, mode, toggle } = useTheme();
+  const { openComposer, openPostById } = useComposer();
   const [route, setRoute] = useState<Route>('create');
-  const [connectFrom, setConnectFrom] = useState<Route>('post');
+  const [connectFrom, setConnectFrom] = useState<Route>('create');
   const [privacyFrom, setPrivacyFrom] = useState<Route>('account');
   const [profileOpen, setProfileOpen] = useState(false);
-  const [composeSignal, setComposeSignal] = useState(0);
+  const [postSignal, setPostSignal] = useState(0);
   const [account, setAccount] = useState<Account>({ email: '', team: 'My team', plan: 'free', notifPosts: true, notifComments: true, notifWeekly: false });
   const { loadPost, clearPost, setPageIndex } = usePost();
   const fontsLoaded = useFontsLoaded();
@@ -99,15 +99,17 @@ function Shell() {
   };
 
   // tapping a reminder deep-links straight to its post (lazy: module throws in Android Go)
+  const composerRef = React.useRef({ openPostById });
+  composerRef.current = { openPostById };
   React.useEffect(() => {
     let sub: { remove: () => void } | null = null;
     const openData = async (d: any) => {
       if (!d) return;
       if (d.managedPostId) {
-        try {
-          await AsyncStorage.setItem('quickpost_open_post', String(d.managedPostId));
-        } catch {}
-        setRoute('post');
+        // land on the inline Post pill with the composer open on top
+        setPostSignal(Date.now());
+        setRoute('create');
+        await composerRef.current.openPostById(String(d.managedPostId));
         return;
       }
       if (d.projectId) openScheduled(d.projectId, d.pageId);
@@ -132,9 +134,9 @@ function Shell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const composePost = () => {
-    setRoute('post');
-    setComposeSignal(Date.now());
+  const goCreatePost = () => {
+    setPostSignal(Date.now());
+    setRoute('create');
   };
 
   const newTemplate = () => {
@@ -182,17 +184,8 @@ function Shell() {
               onConnect={() => goConnect('create')}
               onTemplate={newTemplate}
               onOpenProject={(p) => { loadPost(p); setRoute('editor'); }}
-              onComposePost={composePost}
-              onPost={() => setRoute('post')}
-            />
-          ) : null}
-          {route === 'post' ? (
-            <PostScreen
-              email={account.email}
-              team={account.team}
-              onProfile={() => setProfileOpen(true)}
-              onConnect={() => goConnect('post')}
-              composeSignal={composeSignal}
+              postSignal={postSignal}
+              onConsumePostSignal={() => setPostSignal(0)}
             />
           ) : null}
           {route === 'analytics' ? (
@@ -204,7 +197,7 @@ function Shell() {
             />
           ) : null}
           {route === 'size' ? <SizeScreen onDone={() => setRoute('editor')} onBack={() => setRoute('create')} /> : null}
-          {route === 'editor' ? <EditorScreen onExport={() => setRoute('export')} onHome={() => setRoute('create')} onPosts={() => setRoute('post')} /> : null}
+          {route === 'editor' ? <EditorScreen onExport={() => setRoute('export')} onHome={() => setRoute('create')} onPosts={goCreatePost} /> : null}
           {route === 'export' ? <ExportScreen onBack={() => setRoute('editor')} /> : null}
           {route === 'account' ? (
             <AccountScreen
@@ -229,7 +222,7 @@ function Shell() {
             tab={route as MainTab}
             onTab={setRoute}
             onTemplate={newTemplate}
-            onPost={composePost}
+            onPost={() => openComposer(null)}
           />
         ) : null}
         <ProfileMenu
@@ -257,9 +250,11 @@ export default function App() {
   return (
     <ThemeProvider>
       <PostProvider>
-        <SafeAreaProvider>
-          <Shell />
-        </SafeAreaProvider>
+        <ComposerProvider>
+          <SafeAreaProvider>
+            <Shell />
+          </SafeAreaProvider>
+        </ComposerProvider>
       </PostProvider>
     </ThemeProvider>
   );
