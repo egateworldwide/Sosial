@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R, T } from '../theme';
 import { AvatarButton } from '../components/ProfileMenu';
+import ConnectButton from '../components/ConnectButton';
 import { Txt } from '../components/ui';
 import { usePost, defaultPage } from '../store/PostContext';
 import { QuickPost } from '../types';
@@ -52,7 +53,6 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [projects, setProjects] = useState<QuickPost[]>([]);
   const [presets, setPresets] = useState<ProjectPreset[]>([]);
-  const [connected, setConnected] = useState(false);
   const { post } = usePost();
 
   // composer
@@ -73,7 +73,6 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
     loadIdeas().then(setIdeas);
     loadProjects().then(setProjects);
     loadProjectPresets().then(setPresets);
-    loadMetaState().then((m) => setConnected(!!(m.pageId || m.igId || m.threadsId)));
   };
 
   useEffect(() => {
@@ -222,12 +221,7 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
             <Text style={s.wordmark}>Sosial</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <TouchableOpacity onPress={onConnect} activeOpacity={0.8} style={s.queueBtn}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                {connected ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#22C55E' }} /> : null}
-                <Text style={s.queueBtnT}>Connect</Text>
-              </View>
-            </TouchableOpacity>
+            <ConnectButton onPress={onConnect} />
             <AvatarButton email={email} team={team} onPress={onProfile} />
           </View>
         </View>
@@ -448,8 +442,6 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
 const makeS = (C: Palette) => StyleSheet.create({
   masthead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 20 },
   wordmark: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 17, letterSpacing: -0.4, color: C.ink },
-  queueBtn: { backgroundColor: C.card, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 9, borderWidth: 1, borderColor: C.lineSoft },
-  queueBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.accentInk },
   sub: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, color: C.muted, marginTop: 6 },
   tab: { borderRadius: 999, paddingHorizontal: 18, paddingVertical: 9, backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft },
   tabT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.muted },

@@ -4,6 +4,7 @@ import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R, T } from '../theme';
 import { SocialGlyph } from '../components/ui';
 import { AvatarButton } from '../components/ProfileMenu';
+import ConnectButton from '../components/ConnectButton';
 import ChannelDrawer from '../components/ChannelDrawer';
 import { SOCIAL_META } from '../constants';
 import { loadManagedPosts, ManagedPost } from '../utils/managed';
@@ -157,12 +158,7 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
           <View style={st.masthead}>
             <Text style={[T.h1, { color: C.ink, fontSize: 30, lineHeight: 36 }]}>Post</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <TouchableOpacity onPress={onConnect} activeOpacity={0.8} style={st.queueBtn}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  {(meta.pageId || meta.igId || meta.threadsId) ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#22C55E' }} /> : null}
-                  <Text style={st.queueBtnT}>Connect</Text>
-                </View>
-              </TouchableOpacity>
+              <ConnectButton onPress={onConnect} />
               <AvatarButton email={email} team={team} onPress={onProfile} />
             </View>
           </View>
@@ -257,8 +253,6 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
 
 const makeS = (C: Palette) => StyleSheet.create({
   masthead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 20 },
-  queueBtn: { backgroundColor: C.card, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 9, borderWidth: 1, borderColor: C.lineSoft },
-  queueBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.accentInk },
   chanBtn: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, paddingHorizontal: 15, paddingVertical: 13 },
   chanBtnT: { flex: 1, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14.5, color: C.ink },
   tab: { borderRadius: 999, paddingHorizontal: 15, paddingVertical: 9, backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft },
