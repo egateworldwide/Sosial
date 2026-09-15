@@ -69,6 +69,7 @@ export async function loginFacebook(): Promise<string> {
     `&redirect_uri=${encodeURIComponent(BRIDGE_URL)}` +
     `&response_type=code` +
     `&scope=${encodeURIComponent(FB_SCOPES.join(','))}` +
+    `&auth_type=rerequest` +
     `&state=${encodeURIComponent(appReturnUrl())}`;
   return loginWithCode(url);
 }
@@ -104,14 +105,12 @@ export async function fetchPages(userToken: string): Promise<FbPage[]> {
 }
 
 export async function pickPage(p: FbPage): Promise<void> {
-  // FB only — Instagram connects through its own login, never inherit its id here
+  // FB only — never touch the Instagram keys; it has its own login and its own
+  // token, and clearing it here used to silently disconnect Instagram.
   await saveMetaState({
     pageId: p.id,
     pageName: p.name,
     pageToken: p.access_token,
-    igId: undefined,
-    igName: undefined,
-    igToken: undefined,
   });
 }
 
