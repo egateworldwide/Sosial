@@ -138,10 +138,16 @@ export async function publishThreads(opts: {
     (kind === 'IMAGE' ? `&image_url=${encodeURIComponent(mediaUrl)}` : '') +
     (kind === 'VIDEO' ? `&video_url=${encodeURIComponent(mediaUrl)}` : '') +
     `&access_token=${tok}`;
-  const c = await fetch(`${THREADS_API}/${opts.threadsId}/threads?${params}`, { method: 'POST' });
+  const c = await fetch(`${THREADS_API}/${opts.threadsId}/threads?${params}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${opts.token}` },
+  });
   const cj: any = await gjson(c);
   if (cj.error || !cj.id) throw new Error(gerr(cj, 'Threads container failed.'));
-  const p = await fetch(`${THREADS_API}/${opts.threadsId}/threads_publish?creation_id=${encodeURIComponent(String(cj.id))}&access_token=${tok}`, { method: 'POST' });
+  const p = await fetch(`${THREADS_API}/${opts.threadsId}/threads_publish?creation_id=${encodeURIComponent(String(cj.id))}&access_token=${tok}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${opts.token}` },
+  });
   const pj: any = await gjson(p);
   if (pj.error || !pj.id) throw new Error(gerr(pj, 'Threads publish failed.'));
   return String(pj.id);

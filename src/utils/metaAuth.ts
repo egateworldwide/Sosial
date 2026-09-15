@@ -205,7 +205,9 @@ export async function exchangeThreadsCode(code: string): Promise<{ token: string
 }
 
 export async function fetchThreadsProfile(token: string): Promise<{ id: string; username?: string }> {
-  const r = await fetch(`${THREADS_API}/me?fields=id,username&access_token=${encodeURIComponent(token)}`);
+  const r = await fetch(`${THREADS_API}/me?fields=id,username&access_token=${encodeURIComponent(token)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   const j: any = await r.json().catch(() => ({}));
   if (j.error) throw new Error(errMsg(j, 'Could not read your Threads profile.'));
   return { id: String(j.id), username: j.username ? `@${j.username}` : undefined };

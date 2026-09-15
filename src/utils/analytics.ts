@@ -67,8 +67,8 @@ const tsOf = (v: any): number => {
   return isNaN(t) ? 0 : t;
 };
 
-async function jget(url: string): Promise<any> {
-  const r = await fetch(url);
+async function jget(url: string, headers?: Record<string, string>): Promise<any> {
+  const r = await fetch(url, headers ? { headers } : undefined);
   return r.json().catch(() => ({}));
 }
 
@@ -200,10 +200,11 @@ async function thStats(m: MetaState, start: number, end: number): Promise<Channe
   };
   if (!m.threadsId || !m.threadsToken) return { ...base, note: 'Threads not connected.' };
   const tok = encodeURIComponent(m.threadsToken);
+  const tth = { Authorization: `Bearer ${m.threadsToken}` };
   try {
     // follower counts aren't in the documented profile fields — best-effort only
     try {
-      const f: any = await jget(`${THREADS_API}/me?fields=followers_count&access_token=${tok}`);
+      const f: any = await jget(`${THREADS_API}/me?fields=followers_count&access_token=${tok}`, tth);
       if (!f.error && typeof f.followers_count === 'number') base.followers = f.followers_count;
     } catch {}
     // followers live behind the insights permission — try it, stay null otherwise
@@ -213,6 +214,7 @@ async function thStats(m: MetaState, start: number, end: number): Promise<Channe
         const until = Math.floor(Date.now() / 1000);
         const ins: any = await jget(
           `${THREADS_API}/${m.threadsId}/threads_insights?metric=followers_count&since=${since}&until=${until}&access_token=${tok}`,
+          tth,
         );
         const arr = Array.isArray(ins?.data) ? ins.data : [];
         const entry = arr.find((v: any) => /follower/i.test(String(v?.name ?? ''))) ?? arr[0];
@@ -224,6 +226,7 @@ async function thStats(m: MetaState, start: number, end: number): Promise<Channe
     }
     const list: any = await jget(
       `${THREADS_API}/${m.threadsId}/threads?fields=id,text,timestamp,like_count,reply_count,repost_count,view_count&limit=25&access_token=${tok}`,
+      tth,
     );
     if (list.error) throw new Error(list.error.message || 'Could not read Threads posts.');
     const inRange = ((list.data ?? []) as any[]).filter((x) => {
@@ -256,10 +259,11 @@ async function thStats(m: MetaState, start: number, end: number): Promise<Channe
 async function thComments(m: MetaState, stats: PerPost[]): Promise<FeedComment[]> {
   if (!m.threadsToken) return [];
   const tok = encodeURIComponent(m.threadsToken);
+  const tth = { Authorization: `Bearer ${m.threadsToken}` };
   const out: FeedComment[] = [];
   for (const p of stats.slice(0, 5)) {
     try {
-      const c: any = await jget(`${THREADS_API}/${p.id}/conversation?fields=username,text,timestamp&limit=10&access_token=${tok}`);
+      const c: any = await jget(`${THREADS_API}/${p.id}/conversation?fields=username,text,timestamp&limit=10&access_token=${tok}`, tth);
       for (const x of (c.data ?? []) as any[]) {
         out.push({
           channel: 'threads',
