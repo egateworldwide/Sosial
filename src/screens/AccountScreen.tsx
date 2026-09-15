@@ -313,7 +313,6 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
                 <Text style={s.saveT}>Manage subscription</Text>
               </TouchableOpacity>
             ) : null}
-            <Text style={s.note}>Need more AI without Pro? Credit packs ($4.99 / 100 generations) arrive at launch.</Text>
           </View>
         ) : null}
 
