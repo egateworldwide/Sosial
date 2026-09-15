@@ -206,6 +206,22 @@ async function thStats(m: MetaState, start: number, end: number): Promise<Channe
       const f: any = await jget(`${THREADS_API}/me?fields=followers_count&access_token=${tok}`);
       if (!f.error && typeof f.followers_count === 'number') base.followers = f.followers_count;
     } catch {}
+    // followers live behind the insights permission — try it, stay null otherwise
+    if (base.followers === null) {
+      try {
+        const since = Math.floor((Date.now() - 30 * 86400000) / 1000);
+        const until = Math.floor(Date.now() / 1000);
+        const ins: any = await jget(
+          `${THREADS_API}/${m.threadsId}/threads_insights?metric=followers_count&since=${since}&until=${until}&access_token=${tok}`,
+        );
+        const arr = Array.isArray(ins?.data) ? ins.data : [];
+        const entry = arr.find((v: any) => /follower/i.test(String(v?.name ?? ''))) ?? arr[0];
+        const points = Array.isArray(entry?.values) ? entry.values : [];
+        const last = points.length ? points[points.length - 1] : entry;
+        const n = Number(last?.value);
+        if (isFinite(n) && n > 0) base.followers = n;
+      } catch {}
+    }
     const list: any = await jget(
       `${THREADS_API}/${m.threadsId}/threads?fields=id,text,timestamp,like_count,reply_count,repost_count,view_count&limit=25&access_token=${tok}`,
     );

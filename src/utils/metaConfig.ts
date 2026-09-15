@@ -31,7 +31,7 @@ export const IG_AUTH_ENDPOINT = 'https://www.instagram.com/oauth/authorize';
 export const IG_TOKEN_ENDPOINT = 'https://api.instagram.com/oauth/access_token';
 export const IG_GRAPH = 'https://graph.instagram.com';
 
-export const THREADS_SCOPES = ['threads_basic', 'threads_content_publish'];
+export const THREADS_SCOPES = ['threads_basic', 'threads_content_publish', 'threads_read_replies', 'threads_manage_insights'];
 
 export const FB_AUTH_ENDPOINT = `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth`;
 export const THREADS_AUTH_ENDPOINT = 'https://www.threads.com/oauth/authorize';
