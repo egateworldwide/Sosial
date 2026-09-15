@@ -10,6 +10,9 @@ import { loadMetaState } from '../utils/metaStore';
 export default function ConnectButton({ onPress }: { onPress: () => void }) {
   const { C } = useTheme();
   const [connected, setConnected] = useState<string[]>([]);
+  const MAX_LOGOS = 4;
+  const shown = connected.slice(0, MAX_LOGOS);
+  const extra = connected.length - shown.length;
 
   useEffect(() => {
     (async () => {
@@ -34,7 +37,7 @@ export default function ConnectButton({ onPress }: { onPress: () => void }) {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
         {connected.length > 0 ? (
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            {connected.map((p, i) => (
+            {shown.map((p, i) => (
               <View
                 key={p}
                 style={{
@@ -48,6 +51,19 @@ export default function ConnectButton({ onPress }: { onPress: () => void }) {
                 <SocialGlyph platform={p} size={10} color="#fff" />
               </View>
             ))}
+            {extra > 0 ? (
+              <View
+                style={{
+                  minWidth: 20, height: 20, borderRadius: 10,
+                  backgroundColor: C.ink,
+                  alignItems: 'center', justifyContent: 'center',
+                  marginLeft: -7, paddingHorizontal: 4,
+                  borderWidth: 1.5, borderColor: C.card,
+                }}
+              >
+                <Text style={{ fontFamily: 'PlusJakartaSans_700Bold', fontSize: 9, color: C.onInk }}>+{extra}</Text>
+              </View>
+            ) : null}
           </View>
         ) : null}
         <Text style={{ fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.accentInk }}>Connect</Text>
