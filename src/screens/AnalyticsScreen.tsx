@@ -134,7 +134,9 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
             {channel === 'all' ? (
               <Ionicons name="globe-outline" size={18} color={C.accentInk} />
             ) : (
-              <SocialGlyph platform={channel} size={18} color={C.ink} />
+              <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: SOCIAL_META[channel]?.bg ?? C.ink, alignItems: 'center', justifyContent: 'center' }}>
+                <SocialGlyph platform={channel} size={14} color="#fff" />
+              </View>
             )}
             <Text style={s.chanBtnT}>{channelLabel}</Text>
             <Ionicons name="chevron-down" size={18} color={C.faint} />

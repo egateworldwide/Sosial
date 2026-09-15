@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Modal, StyleSheet, Alert, ScrollView } fr
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R } from '../theme';
 import { SocialGlyph } from './ui';
+import { SOCIAL_META } from '../constants';
 
 export interface DrawerChannel {
   id: string;
@@ -41,8 +42,8 @@ export default function ChannelDrawer({ visible, channels, value, onPick, onAddC
         activeOpacity={0.75}
       >
         {glyph ? (
-          <View style={{ width: 34, height: 34, borderRadius: 12, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }}>
-            <SocialGlyph platform={glyph} size={15} color={C.onInk} />
+          <View style={{ width: 34, height: 34, borderRadius: 12, backgroundColor: SOCIAL_META[glyph]?.bg ?? C.ink, alignItems: 'center', justifyContent: 'center' }}>
+            <SocialGlyph platform={glyph} size={15} color="#fff" />
           </View>
         ) : (
           <View style={[s.globe, dot && { backgroundColor: C.accent }]}>
