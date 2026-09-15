@@ -6,6 +6,7 @@ import { uid } from '../constants';
 import { loadManagedPosts, saveManagedPost, deleteManagedPost, ManagedPost, PostStatus } from '../utils/managed';
 import { loadMetaState } from '../utils/metaStore';
 import { publishFacebook, publishInstagram, publishThreads } from '../utils/metaPublish';
+import { publishTikTokVideo, askTikTokPrivacy } from '../utils/tiktokPublish';
 import {
   cancelPostReminder,
   schedulePostReminder, ensureNotifPermission,
@@ -174,6 +175,16 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
     const manual: string[] = [];
     setPublishing(true);
     try {
+      // TikTok won't accept a hardcoded audience — ask once, use for the post
+      let ttPrivacy: string | null = null;
+      if (plats.includes('tiktok')) {
+        try {
+          ttPrivacy = await askTikTokPrivacy();
+        } catch (e: any) {
+          if (String(e?.message ?? '') === 'Login was cancelled.') return; // backed out, stay silent
+          throw e;
+        }
+      }
       for (const ch of plats) {
         try {
           if (ch === 'facebook') {
@@ -188,6 +199,15 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
             if (!m.threadsId || !m.threadsToken) throw new Error('Threads not connected');
             await publishThreads({ threadsId: m.threadsId, token: m.threadsToken, text: caption, imageUri: p.imageUri, videoUri: p.videoUri });
             done.push('Threads');
+          } else if (ch === 'tiktok') {
+            if (!m.ttRefreshToken && !m.ttAccessToken) throw new Error('TikTok not connected');
+            if (!p.videoUri) throw new Error('TikTok needs a video — photos publish manually for now');
+            await publishTikTokVideo({
+              title: caption.slice(0, 150) || 'Zap post',
+              privacyLevel: ttPrivacy as string,
+              videoUri: p.videoUri,
+            });
+            done.push('TikTok');
           } else {
             manual.push(ch === 'any' ? 'manual post' : ch);
           }

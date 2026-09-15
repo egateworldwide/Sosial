@@ -11,6 +11,13 @@ export interface MetaState {
   threadsToken?: string;
   threadsId?: string;
   threadsName?: string;
+  // TikTok — access token dies in 24h, so we keep the expiry + refresh token
+  // and mint silently via getValidToken() in tiktokAuth.ts
+  ttAccessToken?: string;
+  ttRefreshToken?: string;
+  ttExpiresAt?: number;
+  ttOpenId?: string;
+  ttName?: string;
 }
 
 const KEY = 'zap_meta_v1';

@@ -11,7 +11,9 @@ import {
   loginInstagram, exchangeInstagramCode, fetchInstagramProfile,
   loginThreads, exchangeThreadsCode, fetchThreadsProfile,
 } from '../utils/metaAuth';
+import { loginTikTok, completeTikTokLogin } from '../utils/tiktokAuth';
 import { IG_APP_ID } from '../utils/metaConfig';
+import { TT_CLIENT_KEY } from '../utils/tiktokConfig';
 
 function ChannelIcon({ platform }: { platform: string }) {
   const { C } = useTheme();
@@ -137,12 +139,41 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
     setOpenCh(null);
   };
 
+  const doTikTok = async () => {
+    setBusy('Opening TikTok…');
+    try {
+      const code = await loginTikTok();
+      setBusy('Exchanging token…');
+      const { name } = await completeTikTokLogin(code);
+      setMeta(await loadMetaState());
+      setOpenCh('tiktok');
+      if (!name) {
+        Alert.alert('Connected', 'TikTok connected — we couldn’t read the display name yet.');
+      }
+    } catch (e: any) {
+      if (!cancelled(e?.message ?? '')) Alert.alert('TikTok login failed', e?.message ?? 'Try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const disconnectTikTok = async () => {
+    const st = await saveMetaState({
+      ttAccessToken: undefined, ttRefreshToken: undefined, ttExpiresAt: undefined,
+      ttOpenId: undefined, ttName: undefined,
+    });
+    setMeta(st);
+    setOpenCh(null);
+  };
+
   const configured = META_APP_ID.length > 0;
+  const ttConfigured = TT_CLIENT_KEY.length > 0 && !TT_CLIENT_KEY.startsWith('PASTE_');
   const fbOn = !!meta.fbUserToken;
   const igOn = !!(meta.igId && meta.igToken);
   const thOn = !!(meta.threadsId && meta.threadsToken);
+  const ttOn = !!(meta.ttOpenId && (meta.ttAccessToken || meta.ttRefreshToken));
 
-  const tap = (ch: 'facebook' | 'instagram' | 'threads', connected: boolean, connect: () => void) => {
+  const tap = (ch: 'facebook' | 'instagram' | 'threads' | 'tiktok', connected: boolean, connect: () => void) => {
     if (!connected) connect();
     else setOpenCh(openCh === ch ? null : ch);
   };
@@ -246,10 +277,37 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
             </View>
           ) : null}
 
+          {/* TikTok */}
+          <TouchableOpacity onPress={() => tap('tiktok', ttOn, () => { if (ttConfigured) void doTikTok(); })} style={[s.row, s.rowDiv]} activeOpacity={0.7}>
+            <ChannelIcon platform="tiktok" />
+            <View style={{ flex: 1 }}>
+              <Text style={s.rowT}>TikTok</Text>
+              <Text style={s.rowS} numberOfLines={1}>{meta.ttName ?? (ttOn ? 'Connected' : 'Tap to connect')}</Text>
+            </View>
+            {ttOn ? (
+              <Ionicons name={openCh === 'tiktok' ? 'chevron-up' : 'chevron-down'} size={18} color={C.faint} />
+            ) : (
+              <Text style={s.go}>Connect</Text>
+            )}
+          </TouchableOpacity>
+          {ttOn && openCh === 'tiktok' ? (
+            <View style={s.sub}>
+              <TouchableOpacity onPress={disconnectTikTok} activeOpacity={0.7} style={s.disc}>
+                <Text style={s.discT}>Disconnect TikTok</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
+          {!ttConfigured ? (
+            <View style={s.warn}>
+              <Text style={s.warnT}>Add your TikTok client key in src/utils/tiktokConfig.ts first, then reload.</Text>
+            </View>
+          ) : null}
+
           <View style={s.soonHead}>
             <Text style={s.soonHeadT}>Coming soon</Text>
           </View>
-          {['linkedin', 'bluesky', 'youtube', 'mastodon', 'pinterest', 'x', 'tiktok'].map((pl) => (
+          {['linkedin', 'bluesky', 'youtube', 'mastodon', 'pinterest', 'x'].map((pl) => (
             <TouchableOpacity
               key={pl}
               onPress={() => Alert.alert(`${SOCIAL_META[pl]?.label ?? pl} is coming soon`, 'We’re working on it — connect Facebook, Instagram or Threads for now.')}
