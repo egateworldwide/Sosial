@@ -64,6 +64,9 @@ export interface WorkspaceInfo {
 /** Workspace for this user (created on first login). Null when logged out. */
 export async function myWorkspace(userId: string, email: string): Promise<WorkspaceInfo | null> {
   const sb = supabase();
+  // status='active' mirrors the Edge Functions' membership gate — a stale
+  // invited/removed row must never look like a workspace (that phantom is
+  // exactly what 403s cloud calls while the app looks signed in).
   const { data: mem, error: memErr } = await sb
     .from('workspace_members')
     .select('role, workspaces!inner(id, name)')
@@ -275,4 +278,51 @@ export async function signInWithGoogle(): Promise<WorkspaceInfo> {
   const { error: exErr } = await sb.auth.exchangeCodeForSession(code);
   if (exErr) throw friendly(exErr, 'Could not finish Google sign-in.');
   return finishGoogleSession();
+}
+
+/* ---------------- Channel token bridge (Edge Functions) ---------------- */
+
+async function callChannelFunction(name: string, body: Record<string, unknown>): Promise<any> {
+  const sb = supabase();
+  const { data } = await sb.auth.getSession();
+  const jwt = data.session?.access_token;
+  if (!jwt) throw new Error('Sign in to Sosial Cloud first (Account tab).');
+  let res: Response;
+  try {
+    res = await fetch(`${URL}/functions/v1/${name}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: ANON,
+        Authorization: `Bearer ${jwt}`,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error('Could not reach the cloud backend — check your connection.');
+  }
+  const json: any = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const m = String(json?.error ?? '');
+    if (res.status === 401) throw new Error('Your cloud session expired — sign in again (Account tab).');
+    if (res.status === 403) throw new Error('You are not a member of this workspace.');
+    throw new Error(m || 'Cloud request failed — try again.');
+  }
+  return json;
+}
+
+/** Mirror one channel's device credentials into Vault. Returns the channel id. */
+export async function importChannelToken(body: Record<string, unknown>): Promise<string> {
+  const json = await callChannelFunction('import-channel-token', body);
+  if (!json?.channel_id) throw new Error('Cloud did not register the channel — try again.');
+  return String(json.channel_id);
+}
+
+/** Remove one channel's cloud copy (Vault secrets included). Idempotent. */
+export async function removeChannelToken(body: {
+  workspace_id: string;
+  provider: string;
+  external_id: string;
+}): Promise<void> {
+  await callChannelFunction('remove-channel-token', body);
 }

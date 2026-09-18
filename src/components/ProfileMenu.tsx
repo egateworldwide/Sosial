@@ -42,7 +42,7 @@ export default function ProfileMenu({ visible, email, team, dark, onToggleDark, 
           <View style={[s.row, s.div]}>
             <Ionicons name="moon-outline" size={20} color={C.ink} />
             <Text style={s.rowT}>Dark mode</Text>
-            <Switch value={dark} onValueChange={onToggleDark} trackColor={{ true: C.accent, false: '#D8D1BF' }} />
+            <Switch value={dark} onValueChange={onToggleDark} trackColor={{ true: C.accent, false: '#D8D1BF' }} thumbColor="#ffffff" />
           </View>
           <TouchableOpacity onPress={() => { onClose(); onLogout(); }} style={[s.row, s.div]} activeOpacity={0.7}>
             <Ionicons name="log-out-outline" size={20} color={C.redText} />

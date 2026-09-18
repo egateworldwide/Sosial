@@ -251,7 +251,7 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
         <Text style={s.rowT}>{label}</Text>
         <Text style={s.rowS}>{sub}</Text>
       </View>
-      <Switch value={value} onValueChange={onFlip} trackColor={{ true: C.accent, false: '#D8D1BF' }} />
+      <Switch value={value} onValueChange={onFlip} trackColor={{ true: C.accent, false: '#D8D1BF' }} thumbColor="#ffffff" />
     </View>
   );
 

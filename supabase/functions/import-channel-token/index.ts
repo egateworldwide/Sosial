@@ -6,7 +6,7 @@
 // and the function enforces workspace membership before touching secrets.
 //
 // POST { workspace_id, provider, external_id, display_name?, handle?,
-//        instance_url?, scopes?[], access_token, refresh_token?,
+//        instance_url?, scopes?[], metadata?{}, access_token, refresh_token?,
 //        token_type?, expires_at?, refresh_expires_at? }
 // → 200 { channel_id } · 401 unauthenticated · 403 not a member · 400 bad body
 
@@ -25,9 +25,11 @@ function bad(msg: string, status = 400): Response {
 serve(async (req: Request): Promise<Response> => {
   if (req.method !== "POST") return bad("POST only", 405);
 
-  const supaUrl = Deno.env.get("SUPABASE_URL") ?? "";
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  // Env fallbacks: newer projects inject SB_* instead of SUPABASE_*.
+  const supaUrl = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("SB_URL") ?? "";
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SB_PUBLISHABLE_KEY") ?? "";
+  const serviceKey =
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY") ?? "";
   if (!supaUrl || !anonKey || !serviceKey) {
     return bad("Function misconfigured — missing Supabase env.", 500);
   }
@@ -57,6 +59,10 @@ serve(async (req: Request): Promise<Response> => {
   if (typeof external_id !== "string" || !external_id) return bad("external_id required.");
   if (typeof access_token !== "string" || !access_token) return bad("access_token required.");
   const refresh_token = typeof body["refresh_token"] === "string" ? body["refresh_token"] : null;
+  const metadata =
+    body["metadata"] && typeof body["metadata"] === "object" && !Array.isArray(body["metadata"])
+      ? (body["metadata"] as Record<string, unknown>)
+      : {};
 
   const admin = createClient(supaUrl, serviceKey);
 
@@ -108,7 +114,7 @@ serve(async (req: Request): Promise<Response> => {
         instance_url: typeof body["instance_url"] === "string" ? body["instance_url"] : null,
         scopes: Array.isArray(body["scopes"]) ? body["scopes"] : [],
         status: "connected",
-        metadata: {},
+        metadata: metadata as never,
       },
       { onConflict: "workspace_id,provider,external_id" },
     )
@@ -118,6 +124,23 @@ serve(async (req: Request): Promise<Response> => {
     await admin.rpc("vault_delete_secret", { secret_id: accessId });
     if (refreshId) await admin.rpc("vault_delete_secret", { secret_id: refreshId });
     return bad("Could not register the channel.", 500);
+  }
+
+  // IG/Threads publish through the FB Page token server-side, so their rows
+  // parent to the workspace's facebook row (single-Page v1).
+  if ((provider === "instagram" || provider === "threads") && ch.id) {
+    const { data: fb } = await admin
+      .from("connected_channels")
+      .select("id")
+      .eq("workspace_id", workspace_id)
+      .eq("provider", "facebook")
+      .eq("status", "connected")
+      .order("connected_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (fb?.id) {
+      await admin.from("connected_channels").update({ parent_id: fb.id }).eq("id", ch.id);
+    }
   }
 
   // Token row (replace on re-import = rotation without history buildup).

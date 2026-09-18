@@ -55,6 +55,14 @@ Migrations are versioned and never edited after push — new change, new file.
   `post-media` bucket, workspace-scoped `storage.objects` policies
   (`<workspace_id>/…` paths), `purge_expired_media()` row sweeper
   (service_role only; bytes swept by the worker janitor).
+- `migrations/20260917000006_p6_service_role_grants.sql` — P6: `GRANT ALL`
+  on all public tables/sequences to service_role + default privileges for
+  future tables. Without this, Edge Functions and worker direct reads fail
+  with "permission denied" (RLS bypass ≠ table privileges).
+- `functions/import-channel-token` — opt-in device→Vault bridge (JWT auth,
+  membership gate, metadata passthrough, IG/Threads parenting).
+- `functions/remove-channel-token` — opt-out/disconnect cleanup (idempotent,
+  deletes Vault secrets).
 
 ## RLS testing
 
