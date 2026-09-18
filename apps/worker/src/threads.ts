@@ -18,10 +18,12 @@ interface Bundle {
   secrets: { access_secret_id: string | null; refresh_secret_id: string | null; expires_at: string | null };
 }
 
-function gerr(j: any, fallback: string): string {
+function gerr(j: any, fallback: string, step: string): string {
   const e = j?.error;
   const m = typeof e?.message === 'string' && e.message ? e.message : fallback;
-  return `${m}${e?.code ? ` (code ${e.code})` : ''}`;
+  const sub = e?.error_subcode ? ` subcode ${e.error_subcode}` : '';
+  const code = e?.code ? ` (code ${e.code}${sub})` : sub;
+  return `[${step}] ${m}${code}`;
 }
 
 export async function publishThreadsTarget(bundle: Bundle): Promise<{ remoteId: string; remoteUrl: string }> {
@@ -63,7 +65,7 @@ export async function publishThreadsTarget(bundle: Bundle): Promise<{ remoteId: 
   });
   const cj: any = await c.json().catch(() => ({}));
   if (c.status === 401) throw new Error('Threads session expired — toggle cloud publishing off and on in Connect to refresh.');
-  if (cj.error || !cj.id) throw new Error(gerr(cj, 'Threads container failed'));
+  if (cj.error || !cj.id) throw new Error(gerr(cj, 'Threads container failed', 'container'));
 
   const p = await fetch(
     `${THREADS_API}/v1.0/${threadsId}/threads_publish?creation_id=${encodeURIComponent(String(cj.id))}&access_token=${tok}`,
@@ -71,7 +73,7 @@ export async function publishThreadsTarget(bundle: Bundle): Promise<{ remoteId: 
   );
   const pj: any = await p.json().catch(() => ({}));
   if (p.status === 401) throw new Error('Threads session expired — toggle cloud publishing off and on in Connect to refresh.');
-  if (pj.error || !pj.id) throw new Error(gerr(pj, 'Threads publish failed'));
+  if (pj.error || !pj.id) throw new Error(gerr(pj, 'Threads publish failed', `publish:${String(cj.id ?? '?')}`));
 
   const remoteId = String(pj.id);
   return { remoteId, remoteUrl: `https://www.threads.net/post/${remoteId}` };
