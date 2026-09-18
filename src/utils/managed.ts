@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { uid } from '../constants';
+import { pushPostToCloud, deleteCloudPost } from './cloudPosts';
 
 export type PostStatus = 'draft' | 'queued' | 'approval' | 'sent';
 
@@ -167,6 +168,8 @@ export async function saveManagedPost(p: ManagedPost): Promise<ManagedPost[]> {
   try {
     await AsyncStorage.setItem(KEY, JSON.stringify(list));
   } catch {}
+  // Cloud mirror is best-effort: local save already succeeded above.
+  void pushPostToCloud(rec).catch(() => {});
   return list;
 }
 
@@ -176,5 +179,6 @@ export async function deleteManagedPost(id: string): Promise<ManagedPost[]> {
   try {
     await AsyncStorage.setItem(KEY, JSON.stringify(next));
   } catch {}
+  void deleteCloudPost(id).catch(() => {});
   return next;
 }
