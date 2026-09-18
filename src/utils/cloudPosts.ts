@@ -117,57 +117,32 @@ export async function pushPostToCloud(post: ManagedPost): Promise<void> {
     if (!byProvider.has(String(c.provider))) byProvider.set(String(c.provider), String(c.id));
   }
 
-  // Targets: one per platform that is BOTH selected AND cloud-connected.
-  // Platforms with no cloud row stay local-only (correct — nothing to publish with).
-  let made = 0;
-  for (const platform of post.platforms ?? []) {
-    const channelId = byProvider.get(platform);
-    if (!channelId) continue;
-    const options: Record<string, unknown> = {};
-    if (post.threadsTopic) options.threadsTopic = post.threadsTopic;
-    if (post.ttPrivacy) options.ttPrivacy = post.ttPrivacy;
-    if (post.ytPrivacy) options.ytPrivacy = post.ytPrivacy;
-    if (post.sourceUrl) options.sourceUrl = post.sourceUrl;
-    const format = (post.platformTypes as any)?.[platform];
-    // idempotency_key is NOT NULL with no default — deterministic so
-    // retries and re-saves converge instead of violating.
-    const { error: tErr } = await sb.from('post_targets').upsert(
-      {
-        post_id: postId,
-        channel_id: channelId,
-        provider: platform,
-        format: typeof format === 'string' ? format : null,
-        caption: post.body ?? '',
-        options,
-        status,
-        scheduled_at: scheduledIso,
-        idempotency_key: `cloud:${post.id}:${channelId}`,
-      },
-      { onConflict: 'post_id,channel_id' },
-    );
-    if (tErr) throw new Error(`cloud target upsert failed (${platform}): ${tErr.message}`);
-    made += 1;
-  }
-  console.log(`[cloud] pushed ${post.id}: ${made} target(s) for [${(post.platforms ?? []).join(',')}]`);
+  // ORDER MATTERS (atomicity): media uploads + asset rows FIRST, targets
+  // LAST. If any media step throws, no targets exist, so the worker can
+  // never publish a half-built (e.g. text-only) post — the failure stays
+  // loud in Metro instead of masquerading as success.
 
-  // Media: deterministic paths, storage upsert, fresh post_media links.
+  // Media: deterministic paths, storage upsert. Returns linked ids in order.
   const atts = [
     ...(post.attachments ?? []),
     ...(post.imageUri ? [{ uri: post.imageUri, kind: 'image' as const }] : []),
     ...(post.videoUri ? [{ uri: post.videoUri, kind: 'video' as const }] : []),
   ].slice(0, 10);
-  // Replace links wholesale so re-saves can't leave stale order/rows.
-  await sb.from('post_media').delete().eq('post_id', postId);
-  let position = 0;
+  const linked: string[] = [];
   for (const a of atts) {
-    if (!a?.uri || position >= 10) continue;
+    if (!a?.uri || linked.length >= 10) continue;
     const kind = a.kind === 'video' ? 'video' : 'image';
     const ext = extFor(a.uri, kind);
     const mime = mimeFor(ext, kind);
-    const path = `${wsId}/${post.id}/${position}.${ext}`;
-    const b64 = await FileSystem.readAsStringAsync(a.uri, { encoding: FileSystem.EncodingType.Base64 });
+    const path = `${wsId}/${post.id}/${linked.length}.${ext}`;
+    let b64: string;
+    try {
+      b64 = await FileSystem.readAsStringAsync(a.uri, { encoding: FileSystem.EncodingType.Base64 });
+    } catch (e: any) {
+      throw new Error(`cloud media read failed (${kind}): ${e?.message ?? 'unreadable file'}`);
+    }
     const bytes = b64ToBytes(b64);
-    if (!bytes.length) continue;
+    if (!bytes.length) throw new Error(`cloud media read failed (${kind}): empty file`);
     const blob = new Blob([Uint8Array.from(bytes)], { type: mime });
     const { error: upErr } = await sb.storage.from('post-media').upload(path, blob, {
       contentType: mime,
@@ -200,12 +175,52 @@ export async function pushPostToCloud(post: ManagedPost): Promise<void> {
       if (mErr || !ins) throw new Error(`cloud media row failed: ${mErr?.message ?? 'no row'}`);
       mediaId = String((ins as any).id);
     }
+    linked.push(mediaId);
+  }
+
+  // Targets: one per platform that is BOTH selected AND cloud-connected.
+  // Platforms with no cloud row stay local-only (correct — nothing to publish with).
+  let made = 0;
+  for (const platform of post.platforms ?? []) {
+    const channelId = byProvider.get(platform);
+    if (!channelId) continue;
+    const options: Record<string, unknown> = {};
+    if (post.threadsTopic) options.threadsTopic = post.threadsTopic;
+    if (post.ttPrivacy) options.ttPrivacy = post.ttPrivacy;
+    if (post.ytPrivacy) options.ytPrivacy = post.ytPrivacy;
+    if (post.sourceUrl) options.sourceUrl = post.sourceUrl;
+    const format = (post.platformTypes as any)?.[platform];
+    // idempotency_key is NOT NULL with no default — deterministic so
+    // retries and re-saves converge instead of violating.
+    const { error: tErr } = await sb.from('post_targets').upsert(
+      {
+        post_id: postId,
+        channel_id: channelId,
+        provider: platform,
+        format: typeof format === 'string' ? format : null,
+        caption: post.body ?? '',
+        options,
+        status,
+        scheduled_at: scheduledIso,
+        idempotency_key: `cloud:${post.id}:${channelId}`,
+      },
+      { onConflict: 'post_id,channel_id' },
+    );
+    if (tErr) throw new Error(`cloud target upsert failed (${platform}): ${tErr.message}`);
+    made += 1;
+  }
+
+  // Links last (replace wholesale so re-saves can't leave stale order/rows).
+  await sb.from('post_media').delete().eq('post_id', postId);
+  for (let i = 0; i < linked.length; i++) {
     const { error: linkErr } = await sb
       .from('post_media')
-      .insert({ post_id: postId, media_id: mediaId, position });
+      .insert({ post_id: postId, media_id: linked[i], position: i });
     if (linkErr) throw new Error(`cloud media link failed: ${linkErr.message}`);
-    position += 1;
   }
+  console.log(
+    `[cloud] pushed ${post.id}: ${made} target(s), ${linked.length} media for [${(post.platforms ?? []).join(',')}]`,
+  );
 }
 
 /** Delete the cloud mirror (cascade clears targets + links; bytes fall to the worker janitor). */
