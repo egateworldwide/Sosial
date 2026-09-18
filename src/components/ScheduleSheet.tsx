@@ -212,7 +212,7 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
   const [listingOpen, setListingOpen] = useState(false);
   const [sourceUrl, setSourceUrl] = useState('');
   const [preset, setPreset] = useState<'now' | 'custom'>('now');
-  const [custom, setCustom] = useState(new Date(Date.now() + 86400000));
+  const [custom, setCustom] = useState(() => new Date(minQueueTime()));
   const [showPicker, setShowPicker] = useState(false);
   const [mode, setMode] = useState<'date' | 'time'>('date');
   const [pickingTime, setPickingTime] = useState(false);
@@ -243,7 +243,8 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
       setListingOpen(false);
       setSourceUrl(initialSourceUrl ?? '');
       setPreset('now');
-      setCustom(new Date(initialAt ?? Date.now() + 86400000));
+      // Default schedule = earliest queueable minute (7:51 → 7:56 preselected).
+      setCustom(new Date(initialAt ?? minQueueTime()));
       setShowPicker(false);
       setMode('date');
     }
@@ -351,7 +352,9 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
       return;
     }
     if (!d) return;
-    setCustom(d);
+    // Past is unpickable on both platforms: Android time pickers ignore
+    // minimumDate, so clamp here — the value snaps forward to the floor.
+    setCustom(new Date(Math.max(d.getTime(), minQueueTime())));
     // Android: pick date, then reopen for time
     if (Platform.OS === 'android') {
       setShowPicker(false);

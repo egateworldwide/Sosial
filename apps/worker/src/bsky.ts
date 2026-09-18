@@ -198,15 +198,38 @@ async function publishWith(
 
 /**
  * Video path: upload to the dedicated video service, poll the processing
- * job to COMPLETED, embed the blob. Size is already capped at 25 MB by the
- * storage downloader; duration/aspect rejections surface from the service.
+ * job to COMPLETED, embed the blob. Auth is a SERVICE token
+ * (getServiceAuth, aud = own PDS, 30 min) — the session accessJwt is NOT
+ * accepted by the video service. already_exists responses still carry a
+ * usable blob. Size is already capped at 25 MB by the storage downloader;
+ * duration/aspect rejections surface from the service.
  */
+async function getServiceToken(pdsHost: string, accessToken: string): Promise<string> {
+  const host = pdsHost.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  const exp = Math.floor(Date.now() / 1000) + 1800;
+  const url =
+    `${pdsHost}/xrpc/com.atproto.server.getServiceAuth` +
+    `?aud=${encodeURIComponent(`did:web:${host}`)}` +
+    `&lxm=${encodeURIComponent('com.atproto.repo.uploadBlob')}` +
+    `&exp=${exp}`;
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  const j: any = await r.json().catch(() => ({}));
+  if (r.status === 401) throw new Error('__EXPIRED__');
+  if (!r.ok || !j?.token) throw new Error(`Bluesky video auth failed (${r.status})`);
+  return String(j.token);
+}
+
 async function uploadVideoBlob(sess: Session, buf: Buffer, mime: string): Promise<any> {
+  const svc = await getServiceToken(sess.pdsHost, sess.token);
   const up = await fetch(
     `${BSKY_VIDEO_HOST}/xrpc/app.bsky.video.uploadVideo?did=${encodeURIComponent(sess.did)}&name=${encodeURIComponent('sosial.mp4')}`,
     {
       method: 'POST',
-      headers: { Authorization: `Bearer ${sess.token}`, 'Content-Type': mime },
+      headers: {
+        Authorization: `Bearer ${svc}`,
+        'Content-Type': mime,
+        'Content-Length': String(buf.length),
+      },
       // Fresh ArrayBuffer view — satisfies BodyInit across @types/node versions.
       body: Uint8Array.from(buf),
     },
@@ -219,12 +242,13 @@ async function uploadVideoBlob(sess: Session, buf: Buffer, mime: string): Promis
   for (;;) {
     const s = await fetch(
       `${BSKY_VIDEO_HOST}/xrpc/app.bsky.video.getJobStatus?jobId=${encodeURIComponent(jobId)}`,
-      { headers: { Authorization: `Bearer ${sess.token}` } },
+      { headers: { Authorization: `Bearer ${svc}` } },
     );
     const sj: any = await s.json().catch(() => ({}));
     if (s.status === 401) throw new Error('__EXPIRED__');
+    // already_exists (and any other response) carrying a blob is usable.
+    if (sj?.jobStatus?.blob) return sj.jobStatus.blob;
     const state = String(sj?.jobStatus?.state ?? '');
-    if (state === 'JOB_STATE_COMPLETED' && sj?.jobStatus?.blob) return sj.jobStatus.blob;
     if (state === 'JOB_STATE_FAILED') {
       throw new Error(`Bluesky rejected the video — ${String(sj?.jobStatus?.message ?? 'processing failed')}`);
     }
