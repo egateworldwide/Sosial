@@ -8,6 +8,7 @@ import ConnectButton from '../components/ConnectButton';
 import ChannelDrawer from '../components/ChannelDrawer';
 import { SOCIAL_META } from '../constants';
 import { loadManagedPosts, ManagedPost } from '../utils/managed';
+import { pullCloudStatus } from '../utils/cloudPosts';
 import { loadMetaState, MetaState } from '../utils/metaStore';
 import { fmtDateTime, platformsLabel } from '../utils/reminders';
 import { useComposer } from '../store/ComposerContext';
@@ -84,11 +85,12 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
     setActor(await loadActor());
   };
 
-  /** Pull-to-refresh: reload the pipeline (local first; cloud statuses follow in a later slice). */
+  /** Pull-to-refresh: back-sync cloud verdicts first, then reload the pipeline. */
   const onRefresh = async () => {
     if (refreshing) return;
     setRefreshing(true);
     try {
+      await pullCloudStatus();
       await reload();
     } finally {
       setRefreshing(false);

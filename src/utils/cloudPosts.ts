@@ -1,6 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { supabase, currentSession } from './supabase';
-import type { ManagedPost } from './managed';
+import { loadManagedPosts, saveManagedPost, type ManagedPost } from './managed';
 
 /**
  * App → cloud write path (post-Wave-A slice). Every local save/delete
@@ -218,4 +218,63 @@ export async function deleteCloudPost(clientId: string): Promise<void> {
   if (!id) return;
   const { error } = await sb.from('posts').delete().eq('id', id);
   if (error) throw new Error(`cloud post delete failed: ${error.message}`);
+}
+
+/**
+ * Back-sync (the reason pull-to-refresh exists): cloud is the publishing
+ * authority, so local Queued flips to Sent only when EVERY cloud target for
+ * the post reached sent — collecting remote_ids for the Sent view.
+ * Anything else (pending/failed targets) stays queued. Never throws.
+ */
+export async function pullCloudStatus(): Promise<{ updated: number }> {
+  try {
+    const session = await currentSession().catch(() => null);
+    if (!session) return { updated: 0 };
+    const locals = (await loadManagedPosts()).filter((p) => p.status === 'queued');
+    if (!locals.length) return { updated: 0 };
+    const sb = supabase();
+    const { data: cposts } = await sb
+      .from('posts')
+      .select('id, client_id')
+      .in(
+        'client_id',
+        locals.map((p) => p.id),
+      );
+    const cloudIdByClient = new Map(
+      (((cposts ?? []) as any[]) as { client_id: string; id: string }[]).map((r) => [
+        String(r.client_id),
+        String(r.id),
+      ]),
+    );
+    const cloudIds = [...cloudIdByClient.values()];
+    if (!cloudIds.length) return { updated: 0 };
+    const { data: tgts } = await sb
+      .from('post_targets')
+      .select('post_id, provider, status, remote_id')
+      .in('post_id', cloudIds);
+    const byPost = new Map<string, any[]>();
+    for (const t of ((tgts ?? []) as any[])) {
+      const arr = byPost.get(String(t.post_id)) ?? [];
+      arr.push(t);
+      byPost.set(String(t.post_id), arr);
+    }
+    let updated = 0;
+    for (const p of locals) {
+      const cid = cloudIdByClient.get(p.id);
+      if (!cid) continue;
+      const rows = byPost.get(cid) ?? [];
+      if (!rows.length || !rows.every((r) => String(r.status) === 'sent')) continue;
+      const remoteIds: Record<string, string> = { ...(p.remoteIds ?? {}) };
+      for (const r of rows) {
+        if (r.remote_id) remoteIds[String(r.provider)] = String(r.remote_id);
+      }
+      // saveManagedPost re-mirrors (idempotent upsert of the same state).
+      await saveManagedPost({ ...p, status: 'sent', sentAt: Date.now(), remoteIds });
+      updated += 1;
+    }
+    if (updated > 0) console.log(`[cloud] back-sync: ${updated} post(s) → sent`);
+    return { updated };
+  } catch {
+    return { updated: 0 };
+  }
 }

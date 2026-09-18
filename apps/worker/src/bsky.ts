@@ -12,6 +12,9 @@ import { info } from './logger';
 const BSKY_MAX_IMAGES = 4;
 const BSKY_MAX_TEXT = 300;
 const BSKY_BLOB_CAP = 1000000;
+/** Dedicated video service (not the PDS) + bounded processing poll. */
+const BSKY_VIDEO_HOST = 'https://video.bsky.app';
+const VIDEO_POLL_MS = 5 * 60 * 1000;
 
 interface Bundle {
   target: { id: string; provider: string; caption: string | null; options: any; status: string };
@@ -193,18 +196,94 @@ async function publishWith(
   return String(r.json.uri);
 }
 
+/**
+ * Video path: upload to the dedicated video service, poll the processing
+ * job to COMPLETED, embed the blob. Size is already capped at 25 MB by the
+ * storage downloader; duration/aspect rejections surface from the service.
+ */
+async function uploadVideoBlob(sess: Session, buf: Buffer, mime: string): Promise<any> {
+  const up = await fetch(
+    `${BSKY_VIDEO_HOST}/xrpc/app.bsky.video.uploadVideo?did=${encodeURIComponent(sess.did)}&name=${encodeURIComponent('sosial.mp4')}`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${sess.token}`, 'Content-Type': mime },
+      // Fresh ArrayBuffer view — satisfies BodyInit across @types/node versions.
+      body: Uint8Array.from(buf),
+    },
+  );
+  const uj: any = await up.json().catch(() => ({}));
+  if (up.status === 401) throw new Error('__EXPIRED__');
+  if (!up.ok || !uj?.jobId) throw new Error(bskyErr(uj, 'Bluesky video upload failed'));
+  const jobId = String(uj.jobId);
+  const start = Date.now();
+  for (;;) {
+    const s = await fetch(
+      `${BSKY_VIDEO_HOST}/xrpc/app.bsky.video.getJobStatus?jobId=${encodeURIComponent(jobId)}`,
+      { headers: { Authorization: `Bearer ${sess.token}` } },
+    );
+    const sj: any = await s.json().catch(() => ({}));
+    if (s.status === 401) throw new Error('__EXPIRED__');
+    const state = String(sj?.jobStatus?.state ?? '');
+    if (state === 'JOB_STATE_COMPLETED' && sj?.jobStatus?.blob) return sj.jobStatus.blob;
+    if (state === 'JOB_STATE_FAILED') {
+      throw new Error(`Bluesky rejected the video — ${String(sj?.jobStatus?.message ?? 'processing failed')}`);
+    }
+    if (Date.now() - start > VIDEO_POLL_MS) {
+      throw new Error('Bluesky is still processing the video — retry in a few minutes.');
+    }
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+}
+
+async function publishVideoWith(
+  b: Bundle,
+  sess: Session,
+  video: { storage_path: string; mime_type: string | null },
+): Promise<string> {
+  const text = fitText(b.target.caption ?? b.post.body ?? '');
+  let raw: Buffer;
+  try {
+    raw = await storageDownload(await storageSign('post-media', video.storage_path));
+  } catch (e: any) {
+    throw new Error(`Video download failed — ${e?.message ?? 'storage error'}`);
+  }
+  const mime = mimeFor(video.storage_path, video.mime_type);
+  if (!/^video\//.test(mime)) throw new Error(`Unsupported video type ${mime} — use MP4 or MOV.`);
+  const blob = await uploadVideoBlob(sess, raw, mime);
+  const record: Record<string, any> = {
+    $type: 'app.bsky.feed.post',
+    text,
+    createdAt: new Date().toISOString(),
+    embed: { $type: 'app.bsky.embed.video', video: blob },
+  };
+  const facets = text ? linkFacets(text) : [];
+  if (facets.length) record.facets = facets;
+  const r = await xrpc(sess.pdsHost, 'com.atproto.repo.createRecord', sess.token, JSON.stringify({
+    repo: sess.did,
+    collection: 'app.bsky.feed.post',
+    record,
+  }), 'application/json');
+  if (r.status === 401) throw new Error('__EXPIRED__');
+  if (!r.ok || !r.json?.uri) throw new Error(bskyErr(r.json, 'Bluesky video post failed'));
+  return String(r.json.uri);
+}
+
 /** Full target publish: session → media → post. Returns the post URI. */
 export async function publishBlueskyTarget(bundle: Bundle): Promise<string> {
   const b = bundle as Bundle;
-  // Video is rejected LOUDLY (never silently dropped): the adapter is
-  // image+text only until a video path lands.
-  if ((b.media ?? []).some((m) => m.kind === 'video')) {
-    throw new Error('Bluesky video posts aren’t supported yet — attach photos or post text only.');
+  const videos = (b.media ?? [])
+    .filter((m) => m.kind === 'video')
+    .sort((a, z) => a.position - z.position);
+  if (videos.length > 1) {
+    throw new Error('Bluesky takes one video per post — split extras into their own post.');
   }
   const imgs = (b.media ?? [])
     .filter((m) => m.kind === 'image')
     .sort((a, z) => a.position - z.position)
     .slice(0, BSKY_MAX_IMAGES);
+  if (videos.length > 0 && imgs.length > 0) {
+    throw new Error('Bluesky can’t mix photos and video in one post — send one or the other.');
+  }
   info(`bluesky target ${b.target.id}: ${imgs.length} image(s)`);
   const prepared: { buf: Buffer; mime: string }[] = [];
   for (let i = 0; i < imgs.length; i++) {
@@ -224,10 +303,16 @@ export async function publishBlueskyTarget(bundle: Bundle): Promise<string> {
   const attempt = async (force: boolean): Promise<string> => {
     const sess = await ensureSession(b, force);
     try {
+      if (videos.length > 0) {
+        return await publishVideoWith(b, sess, videos[0]);
+      }
       return await publishWith(b, sess, prepared);
     } catch (e: any) {
       if (String(e?.message ?? '') === '__EXPIRED__' && !force) {
         const sess2 = await ensureSession(b, true);
+        if (videos.length > 0) {
+          return await publishVideoWith(b, sess2, videos[0]);
+        }
         return await publishWith(b, sess2, prepared);
       }
       if (String(e?.message ?? '') === '__EXPIRED__') {
