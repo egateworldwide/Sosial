@@ -128,7 +128,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
       showInfo(`${MAX_ATTACHMENTS} items max`, 'Remove one to add another.');
       return;
     }
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.All, allowsMultipleSelection: true, selectionLimit: remaining, orderedSelection: true, quality: 0.9 });
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], allowsMultipleSelection: true, selectionLimit: remaining, orderedSelection: true, quality: 0.9 });
     if (res.canceled || !res.assets?.length) return;
     const picked: MediaAttachment[] = res.assets.map((a) => ({
       uri: a.uri,

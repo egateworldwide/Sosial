@@ -86,7 +86,7 @@ export default function ContentEditor() {
   // +Image goes straight to the gallery, then the block opens with a Square/Wide crop choice
   const addImage = async () => {
     if (blocks.some((b) => b.type === 'image')) return;
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.9 });
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9 });
     if (res.canceled || !res.assets[0]) return;
     const b: ContentBlock = { id: uid('b'), type: 'image', heading: '', items: [], imageUri: res.assets[0].uri, imageAspect: 'wide' };
     setBlocks([...blocks, b]);
@@ -95,7 +95,7 @@ export default function ContentEditor() {
   const update = (id: string, patch: Partial<ContentBlock>) => setBlocks(blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)));
   const remove = (id: string) => setBlocks(blocks.filter((b) => b.id !== id));
   const pickImage = async (id: string) => {
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.9 });
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9 });
     if (!res.canceled && res.assets[0]) update(id, { imageUri: res.assets[0].uri });
   };
   // raw text drafts for table/chart editors — parsed into the model on blur,

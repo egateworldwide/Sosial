@@ -18,7 +18,7 @@ export default function PhotoSocialsEditor() {
   const p = page.pfp;
 
   const pick = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.9 });
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9 });
     if (!res.canceled && res.assets[0]) patchPfp({ uri: res.assets[0].uri });
   };
 

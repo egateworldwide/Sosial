@@ -89,7 +89,7 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
   }, []);
 
   const pickImage = async (set: (u: string | undefined) => void) => {
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.9 });
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9 });
     if (res.canceled || !res.assets[0]) return;
     set(res.assets[0].uri);
   };

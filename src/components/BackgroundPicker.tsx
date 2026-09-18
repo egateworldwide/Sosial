@@ -78,7 +78,7 @@ export default function BackgroundPicker() {
   const bg = page.background;
 
   const pickImage = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.9 });
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9 });
     if (!res.canceled && res.assets[0]) patchBackground({ type: 'image', imageUri: res.assets[0].uri });
   };
 

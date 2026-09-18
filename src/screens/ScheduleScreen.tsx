@@ -107,7 +107,7 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
   };
 
   const pickMedia = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.All, quality: 0.9 });
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], quality: 0.9 });
     if (res.canceled || !res.assets[0]) return;
     const a = res.assets[0];
     setTUri(a.uri);
