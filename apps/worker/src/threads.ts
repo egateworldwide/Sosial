@@ -66,14 +66,36 @@ export async function publishThreadsTarget(bundle: Bundle): Promise<{ remoteId: 
   const cj: any = await c.json().catch(() => ({}));
   if (c.status === 401) throw new Error('Threads session expired — toggle cloud publishing off and on in Connect to refresh.');
   if (cj.error || !cj.id) throw new Error(gerr(cj, 'Threads container failed', 'container'));
+  const creationId = String(cj.id);
+
+  // The container must reach FINISHED before publishing — firing
+  // threads_publish immediately races Meta's backend (code 24, subcode
+  // 4279009). Poll status, bounded.
+  const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+  const start = Date.now();
+  for (;;) {
+    const s = await fetch(
+      `${THREADS_API}/v1.0/${encodeURIComponent(creationId)}?fields=status&access_token=${tok}`,
+    );
+    const sj: any = await s.json().catch(() => ({}));
+    const status = String(sj?.status ?? '').toUpperCase();
+    if (status === 'FINISHED') break;
+    if (status === 'ERROR') {
+      throw new Error(gerr(sj, 'Threads container processing failed', `status:${creationId}`));
+    }
+    if (Date.now() - start > 90000) {
+      throw new Error(`Threads container not ready after 90s (${status || 'unknown'}) — retry shortly.`);
+    }
+    await sleep(4000);
+  }
 
   const p = await fetch(
-    `${THREADS_API}/v1.0/${threadsId}/threads_publish?creation_id=${encodeURIComponent(String(cj.id))}&access_token=${tok}`,
+    `${THREADS_API}/v1.0/${threadsId}/threads_publish?creation_id=${encodeURIComponent(creationId)}&access_token=${tok}`,
     { method: 'POST', headers: { Authorization: `Bearer ${token}` } },
   );
   const pj: any = await p.json().catch(() => ({}));
   if (p.status === 401) throw new Error('Threads session expired — toggle cloud publishing off and on in Connect to refresh.');
-  if (pj.error || !pj.id) throw new Error(gerr(pj, 'Threads publish failed', `publish:${String(cj.id ?? '?')}`));
+  if (pj.error || !pj.id) throw new Error(gerr(pj, 'Threads publish failed', `publish:${creationId}`));
 
   const remoteId = String(pj.id);
   return { remoteId, remoteUrl: `https://www.threads.net/post/${remoteId}` };
