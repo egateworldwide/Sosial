@@ -12,10 +12,10 @@
  * 5. Local media goes via FILE_UPLOAD (chunked PUT from the device).
  *    PULL_FROM_URL needs a verified domain — our anonymous host won't qualify.
  *
- * Paste your client key/secret from developers.tiktok.com → your app → Basic.
+ * Client key/secret come from `.env` (`EXPO_PUBLIC_TT_*`) — see `.env.example`.
  */
-export const TT_CLIENT_KEY = 'sbawibhbkll46bubal';
-export const TT_CLIENT_SECRET = '92bBuEtvOM6R2mfZYzdkawx39K7m5E06';
+export const TT_CLIENT_KEY = process.env.EXPO_PUBLIC_TT_CLIENT_KEY ?? '';
+export const TT_CLIENT_SECRET = process.env.EXPO_PUBLIC_TT_CLIENT_SECRET ?? '';
 
 export const TT_AUTH_ENDPOINT = 'https://www.tiktok.com/v2/auth/authorize/';
 export const TT_TOKEN_ENDPOINT = 'https://open.tiktokapis.com/v2/oauth/token/';

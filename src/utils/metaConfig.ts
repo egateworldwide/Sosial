@@ -1,18 +1,20 @@
 /**
  * Meta (Facebook / Instagram / Threads) API config.
  *
- * 1. Create the app at developers.facebook.com → copy the App ID below.
- * 2. SECURITY NOTE (personal MVP): the app secret lives here on-device so the
- *    app can swap short tokens for 60-day tokens without a server. That is
- *    fine for your own dev-mode use. Move the exchange server-side before any
- *    store release — never ship a secret you care about.
+ * 1. Create the app at developers.facebook.com → put the App ID in `.env`
+ *    (see `.env.example`). Values are inlined at build time via
+ *    `EXPO_PUBLIC_*` — nothing secret may live in this file.
+ * 2. SECURITY NOTE: the app secret is still exchanged on-device in this
+ *    personal-MVP build. That moves server-side in P2 (Supabase Edge
+ *    Functions) before any store release — and the secrets below are in git
+ *    history, so they must be ROTATED in the provider dashboards regardless.
  */
-export const META_APP_ID = '3602598746546300';
-export const META_APP_SECRET = '4ec89a1a6bcc3fcaf59786128e46dd5c';
+export const META_APP_ID = process.env.EXPO_PUBLIC_META_APP_ID ?? '';
+export const META_APP_SECRET = process.env.EXPO_PUBLIC_META_APP_SECRET ?? '';
 
 // Threads lives in its own Meta app — separate keys, same redirect URI.
-export const THREADS_APP_ID = '1745955523308050';
-export const THREADS_APP_SECRET = '13ed5a25a88190b55497ace83f30d4d2';
+export const THREADS_APP_ID = process.env.EXPO_PUBLIC_THREADS_APP_ID ?? '';
+export const THREADS_APP_SECRET = process.env.EXPO_PUBLIC_THREADS_APP_SECRET ?? '';
 
 export const GRAPH_VERSION = 'v21.0';
 
@@ -25,8 +27,11 @@ export const FB_SCOPES = [
 
 // Instagram Business Login is its own OAuth flow (instagram.com) with its own
 // app credentials — these scopes are INVALID on Facebook's dialog.
-export const IG_APP_ID = '1066751359454704';
-export const IG_APP_SECRET = 'c8becffeb02794aac2d803fd6df0e8d0';
+export const IG_APP_ID = process.env.EXPO_PUBLIC_IG_APP_ID ?? '';
+export const IG_APP_SECRET = process.env.EXPO_PUBLIC_IG_APP_SECRET ?? '';
+// instagram_manage_insights is deliberately NOT requested: asking for it makes
+// Meta reject the entire login ("Invalid platform app") until/unless the app
+// passes review for it. Follower history stays off; follower count still works.
 export const IG_SCOPES = ['instagram_business_basic', 'instagram_business_content_publish'];
 export const IG_AUTH_ENDPOINT = 'https://www.instagram.com/oauth/authorize';
 export const IG_TOKEN_ENDPOINT = 'https://api.instagram.com/oauth/access_token';

@@ -65,7 +65,7 @@ export default function BottomNav({ tab, onTab, onTemplate, onPost }: {
               style={[s.opt, { borderTopWidth: 1, borderTopColor: C.lineSoft }]} activeOpacity={0.75}
             >
               <View style={[s.optIcon, { backgroundColor: C.ink }]}>
-                <Ionicons name="send-outline" size={22} color="#fff" />
+                <Ionicons name="send" size={22} color={C.onInk} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={s.optT}>Post</Text>

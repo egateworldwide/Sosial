@@ -119,7 +119,7 @@ export default function PhotoSocialsEditor() {
               <View style={{ flex: 1, gap: 6 }}>
                 <Text style={st.miniLabel}>Font</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
-                    {(['jakarta', 'inter', 'space-grotesk', 'playfair', 'crimson', 'system'] as FontId[]).map((f) => (
+                    {(['jakarta', 'inter', 'space-grotesk', 'playfair', 'crimson', 'poppins', 'mono', 'anton', 'system'] as FontId[]).map((f) => (
                     <TouchableOpacity key={f} onPress={() => patchSocial(s.platform, { font: f })} style={[st.miniBtn, s.font === f && st.miniBtnOn]} activeOpacity={0.7}>
                       <Text style={[st.miniBtnT, s.font === f && st.miniBtnTOn]}>{FONTS[f].label.slice(0, 4)}</Text>
                     </TouchableOpacity>

@@ -43,7 +43,7 @@ export interface PostTitle {
   subtitleColor?: string;
 }
 
-export type FontId = 'inter' | 'jakarta' | 'space-grotesk' | 'playfair' | 'crimson' | 'system';
+export type FontId = 'inter' | 'jakarta' | 'space-grotesk' | 'playfair' | 'crimson' | 'poppins' | 'mono' | 'anton' | 'system';
 
 export interface PfpStyle {
   uri?: string;
@@ -110,13 +110,14 @@ export interface PostPage {
   stickToCard?: boolean; // pfp+socials group attaches to the card and follows it
   contentScale?: number; // content text zoom, 1 = 100%
   verified?: boolean; // show verified check after handle in card chrome
+  showWatermark?: boolean; // "made with Sosial" badge in the card — undefined = on; free plan forces on
   caption?: string;
   scheduledAt?: number; // reminder fire time (ms), undefined = not scheduled
   scheduledPlatform?: string; // legacy single channel — superseded by scheduledPlatforms
   scheduledPlatforms?: string[]; // channel keys, ['any'] = anywhere
 }
 
-export type CardStyle = 'minimal' | 'facebook' | 'x' | 'instagram' | 'threads';
+export type CardStyle = 'minimal' | 'facebook' | 'x' | 'instagram' | 'threads' | 'bluesky' | 'mastodon' | 'linkedin' | 'snapchat';
 
 export interface QuickPost {
   id: string;

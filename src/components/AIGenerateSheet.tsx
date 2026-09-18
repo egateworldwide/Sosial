@@ -10,6 +10,7 @@ import { generate } from '../utils/ai/provider';
 import { getAiKey, setAiKey } from '../utils/ai/key';
 import { applyGenResult } from '../utils/ai/apply';
 import { PostPage } from '../types';
+import { loadAccount } from '../utils/account';
 
 /** Prompt → generate → visual preview → apply. Real Gemini when a key is saved, offline draft engine otherwise. */
 export default function AIGenerateSheet({ visible, template, ratio, onClose, onApply }: {
@@ -32,12 +33,17 @@ export default function AIGenerateSheet({ visible, template, ratio, onClose, onA
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [result, setResult] = useState<GenResult | null>(null);
+  const [plan, setPlan] = useState<'free' | 'pro' | 'team'>('free');
+  const aiLocked = plan === 'free';
 
   useEffect(() => {
-    if (visible) getAiKey().then((k) => {
-      setKey(k ?? '');
-      setHasKey(!!k);
-    });
+    if (visible) {
+      getAiKey().then((k) => {
+        setKey(k ?? '');
+        setHasKey(!!k);
+      });
+      loadAccount().then((a) => setPlan(a.plan));
+    }
   }, [visible]);
 
   const brief: ContentBrief = {
@@ -52,6 +58,7 @@ export default function AIGenerateSheet({ visible, template, ratio, onClose, onA
   );
 
   const run = async () => {
+    if (aiLocked) return;
     if (!prompt.trim()) {
       setErr('Type what you want the AI to write about.');
       return;
@@ -150,10 +157,20 @@ export default function AIGenerateSheet({ visible, template, ratio, onClose, onA
               <PillToggle on={grounding && hasKey} onPress={() => hasKey && setGrounding((v) => !v)} />
             </View>
 
-            <TouchableOpacity onPress={run} disabled={busy} style={[st.genBtn, busy && { opacity: 0.6 }]} activeOpacity={0.85}>
-              <Ionicons name="sparkles" size={15} color={C.onInk} />
-              <Text style={st.genT}>{busy ? 'Generating…' : 'Generate'}</Text>
-            </TouchableOpacity>
+            {aiLocked ? (
+              <View style={st.lockBox}>
+                <Ionicons name="lock-closed" size={16} color={C.muted} />
+                <View style={{ flex: 1 }}>
+                  <Text style={st.lockT}>AI generation is a Pro & Team feature.</Text>
+                  <Text style={st.lockS}>Upgrade in Profile → Account to generate content with AI.</Text>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity onPress={run} disabled={busy} style={[st.genBtn, busy && { opacity: 0.6 }]} activeOpacity={0.85}>
+                <Ionicons name="sparkles" size={15} color={C.onInk} />
+                <Text style={st.genT}>{busy ? 'Generating…' : 'Generate'}</Text>
+              </TouchableOpacity>
+            )}
             {err ? <Text style={st.err}>{err}</Text> : null}
 
             {result ? (
@@ -215,6 +232,9 @@ const makeSt = (C: Palette) => StyleSheet.create({
   toggleS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.muted, marginTop: 2 },
   genBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: C.ink, borderRadius: 999, paddingVertical: 12 },
   genT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: C.onInk },
+  lockBox: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.card, borderRadius: R.lg, paddingHorizontal: 15, paddingVertical: 13 },
+  lockT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13.5, color: C.ink },
+  lockS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.muted, marginTop: 2 },
   keyBtn: { backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 16, justifyContent: 'center' },
   keyBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.onInk },
   previewT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: C.ink },

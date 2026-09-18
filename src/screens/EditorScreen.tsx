@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PrimaryBtn, GhostBtn } from '../components/ui';
 import { saveProjectPreset } from '../utils/presets';
 import { saveProject } from './HomeScreen';
+import { loadAccount } from '../utils/account';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const GAP = 18;
@@ -33,6 +34,8 @@ export default function EditorScreen({ onExport, onHome, onPosts }: { onExport: 
   const s = makeS(C);
   const { post, page, pageIndex, setPageIndex, duplicatePage, deletePage, setPageOrder, sizeRatio } = usePost();
   const [step, setStep] = useState<EditorStep>('background');
+  const [plan, setPlan] = useState<'free' | 'pro' | 'team'>('free');
+  useEffect(() => { loadAccount().then((a) => setPlan(a.plan)); }, []);
   const [expanded, setExpanded] = useState(false);
   const [sorting, setSorting] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -121,6 +124,9 @@ export default function EditorScreen({ onExport, onHome, onPosts }: { onExport: 
   }, [pageIndex, multi, SNAP, dragging]);
 
   if (!post || !page) return null;
+
+  // free plan forces the badge on; paid respects the per-page toggle
+  const wmFor = (pg: typeof page) => (plan === 'free' ? true : (pg.showWatermark ?? true));
 
   const pageById = new Map(post.pages.map((x) => [x.id, x]));
   const baseOrder = post.pages.map((x) => x.id);
@@ -213,13 +219,13 @@ export default function EditorScreen({ onExport, onHome, onPosts }: { onExport: 
                       }}
                       onLongPress={() => beginPreviewDrag(p.id)}
                     >
-                  <PostCanvas page={p} ratio={sizeRatio} scale={stageScale} />
+                  <PostCanvas page={p} ratio={sizeRatio} scale={stageScale} watermark={wmFor(p)} />
                 </TouchableOpacity>
               </Animated.View>
             ))}
           </ScrollView>
         ) : (
-          <PostCanvas page={page} ratio={sizeRatio} scale={stageScale} />
+          <PostCanvas page={page} ratio={sizeRatio} scale={stageScale} watermark={wmFor(page)} />
         )}
 
         {/* page dots + counter */}

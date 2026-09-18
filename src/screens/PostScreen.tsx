@@ -11,6 +11,7 @@ import { loadManagedPosts, ManagedPost } from '../utils/managed';
 import { loadMetaState, MetaState } from '../utils/metaStore';
 import { fmtDateTime, platformsLabel } from '../utils/reminders';
 import { useComposer } from '../store/ComposerContext';
+import { loadActor, canApprove, canSubmit, Actor } from '../utils/team';
 
 type Tab = 'queued' | 'draft' | 'approval' | 'sent';
 type Sort = 'newest' | 'oldest' | 'az';
@@ -67,9 +68,10 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
 }) {
   const { C } = useTheme();
   const st = makeS(C);
-  const { openComposer, refreshedAt } = useComposer();
+  const { openComposer, refreshedAt, submitForApproval, approvePost, rejectPost } = useComposer();
   const [posts, setPosts] = useState<ManagedPost[]>([]);
   const [meta, setMeta] = useState<MetaState>({});
+  const [actor, setActor] = useState<Actor>({ id: null, role: 'owner' });
   const [channel, setChannel] = useState('all');
   const [drawer, setDrawer] = useState(false);
   const [tab, setTab] = useState<Tab>('queued');
@@ -78,6 +80,7 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
   const reload = async () => {
     setPosts(await loadManagedPosts());
     setMeta(await loadMetaState());
+    setActor(await loadActor());
   };
 
   useEffect(() => {
@@ -89,12 +92,12 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
     { id: 'instagram', label: 'Instagram', sub: meta.igName ?? 'Not connected', connected: !!meta.igId },
     { id: 'threads', label: 'Threads', sub: meta.threadsName ?? 'Not connected', connected: !!meta.threadsId },
     { id: 'tiktok', label: 'TikTok', sub: meta.ttName ?? ((meta.ttAccessToken || meta.ttRefreshToken) ? 'Connected' : 'Not connected'), connected: !!(meta.ttAccessToken || meta.ttRefreshToken) },
-    { id: 'linkedin', label: 'LinkedIn', sub: 'Coming soon', connected: false, comingSoon: true },
-    { id: 'bluesky', label: 'Bluesky', sub: 'Coming soon', connected: false, comingSoon: true },
-    { id: 'youtube', label: 'YouTube', sub: 'Coming soon', connected: false, comingSoon: true },
-    { id: 'mastodon', label: 'Mastodon', sub: 'Coming soon', connected: false, comingSoon: true },
+    { id: 'x', label: 'X', sub: meta.xName ?? ((meta.xAccessToken || meta.xRefreshToken) ? 'Connected' : 'Not connected'), connected: !!(meta.xAccessToken || meta.xRefreshToken) },
+    { id: 'bluesky', label: 'Bluesky', sub: meta.bskyName ?? ((meta.bskyAccessJwt || meta.bskyRefreshJwt) ? 'Connected' : 'Not connected'), connected: !!(meta.bskyAccessJwt || meta.bskyRefreshJwt) },
+    { id: 'linkedin', label: 'LinkedIn', sub: meta.liName ?? ((meta.liPersonUrn ? 'Connected' : 'Not connected')), connected: !!meta.liPersonUrn },
+    { id: 'youtube', label: 'YouTube', sub: meta.ytChannelName ?? ((meta.ytRefreshToken || meta.ytAccessToken) ? 'Connected' : 'Not connected'), connected: !!(meta.ytRefreshToken || meta.ytAccessToken) },
+    { id: 'mastodon', label: 'Mastodon', sub: meta.mastodonName ?? ((meta.mastodonAccessToken && meta.mastodonInstance) ? 'Connected' : 'Not connected'), connected: !!(meta.mastodonAccessToken && meta.mastodonInstance) },
     { id: 'pinterest', label: 'Pinterest', sub: 'Coming soon', connected: false, comingSoon: true },
-    { id: 'x', label: 'X', sub: 'Coming soon', connected: false, comingSoon: true },
   ];
   const channelLabel = channel === 'all' ? 'All channels' : channel[0].toUpperCase() + channel.slice(1);
 
@@ -120,27 +123,63 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
     }
   }
 
+  const showSubmit = tab === 'draft' && canSubmit(actor);
+  const showApprove = tab === 'approval' && canApprove(actor);
+
   const row = (p: ManagedPost) => {
     const plats = p.platforms?.length ? p.platforms : ['any'];
-    const lead = plats.includes('any') ? 'any' : plats[0];
     const overdue = tab === 'queued' && !!p.scheduledAt && p.scheduledAt <= Date.now();
     const when =
       tab === 'sent' && p.sentAt ? `Sent · ${fmtDateTime(p.sentAt)}` :
       p.scheduledAt ? `${overdue ? 'Overdue · ' : ''}${fmtDateTime(p.scheduledAt)}` : 'Not scheduled';
     return (
-      <TouchableOpacity key={p.id} onPress={() => openComposer(p)} style={st.card} activeOpacity={0.75}>
-        <Cover uri={p.imageUri ?? p.videoUri} kind={p.videoUri ? 'video' : 'image'} />
-        <View style={{ flex: 1, gap: 2 }}>
-          <Text style={st.t} numberOfLines={1}>{p.title || 'Untitled'}</Text>
-          <Text style={st.meta} numberOfLines={1}>{p.body || 'No description'}</Text>
-          <Text style={[st.meta, overdue && { color: C.redText }]}>{when} · {platformsLabel(plats)}</Text>
-        </View>
-        {lead === 'any' ? (
-          <Ionicons name="globe-outline" size={18} color={C.muted} />
-        ) : (
-          <SocialGlyph platform={lead} size={18} color={C.ink} />
-        )}
-      </TouchableOpacity>
+      <View key={p.id}>
+        <TouchableOpacity onPress={() => openComposer(p)} style={st.card} activeOpacity={0.75}>
+          <Cover uri={p.imageUri ?? p.videoUri} kind={p.videoUri ? 'video' : 'image'} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={st.t} numberOfLines={1}>{p.title || 'Untitled'}</Text>
+            <Text style={st.meta} numberOfLines={1}>{p.body || 'No description'}</Text>
+            <Text style={[st.meta, overdue && { color: C.redText }]}>{when} · {platformsLabel(plats)}</Text>
+          </View>
+          {/* overlapping channel stack, like the Connect button */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 0 }}>
+            {plats.slice(0, 4).map((c, i) => (
+              c === 'any' ? (
+                <View key={`${c}-${i}`} style={[st.stackTile, { backgroundColor: C.card, borderColor: C.lineSoft, marginLeft: i === 0 ? 0 : -8 }]}>
+                  <Ionicons name="globe-outline" size={14} color={C.muted} />
+                </View>
+              ) : (
+                <View key={`${c}-${i}`} style={[st.stackTile, { backgroundColor: SOCIAL_META[c]?.bg ?? C.ink, marginLeft: i === 0 ? 0 : -8 }]}>
+                  <SocialGlyph platform={c} size={12} color="#fff" />
+                </View>
+              )
+            ))}
+            {plats.length > 4 ? <Text style={st.moreN}>+{plats.length - 4}</Text> : null}
+          </View>
+        </TouchableOpacity>
+        {showSubmit || showApprove ? (
+          <View style={st.actions}>
+            {showSubmit ? (
+              <TouchableOpacity onPress={() => submitForApproval(p.id)} style={st.actionBtn} activeOpacity={0.8}>
+                <Ionicons name="send-outline" size={13} color={C.onInk} />
+                <Text style={st.actionBtnT}>Submit for approval</Text>
+              </TouchableOpacity>
+            ) : null}
+            {showApprove ? (
+              <>
+                <TouchableOpacity onPress={() => approvePost(p.id)} style={st.actionBtn} activeOpacity={0.8}>
+                  <Ionicons name="checkmark" size={14} color={C.onInk} />
+                  <Text style={st.actionBtnT}>Approve</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => rejectPost(p.id)} style={[st.actionBtn, st.actionBtnGhost]} activeOpacity={0.8}>
+                  <Ionicons name="close" size={14} color={C.redText} />
+                  <Text style={[st.actionBtnT, { color: C.redText }]}>Reject</Text>
+                </TouchableOpacity>
+              </>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
     );
   };
 
@@ -205,7 +244,7 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
             })}
           </ScrollView>
           <TouchableOpacity onPress={() => openComposer(null)} activeOpacity={0.85} style={st.addBtn}>
-            <Ionicons name="add" size={16} color={C.onInk} />
+            <Ionicons name="send" size={15} color={C.onInk} />
             <Text style={st.addBtnT}>Post</Text>
           </TouchableOpacity>
         </View>
@@ -262,6 +301,12 @@ const makeS = (C: Palette) => StyleSheet.create({
   addBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.onInk },
   day: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14, letterSpacing: 0.4, textTransform: 'uppercase', color: C.accentInk },
   card: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderRadius: R.lg, padding: 12 },
+  stackTile: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: C.paper },
+  moreN: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11.5, color: C.muted, marginLeft: 2 },
+  actions: { flexDirection: 'row', gap: 8, marginTop: 6, marginBottom: 4 },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
+  actionBtnGhost: { backgroundColor: 'transparent', borderWidth: 1, borderColor: C.lineSoft },
+  actionBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: C.onInk },
   cover: { width: 56, height: 56, borderRadius: 12 },
   coverEmpty: { backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
   coverT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 17, color: C.accentInk },

@@ -13,6 +13,9 @@ const FONT_OPTIONS: { value: FontId; label: string }[] = [
   { value: 'space-grotesk', label: 'Space Grotesk' },
   { value: 'playfair', label: 'Playfair' },
   { value: 'crimson', label: 'Crimson' },
+  { value: 'poppins', label: 'Poppins' },
+  { value: 'mono', label: 'Mono' },
+  { value: 'anton', label: 'Anton' },
   { value: 'system', label: 'System' },
 ];
 

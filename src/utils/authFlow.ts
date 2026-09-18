@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  * persist which channel is mid-login and replay the return URL on next launch —
  * the Connect screen then finishes the exchange it never got to see.
  */
-export type AuthChannel = 'facebook' | 'instagram' | 'threads' | 'tiktok';
+export type AuthChannel = 'facebook' | 'instagram' | 'threads' | 'tiktok' | 'x' | 'linkedin' | 'mastodon' | 'pinterest' | 'youtube';
 
 export interface AuthResult {
   channel: AuthChannel;
@@ -81,6 +81,25 @@ export function flushAuthResults(fn: (r: AuthResult) => void): void {
   const pending = queue;
   queue = [];
   pending.forEach(fn);
+}
+
+const DONE_KEY = 'sosial_auth_done_v1';
+
+/** Codes already redeemed successfully — a replayed return URL (e.g. after an
+ *  Expo Go reload) must never be exchanged twice; providers burn codes on
+ *  first redeem and the duplicate always fails. */
+export async function wasCodeDone(code: string): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(DONE_KEY)) === code;
+  } catch {
+    return false;
+  }
+}
+
+export async function markCodeDone(code: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(DONE_KEY, code);
+  } catch {}
 }
 
 /** Route a raw return URL through the pending channel. Returns the result it published. */

@@ -32,7 +32,7 @@ export default function ChannelDrawer({ visible, channels, value, onPick, onAddC
         key={id}
         onPress={() => {
           if (comingSoon) {
-            Alert.alert(`${label} is coming soon`, 'We’re working on it — connect Facebook, Instagram or Threads for now.');
+            Alert.alert(`${label} is coming soon`, 'We’re working on it — connect Facebook, Instagram, Threads, TikTok, X, Bluesky, LinkedIn, Mastodon or YouTube for now.');
             return;
           }
           onPick(id);

@@ -51,6 +51,7 @@ export function defaultPage(font: FontId = 'jakarta'): PostPage {
     blocks: defaultBlocks(),
     font,
     cardStyle: 'minimal',
+    showWatermark: true,
     caption: '',
   };
 }

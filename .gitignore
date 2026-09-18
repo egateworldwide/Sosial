@@ -1,3 +1,7 @@
+# local env — provider secrets live here, never commit
+.env
+.env.local
+
 # dependencies
 node_modules/
 

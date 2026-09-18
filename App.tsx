@@ -19,6 +19,7 @@ import ProfileMenu from './src/components/ProfileMenu';
 import Grain from './src/components/Grain';
 import { useFontsLoaded } from './src/utils/fonts';
 import { loadAccount, saveAccount, Account } from './src/utils/account';
+import { pushProfileToCloud } from './src/utils/supabase';
 import { handleAuthUrl, getPendingAuth } from './src/utils/authFlow';
 import { useTheme, ThemeProvider } from './src/theme';
 
@@ -33,7 +34,7 @@ const TABS: MainTab[] = ['create', 'analytics'];
 
 function Shell() {
   const { C, mode, toggle } = useTheme();
-  const { openComposer, openPostById } = useComposer();
+  const { openComposer, openPostById, publishPostById } = useComposer();
   const [route, setRoute] = useState<Route>('create');
   const [connectFrom, setConnectFrom] = useState<Route>('create');
   const [privacyFrom, setPrivacyFrom] = useState<Route>('account');
@@ -72,6 +73,8 @@ function Shell() {
 
   const patchAccount = async (patch: Partial<Account>) => {
     setAccount(await saveAccount(patch));
+    // Cloud mirror is best-effort: local save already succeeded above.
+    void pushProfileToCloud(patch);
   };
 
   const goConnect = (from: Route) => {
@@ -122,17 +125,17 @@ function Shell() {
   };
 
   // tapping a reminder deep-links straight to its post (lazy: module throws in Android Go)
-  const composerRef = React.useRef({ openPostById });
-  composerRef.current = { openPostById };
+  const composerRef = React.useRef({ openPostById, publishPostById });
+  composerRef.current = { openPostById, publishPostById };
   React.useEffect(() => {
     let sub: { remove: () => void } | null = null;
     const openData = async (d: any) => {
       if (!d) return;
       if (d.managedPostId) {
-        // land on the inline Post pill with the composer open on top
+        // land on the inline Post pill, then publish the due post
         setPostSignal(Date.now());
         setRoute('create');
-        await composerRef.current.openPostById(String(d.managedPostId));
+        await composerRef.current.publishPostById(String(d.managedPostId));
         return;
       }
       if (d.projectId) openScheduled(d.projectId, d.pageId);
@@ -221,7 +224,7 @@ function Shell() {
           ) : null}
           {route === 'size' ? <SizeScreen onDone={() => setRoute('editor')} onBack={() => setRoute('create')} /> : null}
           {route === 'editor' ? <EditorScreen onExport={() => setRoute('export')} onHome={() => setRoute('create')} onPosts={goCreatePost} /> : null}
-          {route === 'export' ? <ExportScreen onBack={() => setRoute('editor')} /> : null}
+          {route === 'export' ? <ExportScreen onBack={() => setRoute('editor')} plan={account.plan} /> : null}
           {route === 'account' ? (
             <AccountScreen
               email={account.email}

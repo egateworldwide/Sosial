@@ -1,5 +1,6 @@
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
+import { Platform } from 'react-native';
 import {
   META_APP_ID, META_APP_SECRET, graph,
   FB_AUTH_ENDPOINT, FB_SCOPES,
@@ -17,7 +18,7 @@ WebBrowser.maybeCompleteAuthSession();
 // straight back into sosial://redirect, where openAuthSessionAsync captures it.
 // Add this exact URL as a Valid OAuth Redirect URI in all three Meta apps:
 //   Facebook Login settings, Instagram app OAuth settings, Threads Redirect URIs.
-export const BRIDGE_URL = 'https://egateworldwide.github.io/Sosial/auth.html';
+export const BRIDGE_URL = 'https://sosial.app/auth.html';
 
 /**
  * Where the bridge page must send the user back. Expo Go can't receive the
@@ -46,8 +47,23 @@ function errMsg(j: any, fallback: string): string {
 export async function openAuth(authUrl: string, channel: AuthChannel): Promise<boolean> {
   await setPendingAuth(channel);
   if (__DEV__) console.log(`[auth] opening ${channel}:`, authUrl.split('?')[0]);
+  // A Custom Tab left over from the previous login can hijack the return path
+  // of the next one (fully exiting the app on some devices) — make sure any
+  // stale browser/auth session is dead before opening a fresh one.
   try {
-    const res = await WebBrowser.openAuthSessionAsync(authUrl, appReturnUrl());
+    await (WebBrowser as any).dismissBrowser?.();
+  } catch {}
+  try {
+    await (WebBrowser as any).dismissAuthSession?.();
+  } catch {}
+  try {
+    // iOS runs each login in a private (ephemeral) session — no cookies leak
+    // between channels, so a stale Facebook/Instagram/Google identity can never
+    // hijack the next connect. Cost: credentials are retyped every time.
+    // Android has no equivalent API (Custom Tabs always share Chrome's jar).
+    const res = await WebBrowser.openAuthSessionAsync(authUrl, appReturnUrl(), {
+      preferEphemeralSession: Platform.OS === 'ios',
+    });
     if (res.type === 'success' && 'url' in res && res.url) {
       await handleAuthUrl(res.url);
       return true;
@@ -113,11 +129,15 @@ export async function pickPage(p: FbPage): Promise<void> {
 /* ---------------- Instagram Business Login (own OAuth, own app) ---------------- */
 
 export async function loginInstagram(): Promise<boolean> {
+  // enable_fb_login=false keeps the flow on instagram.com. Without it, a
+  // lingering Facebook session (e.g. after connecting Facebook first) bounces
+  // the user to a facebook.com URL that errors for IG-scoped requests.
   const url =
     `${IG_AUTH_ENDPOINT}?client_id=${encodeURIComponent(IG_APP_ID)}` +
     `&redirect_uri=${encodeURIComponent(BRIDGE_URL)}` +
     `&response_type=code` +
     `&scope=${encodeURIComponent(IG_SCOPES.join(','))}` +
+    `&enable_fb_login=false` +
     `&state=${encodeURIComponent(appReturnUrl())}`;
   return openAuth(url, 'instagram');
 }

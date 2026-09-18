@@ -4,6 +4,7 @@ import {
 } from './tiktokConfig';
 import { BRIDGE_URL, appReturnUrl, openAuth } from './metaAuth';
 import { loadMetaState, saveMetaState } from './metaStore';
+import * as WebBrowser from 'expo-web-browser';
 
 /** TikTok nests errors as { error: { code, message } } with code 'ok' on success. */
 function terr(j: any, fallback: string): string {
@@ -29,6 +30,17 @@ export async function loginTikTok(): Promise<boolean> {
     `&redirect_uri=${encodeURIComponent(BRIDGE_URL)}` +
     `&state=${encodeURIComponent(appReturnUrl())}`;
   return openAuth(url, 'tiktok');
+}
+
+/**
+ * Open TikTok in a full browser tab so the user can log out / switch the web
+ * session. Android's auth tab shares the browser cookie jar and TikTok offers
+ * no account picker there, so the session itself must be changed first.
+ */
+export async function openTikTokSite(): Promise<void> {
+  try {
+    await WebBrowser.openBrowserAsync('https://www.tiktok.com/');
+  } catch {}
 }
 
 export interface TikTokTokens {

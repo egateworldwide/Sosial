@@ -3,8 +3,11 @@ import { PlusJakartaSans_400Regular, PlusJakartaSans_700Bold, PlusJakartaSans_80
 import { SpaceGrotesk_400Regular, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
 import { PlayfairDisplay_400Regular, PlayfairDisplay_700Bold, PlayfairDisplay_900Black } from '@expo-google-fonts/playfair-display';
 import { CrimsonPro_400Regular, CrimsonPro_700Bold } from '@expo-google-fonts/crimson-pro';
+import { Anton_400Regular } from '@expo-google-fonts/anton';
+import { Poppins_400Regular, Poppins_700Bold } from '@expo-google-fonts/poppins';
+import { JetBrainsMono_400Regular, JetBrainsMono_700Bold } from '@expo-google-fonts/jetbrains-mono';
 
-export type FontId = 'inter' | 'jakarta' | 'space-grotesk' | 'playfair' | 'crimson' | 'system';
+export type FontId = 'inter' | 'jakarta' | 'space-grotesk' | 'playfair' | 'crimson' | 'poppins' | 'mono' | 'anton' | 'system';
 
 export interface FontMeta {
   label: string;
@@ -25,6 +28,9 @@ export const FONTS: Record<FontId, FontMeta> = {
   'space-grotesk': { label: 'Space Grotesk', regular: 'SpaceGrotesk_400Regular', bold: 'SpaceGrotesk_700Bold' },
   playfair: { label: 'Playfair', regular: 'PlayfairDisplay_400Regular', bold: 'PlayfairDisplay_700Bold', black: 'PlayfairDisplay_900Black' },
   crimson: { label: 'Crimson', regular: 'CrimsonPro_400Regular', bold: 'CrimsonPro_700Bold' },
+  poppins: { label: 'Poppins', regular: 'Poppins_400Regular', bold: 'Poppins_700Bold', black: 'Poppins_700Bold' },
+  mono: { label: 'Mono', regular: 'JetBrainsMono_400Regular', bold: 'JetBrainsMono_700Bold' },
+  anton: { label: 'Anton', regular: 'Anton_400Regular' },
   system: { label: 'System' },
 };
 
@@ -43,6 +49,11 @@ export function useFontsLoaded(): boolean {
     PlayfairDisplay_900Black,
     CrimsonPro_400Regular,
     CrimsonPro_700Bold,
+    Anton_400Regular,
+    Poppins_400Regular,
+    Poppins_700Bold,
+    JetBrainsMono_400Regular,
+    JetBrainsMono_700Bold,
   });
   return loaded;
 }

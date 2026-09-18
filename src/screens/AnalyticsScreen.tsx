@@ -5,9 +5,10 @@ import { useTheme, Palette, R, T } from '../theme';
 import { AvatarButton } from '../components/ProfileMenu';
 import { SocialGlyph } from '../components/ui';
 import ChannelDrawer from '../components/ChannelDrawer';
+import { AreaChart, BarsChart } from '../components/charts';
 import { SOCIAL_META } from '../constants';
 import { loadMetaState, MetaState } from '../utils/metaStore';
-import { fetchAnalytics, Analytics, RANGES, RangeKey, ChannelStats } from '../utils/analytics';
+import { fetchAnalytics, Analytics, RANGES, RangeKey, ChannelStats, rangeBounds } from '../utils/analytics';
 
 function compact(n: number | null): string {
   if (n === null || n === undefined) return '—';
@@ -33,6 +34,36 @@ function timeAgo(ts: number): string {
   if (d < 3600000) return `${Math.max(1, Math.round(d / 60000))}m ago`;
   if (d < 86400000) return `${Math.round(d / 3600000)}h ago`;
   return `${Math.round(d / 86400000)}d ago`;
+}
+
+function seriesDelta(series?: { ts: number; value: number }[]): number | null {
+  if (!series || series.length < 2) return null;
+  return series[series.length - 1].value - series[0].value;
+}
+
+/** Sum follower histories across channels into one daily total series. */
+function combinedFollowers(channels: ChannelStats[]): { ts: number; value: number }[] {
+  const map = new Map<number, number>();
+  for (const c of channels) {
+    for (const p of c.followerSeries ?? []) {
+      const day = new Date(p.ts).setHours(0, 0, 0, 0);
+      map.set(day, (map.get(day) ?? 0) + p.value);
+    }
+  }
+  return [...map.entries()].sort((a, b) => a[0] - b[0]).map(([ts, value]) => ({ ts, value }));
+}
+
+/** Posts-per-bucket across the range (≤ 40 buckets for a clean bar chart). */
+function activityBins(perPosts: { ts: number }[], start: number, end: number): number[] {
+  const spanDays = Math.max(1, Math.round((end - start) / 86400000));
+  const bins = Math.min(spanDays, 40);
+  const size = Math.max(1, Math.round(spanDays / bins));
+  const counts = new Array(bins).fill(0);
+  for (const p of perPosts) {
+    const idx = Math.floor((p.ts - start) / (size * 86400000));
+    if (idx >= 0 && idx < bins) counts[idx]++;
+  }
+  return counts;
 }
 
 /** Analytics tab: hero totals, per-channel sections, ranked posts, comment feed. */
@@ -88,12 +119,12 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
     { id: 'instagram', label: 'Instagram', sub: meta.igName ?? 'Not connected', connected: !!meta.igId },
     { id: 'threads', label: 'Threads', sub: meta.threadsName ?? 'Not connected', connected: !!meta.threadsId },
     { id: 'tiktok', label: 'TikTok', sub: meta.ttName ?? ((meta.ttAccessToken || meta.ttRefreshToken) ? 'Connected' : 'Not connected'), connected: !!(meta.ttAccessToken || meta.ttRefreshToken) },
-    { id: 'linkedin', label: 'LinkedIn', sub: 'Coming soon', connected: false, comingSoon: true },
-    { id: 'bluesky', label: 'Bluesky', sub: 'Coming soon', connected: false, comingSoon: true },
-    { id: 'youtube', label: 'YouTube', sub: 'Coming soon', connected: false, comingSoon: true },
-    { id: 'mastodon', label: 'Mastodon', sub: 'Coming soon', connected: false, comingSoon: true },
+    { id: 'x', label: 'X', sub: meta.xName ?? ((meta.xAccessToken || meta.xRefreshToken) ? 'Connected' : 'Not connected'), connected: !!(meta.xAccessToken || meta.xRefreshToken) },
+    { id: 'bluesky', label: 'Bluesky', sub: meta.bskyName ?? ((meta.bskyAccessJwt || meta.bskyRefreshJwt) ? 'Connected' : 'Not connected'), connected: !!(meta.bskyAccessJwt || meta.bskyRefreshJwt) },
+    { id: 'linkedin', label: 'LinkedIn', sub: meta.liName ?? ((meta.liPersonUrn ? 'Connected' : 'Not connected')), connected: !!meta.liPersonUrn },
+    { id: 'youtube', label: 'YouTube', sub: meta.ytChannelName ?? ((meta.ytRefreshToken || meta.ytAccessToken) ? 'Connected' : 'Not connected'), connected: !!(meta.ytRefreshToken || meta.ytAccessToken) },
+    { id: 'mastodon', label: 'Mastodon', sub: meta.mastodonName ?? ((meta.mastodonAccessToken && meta.mastodonInstance) ? 'Connected' : 'Not connected'), connected: !!(meta.mastodonAccessToken && meta.mastodonInstance) },
     { id: 'pinterest', label: 'Pinterest', sub: 'Coming soon', connected: false, comingSoon: true },
-    { id: 'x', label: 'X', sub: 'Coming soon', connected: false, comingSoon: true },
   ];
   const channelLabel = channel === 'all' ? 'All channels' : channel[0].toUpperCase() + channel.slice(1);
 
@@ -121,6 +152,12 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
   if (totals.comments > 0) heroSub.push(`${compact(totals.comments)} comments`);
   if (totals.views !== null) heroSub.push(`${compact(totals.views)} views`);
   if (totals.engagement !== null) heroSub.push(`${totals.engagement.toFixed(1)}% engagement`);
+
+  const followerDelta = chans.reduce<number>((a, c) => a + (seriesDelta(c.followerSeries) ?? 0), 0);
+  const hasDelta = chans.some((c) => (c.followerSeries?.length ?? 0) >= 2);
+  const combined = combinedFollowers(chans);
+  const { start: rbStart, end: rbEnd } = rangeBounds(range);
+  const activity = activityBins(chans.flatMap((c) => c.perPost), rbStart, rbEnd);
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bone }}>
@@ -179,9 +216,49 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
             {/* hero */}
             <View style={{ paddingHorizontal: 24, marginTop: 22 }}>
               <Text style={s.eyebrow}>{rangeLabel} · {live.length} channel{live.length === 1 ? '' : 's'}</Text>
-              <Text style={s.heroNum}>{hero.v}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 12 }}>
+                <Text style={s.heroNum}>{hero.v}</Text>
+                {hasDelta ? (
+                  <View style={[s.deltaChip, { backgroundColor: followerDelta >= 0 ? C.paleGreen : C.paleRed }]}>
+                    <Text style={[s.deltaT, { color: followerDelta >= 0 ? C.greenText : C.redText }]}>
+                      {followerDelta >= 0 ? '+' : ''}{compact(followerDelta)}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
               <Text style={s.heroLabel}>{hero.l}</Text>
               <Text style={s.heroSub}>{heroSub.join('  ·  ')}</Text>
+            </View>
+
+            {/* follower growth */}
+            {combined.length >= 2 ? (
+              <View style={{ paddingHorizontal: 24, marginTop: 24 }}>
+                <View style={s.card}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={s.cardT}>Follower growth</Text>
+                    {hasDelta ? (
+                      <Text style={[s.deltaT, { color: followerDelta >= 0 ? C.greenText : C.redText }]}>
+                        {followerDelta >= 0 ? '+' : ''}{compact(followerDelta)}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View style={{ marginTop: 14 }}>
+                    <AreaChart data={combined.map((p) => p.value)} color={C.accent} height={96} />
+                  </View>
+                  <Text style={s.cardS}>{rangeLabel} · total across connected channels</Text>
+                </View>
+              </View>
+            ) : null}
+
+            {/* posting activity */}
+            <View style={{ paddingHorizontal: 24, marginTop: 16 }}>
+              <View style={s.card}>
+                <Text style={s.cardT}>Posting activity</Text>
+                <View style={{ marginTop: 14 }}>
+                  <BarsChart data={activity} color={C.soft} height={72} />
+                </View>
+                <Text style={s.cardS}>{totals.posts} post{totals.posts === 1 ? '' : 's'} in {rangeLabel.toLowerCase()}</Text>
+              </View>
             </View>
 
             {/* per-channel sections */}
@@ -189,7 +266,6 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
               const brand = SOCIAL_META[c.channel]?.bg ?? C.ink;
               const name = SOCIAL_META[c.channel]?.label ?? c.channel;
               const scores = c.perPost.map((p) => p.likes + p.comments);
-              const max = Math.max(1, ...scores);
               const parts = [`${c.posts} post${c.posts === 1 ? '' : 's'}`];
               if (c.reactions > 0) parts.push(`${compact(c.reactions)} reactions`);
               if (c.comments > 0) parts.push(`${compact(c.comments)} comments`);
@@ -210,17 +286,13 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
                       <Text style={s.chanSmall}>followers</Text>
                     </View>
                   </View>
-                  {scores.length > 0 ? (
-                    <View style={s.spark}>
-                      {c.perPost.slice(0, 14).map((p) => {
-                        const sc = p.likes + p.comments;
-                        return (
-                          <View
-                            key={p.id}
-                            style={[s.sparkBar, { height: Math.max(3, (sc / max) * 40), backgroundColor: brand, opacity: sc > 0 ? 1 : 0.25 }]}
-                          />
-                        );
-                      })}
+                  {c.followerSeries && c.followerSeries.length >= 2 ? (
+                    <View style={{ marginTop: 14 }}>
+                      <AreaChart data={c.followerSeries.map((p) => p.value)} color={brand} height={60} />
+                    </View>
+                  ) : scores.length > 0 ? (
+                    <View style={{ marginTop: 14 }}>
+                      <BarsChart data={scores.slice(0, 14)} color={brand} height={48} />
                     </View>
                   ) : null}
                   <Text style={s.statStrip}>{parts.join('  ·  ')}</Text>
@@ -315,13 +387,16 @@ const makeS = (C: Palette) => StyleSheet.create({
   heroNum: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 52, letterSpacing: -2, lineHeight: 56, color: C.ink, marginTop: 6 },
   heroLabel: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15, color: C.soft, marginTop: 2 },
   heroSub: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 19, color: C.muted, marginTop: 8 },
+  deltaChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 8 },
+  deltaT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, letterSpacing: -0.2 },
+  card: { backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, padding: 16 },
+  cardT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15, color: C.ink },
+  cardS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.muted, marginTop: 8 },
   tile: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   chanName: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 17, letterSpacing: -0.3, color: C.ink },
   chanHandle: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, color: C.muted, marginTop: 1 },
   chanBig: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 24, letterSpacing: -0.6, color: C.ink },
   chanSmall: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11.5, color: C.muted },
-  spark: { flexDirection: 'row', alignItems: 'flex-end', gap: 5, height: 44, marginTop: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.lineSoft, paddingBottom: 0 },
-  sparkBar: { flex: 1, borderRadius: 2 },
   statStrip: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 20, color: C.muted, marginTop: 10 },
   secT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 19, letterSpacing: -0.4, color: C.ink },
   hint: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 19, color: C.muted, marginTop: 8 },

@@ -3,8 +3,13 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Linking, S
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R, T } from '../theme';
 import { Txt, Field, Stepper, Seg, GhostBtn } from '../components/ui';
+import * as WebBrowser from 'expo-web-browser';
+import Constants from 'expo-constants';
 import { wipeAllData } from '../utils/account';
-import { loadTeam, addTeamMember, removeTeamMember, updateMember, memberChannelsLabel, assignableChannels, canRemoveMember, canAssignChannels, canChangeRole, TeamMember, Actor } from '../utils/team';
+import { currentSession, signUpEmail, signInEmail, signInWithGoogle, signOutCloud, onCloudAuthChange, isSupabaseConfigured, pullProfileFromCloud, WorkspaceInfo } from '../utils/supabase';
+
+WebBrowser.maybeCompleteAuthSession();
+import { loadTeam, addTeamMember, removeTeamMember, updateMember, memberChannelsLabel, assignableChannels, canRemoveMember, canAssignChannels, canChangeRole, loadActor, saveActor, TeamMember, Actor } from '../utils/team';
 import { loadMetaState } from '../utils/metaStore';
 
 type AcctView = 'main' | 'notif' | 'email' | 'password' | 'plan' | 'team' | 'changelog' | 'terms' | 'legal';
@@ -44,6 +49,158 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
   const [actingAs, setActingAs] = useState<string>('owner');
   const [assigningId, setAssigningId] = useState<string | null>(null);
 
+  /* Sosial Cloud (Supabase staging) — real accounts live alongside the legacy
+   * on-device profile until the profile/team migration lands. */
+  const [sbState, setSbState] = useState<'checking' | 'off' | 'in' | 'unconfigured'>('checking');
+  const [sbEmail, setSbEmail] = useState('');
+  const [sbPw, setSbPw] = useState('');
+  const [sbBusy, setSbBusy] = useState(false);
+  const [sbErr, setSbErr] = useState<string | null>(null);
+  const [sbNotice, setSbNotice] = useState<string | null>(null);
+  const [sbAccount, setSbAccount] = useState<{ email: string; workspace: WorkspaceInfo } | null>(null);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      setSbState('unconfigured');
+      return;
+    }
+    let live = true;
+    currentSession()
+      .then((s) => {
+        if (!live) return;
+        setSbAccount(s ? { email: s.user.email ?? '', workspace: s.workspace } : null);
+        setSbState(s ? 'in' : 'off');
+      })
+      .catch(() => {
+        if (live) setSbState('off');
+      });
+    const unsub = onCloudAuthChange((u) => {
+      if (!live) return;
+      if (!u) {
+        setSbAccount(null);
+        setSbState('off');
+        return;
+      }
+      currentSession()
+        .then((s) => {
+          if (!live) return;
+          setSbAccount(s ? { email: s.user.email ?? '', workspace: s.workspace } : null);
+          setSbState(s ? 'in' : 'off');
+        })
+        .catch(() => {});
+    });
+    return () => {
+      live = false;
+      unsub();
+    };
+  }, []);
+
+  const doCloudSignIn = async () => {
+    if (!sbEmail.trim() || !sbPw) {
+      setSbErr('Enter your email and password.');
+      return;
+    }
+    setSbBusy(true);
+    setSbErr(null);
+    setSbNotice(null);
+    try {
+      const ws = await signInEmail(sbEmail, sbPw);
+      setSbAccount({ email: sbEmail.trim(), workspace: ws });
+      setSbState('in');
+      setSbPw('');
+      void syncDownProfile();
+    } catch (e: any) {
+      setSbErr(e?.message ?? 'Sign-in failed.');
+    } finally {
+      setSbBusy(false);
+    }
+  };
+
+  /** Cloud wins after login: restores identity/notifs/team on this device. */
+  const syncDownProfile = async () => {
+    try {
+      const prof = await pullProfileFromCloud();
+      if (prof) {
+        onUpdate({
+          email: prof.email,
+          team: prof.team,
+          notifPosts: prof.notifPosts,
+          notifComments: prof.notifComments,
+          notifWeekly: prof.notifWeekly,
+        });
+      }
+    } catch {}
+  };
+
+  const doCloudSignUp = async () => {
+    if (!sbEmail.trim() || sbPw.length < 6) {
+      setSbErr('Enter an email and a password (min 6 characters).');
+      return;
+    }
+    setSbBusy(true);
+    setSbErr(null);
+    setSbNotice(null);
+    try {
+      const r = await signUpEmail(sbEmail, sbPw);
+      if (r.needsConfirm) {
+        setSbNotice('Account created — check your inbox for the confirmation link, then sign in.');
+      } else {
+        const s = await currentSession();
+        setSbAccount(s ? { email: s.user.email ?? '', workspace: s.workspace } : null);
+        setSbState(s ? 'in' : 'off');
+        void syncDownProfile();
+      }
+      setSbPw('');
+    } catch (e: any) {
+      setSbErr(e?.message ?? 'Sign-up failed.');
+    } finally {
+      setSbBusy(false);
+    }
+  };
+
+  const doCloudGoogle = async () => {
+    // Google Web clients only accept https redirects and Expo Go can only
+    // receive exp:// — the combination can never complete. Dev builds use the
+    // sosial:// scheme and work with the same code path.
+    if (Constants.appOwnership === 'expo') {
+      Alert.alert(
+        'Needs a development build',
+        'Google sign-in can’t return to Expo Go. Use email + password here — Google lights up automatically in dev builds.',
+      );
+      return;
+    }
+    setSbBusy(true);
+    setSbErr(null);
+    setSbNotice(null);
+    try {
+        const ws = await signInWithGoogle();
+        const s = await currentSession();
+        setSbAccount({ email: s?.user.email ?? '', workspace: ws });
+        setSbState('in');
+        setSbPw('');
+        void syncDownProfile();
+    } catch (e: any) {
+      setSbErr(e?.message ?? 'Google sign-in failed.');
+    } finally {
+      setSbBusy(false);
+    }
+  };
+
+  const doCloudSignOut = () => {
+    Alert.alert('Sign out of Sosial Cloud?', 'Your designs stay on this device; the cloud workspace stays intact.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign out',
+        onPress: async () => {
+          await signOutCloud();
+          setSbAccount(null);
+          setSbPw('');
+          setSbState('off');
+        },
+      },
+    ]);
+  };
+
   const actor: Actor = actingAs === 'owner'
     ? { id: null, role: 'owner' }
     : (() => {
@@ -57,6 +214,16 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
       loadMetaState().then((m) => setChanList(assignableChannels(m)));
     }
   }, [view]);
+
+  useEffect(() => {
+    loadActor().then((a) => setActingAs(a.id ?? 'owner'));
+  }, []);
+
+  const changeActor = (id: string | null) => {
+    setActingAs(id ?? 'owner');
+    setAssigningId(null);
+    void saveActor(id);
+  };
 
   const planName = plan === 'pro' ? 'Sosial Pro' : plan === 'team' ? 'Sosial Team' : 'Free plan';
 
@@ -145,7 +312,7 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
   };
 
   const resetActingIfGone = (id: string) => {
-    if (actingAs === id) setActingAs('owner');
+    if (actingAs === id) changeActor(null);
     if (assigningId === id) setAssigningId(null);
   };
 
@@ -210,6 +377,55 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
               <View style={{ flex: 1, gap: 2 }}>
                 <Text style={s.email} numberOfLines={1}>{email || 'No email set'}</Text>
                 <Text style={s.team} numberOfLines={1}>{team}</Text>
+              </View>
+            </View>
+            <View style={s.list}>
+              <View style={{ padding: 14, gap: 8 }}>
+                <Text style={s.rowT}>Sosial Cloud (staging)</Text>
+                {sbState === 'checking' ? <Text style={s.rowS}>Checking cloud account…</Text> : null}
+                {sbState === 'unconfigured' ? (
+                  <Text style={s.rowS}>Backend not configured — add the Supabase keys to .env and restart Expo.</Text>
+                ) : null}
+                {sbState === 'off' ? (
+                  <>
+                    <Txt
+                      value={sbEmail}
+                      onChangeText={(v) => { setSbEmail(v); setSbErr(null); }}
+                      placeholder="Email"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="email-address"
+                    />
+                    <Txt
+                      value={sbPw}
+                      onChangeText={(v) => { setSbPw(v); setSbErr(null); }}
+                      placeholder="Password (min 6 chars)"
+                      secureTextEntry
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                    {sbErr ? <Text style={{ color: C.redText }}>{sbErr}</Text> : null}
+                    {sbNotice ? <Text style={s.rowS}>{sbNotice}</Text> : null}
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <GhostBtn label={sbBusy ? '…' : 'Sign in'} onPress={() => { if (!sbBusy) void doCloudSignIn(); }} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <GhostBtn label={sbBusy ? '…' : 'Create account'} onPress={() => { if (!sbBusy) void doCloudSignUp(); }} />
+                      </View>
+                    </View>
+                    <GhostBtn label={sbBusy ? '…' : 'Continue with Google'} onPress={() => { if (!sbBusy) void doCloudGoogle(); }} />
+                    <Text style={s.rowS}>One account per email. Your workspace syncs across devices.</Text>
+                  </>
+                ) : null}
+                {sbState === 'in' && sbAccount ? (
+                  <>
+                    <Text style={s.rowS} numberOfLines={1}>
+                      {sbAccount.email} · {sbAccount.workspace.name} ({sbAccount.workspace.role})
+                    </Text>
+                    <GhostBtn label="Sign out" onPress={doCloudSignOut} />
+                  </>
+                ) : null}
               </View>
             </View>
             <View style={s.list}>
@@ -382,11 +598,11 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
 
             <Field label="Acting as" hint="Preview what each role can do.">
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                <TouchableOpacity onPress={() => { setActingAs('owner'); setAssigningId(null); }} style={[s.chan, actingAs === 'owner' && { backgroundColor: C.ink, borderColor: C.ink }]} activeOpacity={0.75}>
+                <TouchableOpacity onPress={() => changeActor(null)} style={[s.chan, actingAs === 'owner' && { backgroundColor: C.ink, borderColor: C.ink }]} activeOpacity={0.75}>
                   <Text style={[s.chanT, actingAs === 'owner' && { color: C.onInk }]}>Owner (you)</Text>
                 </TouchableOpacity>
                 {members.map((m) => (
-                  <TouchableOpacity key={m.id} onPress={() => { setActingAs(m.id); setAssigningId(null); }} style={[s.chan, actingAs === m.id && { backgroundColor: C.ink, borderColor: C.ink }]} activeOpacity={0.75}>
+                  <TouchableOpacity key={m.id} onPress={() => changeActor(m.id)} style={[s.chan, actingAs === m.id && { backgroundColor: C.ink, borderColor: C.ink }]} activeOpacity={0.75}>
                     <Text style={[s.chanT, actingAs === m.id && { color: C.onInk }]}>{m.name} · {m.role}</Text>
                   </TouchableOpacity>
                 ))}

@@ -4,19 +4,18 @@ import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { usePost } from '../store/PostContext';
 import PostCanvas, { CANVAS_W } from '../components/PostCanvas';
 import { capturePage, saveUrisToGallery, shareSingleFile, saveAllImages } from '../utils/export';
-import { genericShare, openSocialApp, copyCaption } from '../utils/socialShare';
+import { copyCaption } from '../utils/socialShare';
 import { useComposer } from '../store/ComposerContext';
 import type { ManagedPost } from '../utils/managed';
 import { useTheme, Palette, T, R } from '../theme';
-import { SOCIAL_META } from '../constants';
-import { SocialGlyph } from '../components/ui';
+import { PillToggle } from '../components/ui';
 
-const PLATFORMS = ['facebook', 'instagram', 'tiktok', 'threads', 'whatsapp'] as const;
-
-export default function ExportScreen({ onBack }: { onBack: () => void }) {
-  const { post, sizeRatio } = usePost();
+export default function ExportScreen({ onBack, plan }: { onBack: () => void; plan: 'free' | 'pro' | 'team' }) {
+  const { post, sizeRatio, patchPageById } = usePost();
   const { C } = useTheme();
   const s = makeS(C);
+  // free plan forces the badge on; paid respects the per-page toggle
+  const wmFor = (p: { showWatermark?: boolean }) => (plan === 'free' ? true : (p.showWatermark ?? true));
   const [busy, setBusy] = useState(false);
   const [savedUris, setSavedUris] = useState<string[]>([]);
   const refs = useRef<any[]>([]);
@@ -28,6 +27,16 @@ export default function ExportScreen({ onBack }: { onBack: () => void }) {
   }, [post]);
 
   if (!post) return null;
+
+  const allWmOn = post.pages.every((p) => p.showWatermark ?? true);
+  const toggleAllWm = () => {
+    if (allWmOn && plan === 'free') {
+      Alert.alert('Pro feature', 'Removing the watermark needs Pro or Team. Upgrade in Account to turn it off.');
+      return;
+    }
+    const next = !allWmOn;
+    post.pages.forEach((p) => patchPageById(p.id, { showWatermark: next }));
+  };
 
   const { width: SCREEN_W } = Dimensions.get('window');
   const pvScale = Math.min(0.66, (SCREEN_W - 96) / CANVAS_W);
@@ -122,19 +131,6 @@ export default function ExportScreen({ onBack }: { onBack: () => void }) {
     }
   };
 
-  const ensureSaved = async () => {
-    if (savedUris.length === 0) {
-      setBusy(true);
-      try {
-        const uris = await captureAll();
-        setSavedUris(uris);
-        await saveUrisToGallery(uris);
-      } finally {
-        setBusy(false);
-      }
-    }
-  };
-
   return (
     <View style={{ flex: 1, backgroundColor: C.bone }}>
       <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
@@ -147,12 +143,21 @@ export default function ExportScreen({ onBack }: { onBack: () => void }) {
         <Text style={[T.small, { color: C.muted, marginTop: 6, fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13 }]}>
           {post.pages.length} image{post.pages.length > 1 ? 's' : ''} ready to save and post.
         </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.card, borderRadius: R.lg, paddingHorizontal: 15, paddingVertical: 13, marginTop: 14 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13.5, color: C.ink }}>Watermark {plan === 'free' ? '· Pro to remove' : ''}</Text>
+            <Text style={{ fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.muted, marginTop: 2 }}>
+              {plan === 'free' ? 'Free plan — exports carry the “Made with Sosial” badge.' : '“Made with Sosial” badge on exports.'}
+            </Text>
+          </View>
+          <PillToggle on={plan === 'free' ? true : allWmOn} onPress={toggleAllWm} />
+        </View>
 
         {/* hidden renderers for capture */}
         <View style={{ position: 'absolute', left: -9999, top: 0, opacity: 0, pointerEvents: 'none' }}>
           {post.pages.map((p, i) => (
             <View key={p.id} style={{ width: 340, height: 340 * sizeRatio, overflow: 'visible' }}>
-              <PostCanvas ref={(r) => { refs.current[i] = r; }} page={p} ratio={sizeRatio} />
+              <PostCanvas ref={(r) => { refs.current[i] = r; }} page={p} ratio={sizeRatio} watermark={wmFor(p)} />
             </View>
           ))}
         </View>
@@ -171,7 +176,7 @@ export default function ExportScreen({ onBack }: { onBack: () => void }) {
             <View key={p.id} style={{ gap: 10 }}>
               <View style={s.numBadge}><Text style={s.numBadgeT}>{String(i + 1).padStart(2, '0')}</Text></View>
               <View style={s.previewCard}>
-                <PostCanvas page={p} ratio={sizeRatio} scale={pvScale} />
+                <PostCanvas page={p} ratio={sizeRatio} scale={pvScale} watermark={wmFor(p)} />
               </View>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <TouchableOpacity onPress={() => onSaveOne(i)} style={[s.saveMini, savedUris[i] && s.saveMiniDone]} disabled={busy} activeOpacity={0.8}>
@@ -198,31 +203,6 @@ export default function ExportScreen({ onBack }: { onBack: () => void }) {
           <Text style={s.saveT}>Post this design</Text>
           <Ionicons name="send-outline" size={18} color={C.onInk} />
         </TouchableOpacity>
-
-        {/* share targets */}
-        <Text style={[s.secT, { marginTop: 32 }]}>Post it</Text>
-        <View style={s.list}>
-          {PLATFORMS.map((platform, i) => (
-            <TouchableOpacity
-              key={platform}
-              style={[s.row, i > 0 && s.rowDiv]}
-              disabled={busy}
-              activeOpacity={0.7}
-              onPress={async () => { await ensureSaved(); openSocialApp(platform, post.name, caption); }}
-            >
-              <View style={[s.dot, { backgroundColor: SOCIAL_META[platform]?.bg ?? C.ink }]}>
-                <SocialGlyph platform={platform} size={15} color="#fff" />
-              </View>
-              <Text style={s.rowT}>{SOCIAL_META[platform]?.label ?? platform}</Text>
-              <Text style={s.chev}>›</Text>
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity style={[s.row, s.rowDiv]} onPress={() => genericShare(post.name, caption)} activeOpacity={0.7}>
-            <View style={[s.dot, { backgroundColor: C.ink }]}><Text style={s.dotT}>···</Text></View>
-            <Text style={s.rowT}>More options</Text>
-            <Text style={s.chev}>›</Text>
-          </TouchableOpacity>
-        </View>
 
         {/* explainer */}
         <View style={s.note}>

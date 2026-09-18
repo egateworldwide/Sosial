@@ -1,50 +1,48 @@
-# QuickPost ⚡ — React Native (Expo)
+# Sosial — multi-channel post studio + scheduler (Expo)
 
-Simple infographic post maker: picture + text.
+Design infographic posts, publish and schedule to 10 channels
+(Facebook, Instagram, Threads, TikTok, X, Bluesky, LinkedIn, Mastodon,
+Pinterest, YouTube), with queue, approvals, analytics and AI drafts.
 
-## Flow (as requested)
-1. **Choose size** — 1:1, 4:5, 9:16 (Story/TikTok), 16:9, A4
-2. **Background** — solid / grid / polkadot / stripes / zigzag / your own photo + **mix two patterns**
-3. **Title** — top / bottom / none, size, color, align + share caption
-4. **Profile picture** — any corner (TL/TR/BL/BR), size, shape
-5. **Social icons** — IG / TikTok / X / FB / YT / WA + handle, shown next to PFP
-6. **Content (mix anything)** — bullets, numbered, table, bar chart, pie chart, free text. Reorder, edit, delete.
-7. **Pages** — duplicate any page to make carousels
-8. **Save & share** — save all PNGs to device, or redirect to FB/IG/TikTok/X/WA
+## Run (mobile)
 
-## No-API sharing — how it works
-We do NOT use Facebook/Instagram APIs (no keys, no login, store-safe).
-When you tap e.g. "Share to Facebook":
-1. All pages are rendered to PNG via `react-native-view-shot`
-2. PNGs are saved to gallery via `expo-media-library`
-3. Title + caption is copied to clipboard via `expo-clipboard`
-4. The Facebook app is opened via deep link (`fb://feed`)
-5. You paste the caption and attach the images
-
-Same pattern for Instagram (`instagram://library`), TikTok, X (prefills text via intent), WhatsApp (prefills text).
-
-## Run
-```bash
+```powershell
 npm install
-npx expo start
-# then press `a` (Android), `i` (iOS), or `w` (web preview)
+Copy-Item .env.example .env   # then fill in provider keys
+npx expo start                # a = Android, i = iOS
 ```
 
-Assets folder can be empty — add `assets/icon.png` + `assets/splash.png` (1024px) before building with EAS.
+## Scripts
 
-## Build
-```bash
-npx eas build --platform android
-npx eas build --platform ios
-```
+- `npm run typecheck` — `tsc --noEmit` (must stay clean)
+- `npm run scan` — fail if a hardcoded provider secret is in source
+- CI (`.github/workflows/ci.yml`) runs `npm ci` + typecheck + scan on push/PR
 
-## Structure
-- `App.tsx` — tiny state router (home/size/editor/export)
-- `src/types.ts`, `src/constants.ts` — sizes, patterns, socials
-- `src/store/PostContext.tsx` — post + current page state, duplicate logic
-- `src/components/PostCanvas.tsx` — the exportable infographic renderer
-- `src/components/PatternBackground.tsx` — SVG grid/dots/stripes/zigzag + mix
-- `src/components/*Editor.tsx` — each step UI
-- `src/screens/*` — Home / Size / Editor / Export
-- `src/utils/export.ts` — capture + save + share file
-- `src/utils/socialShare.ts` — no-API redirect + clipboard
+## Env
+
+Provider keys live in `.env` as `EXPO_PUBLIC_*` (see `.env.example`).
+Expo inlines them at build time — keep every read a static
+`process.env.EXPO_PUBLIC_FOO` access. EAS builds need the same names as
+EAS secrets (`eas secret:create --name …`).
+
+## Layout
+
+- `App.tsx`, `src/` — the Expo app (manual routing, no nav library)
+- `assets/` — icon, splash, watermark, header logo
+- `packages/core/` — shared channel ids + freemium entitlement matrix
+  (dependency-free; server enforces, clients mirror)
+- `supabase/` — backend migrations + setup (`supabase/README.md`)
+- `scripts/scan-secrets.js` — local + CI secret hygiene
+
+## Backend status
+
+Milestone A in progress: P1 migrations (identity/tenancy + RLS) are in
+`supabase/migrations`. Staging/prod Supabase projects + Railway worker come
+next — see `supabase/README.md`.
+
+## Security note (read before release)
+
+Provider OAuth secrets were previously committed in source and are therefore
+**in git history**. Before any store release you MUST rotate all of them in
+the provider dashboards (Meta, Threads, IG, TikTok, LinkedIn, YouTube), move
+token exchange server-side (P2), and set the new values as env — never in code.

@@ -8,6 +8,72 @@ export interface MediaAttachment {
   kind: 'image' | 'video';
 }
 
+export type ChannelKey = 'facebook' | 'instagram' | 'threads' | 'tiktok' | 'x' | 'bluesky' | 'linkedin' | 'mastodon' | 'pinterest' | 'youtube';
+
+/** Per-channel post format. TikTok is auto-derived from media (video vs photo). */
+export type PlatformTypes = Partial<{
+  facebook: 'post' | 'reel' | 'story';
+  instagram: 'post' | 'reel' | 'story';
+  threads: 'post' | 'ghost';
+  tiktok: 'video' | 'photo';
+  x: 'post';
+  bluesky: 'post';
+  linkedin: 'post';
+  mastodon: 'post';
+  pinterest: 'post';
+  youtube: 'video' | 'short';
+}>;
+
+export const POST_TYPE_OPTIONS: Record<'facebook' | 'instagram' | 'threads' | 'x' | 'linkedin' | 'youtube' | 'bluesky' | 'mastodon' | 'pinterest' | 'tiktok', { id: string; label: string }[]> = {
+  facebook: [
+    { id: 'post', label: 'Post' },
+    { id: 'reel', label: 'Reel' },
+    { id: 'story', label: 'Story' },
+  ],
+  instagram: [
+    { id: 'post', label: 'Post' },
+    { id: 'reel', label: 'Reel' },
+    { id: 'story', label: 'Story' },
+  ],
+  threads: [
+    { id: 'post', label: 'Post' },
+    { id: 'ghost', label: 'Ghost post' },
+  ],
+  x: [
+    { id: 'post', label: 'Post' },
+  ],
+  linkedin: [
+    { id: 'post', label: 'Post' },
+  ],
+  youtube: [
+    { id: 'video', label: 'Video' },
+    // Same upload — YouTube auto-classifies vertical ≤3min clips as Shorts.
+    // No separate API exists, so this just records intent.
+    { id: 'short', label: 'Short' },
+  ],
+  bluesky: [
+    { id: 'post', label: 'Post' },
+  ],
+  mastodon: [
+    { id: 'post', label: 'Post' },
+  ],
+  pinterest: [
+    { id: 'post', label: 'Pin' },
+  ],
+  tiktok: [
+    { id: 'video', label: 'Video' },
+    { id: 'photo', label: 'Photo' },
+  ],
+};
+
+/** Sensible default format for a channel given the attached media. */
+export function defaultPlatformType(channel: ChannelKey, attachments: MediaAttachment[]): string {
+  if (channel === 'tiktok') return attachments.some((a) => a.kind === 'video') ? 'video' : 'photo';
+  if (channel === 'youtube') return 'video';
+  if (channel === 'instagram') return attachments.some((a) => a.kind === 'video') ? 'reel' : 'post';
+  return 'post';
+}
+
 /** A managed social post: title + photos/videos + description + channels + time + pipeline status. */
 export interface ManagedPost {
   id: string;
@@ -18,10 +84,23 @@ export interface ManagedPost {
   /** all attached media in order; legacy imageUri/videoUri mirror the first of each kind */
   attachments?: MediaAttachment[];
   platforms: string[];
+  /** per-channel post format (reel/story/repost/quote…) */
+  platformTypes?: PlatformTypes;
+  /** Threads community/topic pill (topic_tag param, max 50 chars) */
+  threadsTopic?: string;
+  /** TikTok audience picked upfront (privacy level); falls back to asking at publish */
+  ttPrivacy?: string;
+  /** YouTube listing (public/unlisted/private); defaults to public */
+  ytPrivacy?: string;
+  /** Threads repost/quote source post URL or numeric media ID */
+  sourceUrl?: string;
   scheduledAt?: number;
   createdAt: number;
   status?: PostStatus;
   sentAt?: number;
+  /** per-channel remote ids returned at publish time (post/media/tweet/video id
+   *  or at:// URI) — powers the per-post analytics in the Sent view. */
+  remoteIds?: Record<string, string>;
 }
 
 /** Attachments with legacy fallback (posts saved before multi-attach existed). */

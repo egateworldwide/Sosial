@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
@@ -11,6 +11,7 @@ import AIGenerateSheet from './AIGenerateSheet';
 import ImageCropModal from './ImageCropModal';
 import { applyGenResult } from '../utils/ai/apply';
 import { GenResult } from '../utils/ai/types';
+import { loadAccount } from '../utils/account';
 
 const CARDS: { id: CardStyle; label: string }[] = [
   { id: 'minimal', label: 'Minimal' },
@@ -18,6 +19,10 @@ const CARDS: { id: CardStyle; label: string }[] = [
   { id: 'instagram', label: 'Instagram' },
   { id: 'threads', label: 'Threads' },
   { id: 'x', label: 'X' },
+  { id: 'bluesky', label: 'Bluesky' },
+  { id: 'mastodon', label: 'Mastodon' },
+  { id: 'linkedin', label: 'LinkedIn' },
+  { id: 'snapchat', label: 'Snapchat' },
 ];
 
 const TYPES: { id: BlockType; label: string }[] = [
@@ -55,7 +60,17 @@ export default function ContentEditor() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [ai, setAi] = useState(false);
   const [cropId, setCropId] = useState<string | null>(null);
+  const [plan, setPlan] = useState<'free' | 'pro' | 'team'>('free');
+  useEffect(() => { loadAccount().then((a) => setPlan(a.plan)); }, []);
   if (!page) return null;
+  const wmOn = page.showWatermark ?? true;
+  const toggleWm = () => {
+    if (wmOn && plan === 'free') {
+      Alert.alert('Pro feature', 'Removing the watermark needs Pro or Team. Upgrade in Account to turn it off.');
+      return;
+    }
+    patchPage({ showWatermark: !wmOn });
+  };
   const blocks = page.blocks;
   const cropBlock = cropId ? blocks.find((b) => b.id === cropId) ?? null : null;
   const commonInk =
@@ -190,6 +205,13 @@ export default function ContentEditor() {
             <Text style={{ fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.muted, marginTop: 2 }}>Blue tick after the handle</Text>
           </View>
           <PillToggle on={page.verified ?? true} onPress={() => patchPage({ verified: !(page.verified ?? true) })} />
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.card, borderRadius: R.lg, paddingHorizontal: 15, paddingVertical: 13 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13.5, color: C.ink }}>Watermark {plan === 'free' ? '· Pro to remove' : ''}</Text>
+            <Text style={{ fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.muted, marginTop: 2 }}>Made with Sosial badge in the card</Text>
+          </View>
+          <PillToggle on={wmOn} onPress={toggleWm} />
         </View>
       </View>
 

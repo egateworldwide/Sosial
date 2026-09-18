@@ -30,9 +30,10 @@ interface Props {
   page: PostPage;
   ratio: number;
   scale?: number;
+  watermark?: boolean;
 }
 
-function PostCanvasInner({ page, ratio, scale }: Props, ref: React.Ref<ViewShotRef>) {
+function PostCanvasInner({ page, ratio, scale, watermark }: Props, ref: React.Ref<ViewShotRef>) {
   const H = CANVAS_W * ratio;
   const visibleSocials = page.socials.filter((s) => s.visible);
   const hasTitle = page.title.position !== 'none' && page.title.text.trim().length > 0;
@@ -172,13 +173,13 @@ function PostCanvasInner({ page, ratio, scale }: Props, ref: React.Ref<ViewShotR
                 {titleOnTop ? titleBlock : null}
                 {page.cardH ? (
                   <View style={{ height: pad(page.cardH) }}>
-                    <SocialCardChrome page={page} pad={pad}>
+                    <SocialCardChrome page={page} pad={pad} watermark={watermark}>
                       {blocks}
                     </SocialCardChrome>
                   </View>
                 ) : (
                   /* auto height — hugs content, capped so it can never spill off the canvas */
-                  <SocialCardChrome page={page} pad={pad} fit maxH={cardMax}>
+                  <SocialCardChrome page={page} pad={pad} fit maxH={cardMax} watermark={watermark}>
                     {blocks}
                   </SocialCardChrome>
                 )}
@@ -192,7 +193,7 @@ function PostCanvasInner({ page, ratio, scale }: Props, ref: React.Ref<ViewShotR
               {pfpOnTop ? pfpRow : null}
               {titleOnTop ? titleBlock : null}
               <View style={{ flex: 1, minHeight: 0 }}>
-                <SocialCardChrome page={page} pad={pad}>
+                <SocialCardChrome page={page} pad={pad} watermark={watermark}>
                   {blocks}
                 </SocialCardChrome>
               </View>

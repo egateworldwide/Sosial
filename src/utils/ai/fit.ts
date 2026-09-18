@@ -20,6 +20,14 @@ const METRICS: Record<CardStyle, Metrics> = {
   instagram: { header: 30, bodyTop: 8, bodyBottom: 8, footer: 59 },
   // header 31 · actions + replies 41
   threads: { header: 31, bodyTop: 8, bodyBottom: 8, footer: 41 },
+  // header 33 · reply/repost/like/views 21
+  bluesky: { header: 33, bodyTop: 8, bodyBottom: 8, footer: 21 },
+  // two-line header 40 · reply/boost/fav/save 21
+  mastodon: { header: 40, bodyTop: 8, bodyBottom: 8, footer: 21 },
+  // two-line header 40 · reaction summary 18 · Like/Comment/Repost/Send 27
+  linkedin: { header: 40, bodyTop: 8, bodyBottom: 8, footer: 45 },
+  // ghost header 33 · likes + views 21
+  snapchat: { header: 33, bodyTop: 8, bodyBottom: 8, footer: 21 },
 };
 
 const lines = (text: string, font: number, availW: number) => {

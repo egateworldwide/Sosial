@@ -57,7 +57,6 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
   const [publishing, setPublishing] = useState(false);
   const [sheet, setSheet] = useState<{ post: ManagedPost | null } | null>(null);
   const [filter, setFilter] = useState('all');
-  const [tTitle, setTTitle] = useState('');
   const [tBody, setTBody] = useState('');
   const [tUri, setTUri] = useState<string | undefined>(undefined);
   const [tKind, setTKind] = useState<'image' | 'video'>('image');
@@ -91,7 +90,6 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
   }, []);
 
   const openSheet = (p: ManagedPost | null) => {
-    setTTitle(p?.title ?? '');
     setTBody(p?.body ?? '');
     setTUri(p?.imageUri ?? p?.videoUri);
     setTKind(p?.videoUri ? 'video' : 'image');
@@ -124,7 +122,7 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
     const id = sheet.post?.id || uid('post');
     const rec: ManagedPost = {
       id,
-      title: tTitle.trim() || 'Untitled',
+      title: (tBody.trim().split('\n')[0] ?? '').slice(0, 80),
       body: tBody,
       imageUri: tKind === 'image' ? tUri : undefined,
       videoUri: tKind === 'video' ? tUri : undefined,
@@ -306,7 +304,7 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
         title={sheet?.post ? 'Edit post' : 'New post'}
         initialAt={sheet?.post?.scheduledAt}
         initialPlatforms={sheet?.post?.platforms}
-        composer={{ title: tTitle, caption: tBody, onCaption: setTBody, onTitle: setTTitle }}
+        composer={{ title: '', caption: tBody, onCaption: setTBody }}
         media={{ items: tUri ? [{ uri: tUri, kind: tKind }] : [], onPick: pickMedia, onRemove: () => setTUri(undefined) }}
         onSave={save}
         onDelete={sheet?.post ? remove : undefined}

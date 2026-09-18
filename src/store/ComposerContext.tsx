@@ -1,27 +1,59 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
+import { AppState, Platform } from 'react-native';
 import ScheduleSheet from '../components/ScheduleSheet';
 import { uid } from '../constants';
-import { loadManagedPosts, saveManagedPost, deleteManagedPost, ManagedPost, PostStatus, MediaAttachment, postAttachments } from '../utils/managed';
-import { loadMetaState } from '../utils/metaStore';
-import { publishFacebook, publishInstagram, publishThreads, MAX_ATTACHMENTS } from '../utils/metaPublish';
-import { publishTikTokVideo, askTikTokPrivacy } from '../utils/tiktokPublish';
+import { loadManagedPosts, saveManagedPost, deleteManagedPost, ManagedPost, PostStatus, MediaAttachment, postAttachments, PlatformTypes, defaultPlatformType, ChannelKey } from '../utils/managed';
+import { loadMetaState, saveMetaState, MetaState, connectedChannelIds } from '../utils/metaStore';
+import { publishFacebook, publishFacebookReel, publishFacebookStory, publishInstagram, publishInstagramStory, publishThreads, uploadTikTokPhoto, MAX_ATTACHMENTS, ATTACH_LIMITS } from '../utils/metaPublish';
+import { publishTikTokVideo, publishTikTokPhotos } from '../utils/tiktokPublish';
+import { publishX } from '../utils/xPublish';
+import { publishBsky } from '../utils/bskyPublish';
+import { publishMastodon } from '../utils/mastodonPublish';
+import { publishPinterest } from '../utils/pinPublish';
+import { publishLinkedIn } from '../utils/liPublish';
+import { publishYouTube } from '../utils/ytPublish';
+import { getValidToken, fetchCreatorInfo } from '../utils/tiktokAuth';
+import { TT_PRIVACY_LABELS } from '../utils/tiktokConfig';
+import { loadActor, canSubmit } from '../utils/team';
 import {
   cancelPostReminder,
   schedulePostReminder, ensureNotifPermission,
   notificationsSupported, NO_NOTIF_MSG, fmtDateTime,
 } from '../utils/reminders';
-import { Alert } from 'react-native';
+import PublishNotice, { PubRow } from '../components/PublishNotice';
+
+/** Minimum gap between automatic retries of a failed/overdue queued post. */
+const RETRY_MS = 5 * 60 * 1000;
+
+/** Hard ceiling on any single channel's publish. Without it one stalled
+ *  network call keeps Promise.allSettled pending forever — the publish lock
+ *  stays held and the loading overlay never clears, so the app looks frozen. */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: any;
+  const guard = new Promise<T>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} took too long and was given up on — it may still finish, check the app.`)), ms);
+  });
+  return Promise.race([p, guard]).finally(() => clearTimeout(timer));
+}
 
 interface ComposerCtx {
   /** bumped on every save/delete/publish so lists refresh */
   refreshedAt: number;
   openComposer: (p: ManagedPost | null) => void;
   openPostById: (id: string) => Promise<void>;
+  /** publish a queued post by id (used when a scheduled reminder is tapped) */
+  publishPostById: (id: string) => Promise<void>;
+  /** member: draft → approval */
+  submitForApproval: (id: string) => Promise<void>;
+  /** owner/admin: approval → queued */
+  approvePost: (id: string) => Promise<void>;
+  /** owner/admin: approval → draft */
+  rejectPost: (id: string) => Promise<void>;
 }
 
-const Ctx = createContext<ComposerCtx>({ refreshedAt: 0, openComposer: () => {}, openPostById: async () => {} });
+const Ctx = createContext<ComposerCtx>({ refreshedAt: 0, openComposer: () => {}, openPostById: async () => {}, publishPostById: async () => {}, submitForApproval: async () => {}, approvePost: async () => {}, rejectPost: async () => {} });
 
 export function useComposer(): ComposerCtx {
   return useContext(Ctx);
@@ -36,14 +68,27 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
   const [sheet, setSheet] = useState<{ post: ManagedPost | null } | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [refreshedAt, setRefreshedAt] = useState(0);
-  const [tTitle, setTTitle] = useState('');
   const [tBody, setTBody] = useState('');
   const [tMedia, setTMedia] = useState<MediaAttachment[]>([]);
+  const [notice, setNotice] = useState<{ mode: 'loading' | 'result' | 'info'; title: string; message?: string; rows?: PubRow[]; channels?: string[] } | null>(null);
+  const [privacyAsk, setPrivacyAsk] = useState<{ options: { value: string; label: string }[]; resolve: (v: string) => void } | null>(null);
   const sheetRef = useRef(sheet);
   sheetRef.current = sheet;
+  const publishingRef = useRef(false);
+  const attemptTimesRef = useRef<Record<string, number>>({});
+
+  const showInfo = useCallback((title: string, message?: string, channels?: string[]) => {
+    setNotice({ mode: 'info', title, message, channels });
+  }, []);
+
+  const setRow = (id: string, patch: Partial<PubRow>) => {
+    setNotice((prev) =>
+      prev && prev.rows ? { ...prev, rows: prev.rows.map((r) => (r.id === id ? { ...r, ...patch } : r)) } : prev,
+    );
+  };
 
   const openComposer = useCallback((p: ManagedPost | null) => {
-    setTTitle(p?.title ?? '');
+    setNotice(null);
     setTBody(p?.body ?? '');
     setTMedia(p ? postAttachments(p) : []);
     setSheet({ post: p });
@@ -79,7 +124,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
   const pickMedia = async () => {
     const remaining = MAX_ATTACHMENTS - tMedia.length;
     if (remaining <= 0) {
-      Alert.alert(`${MAX_ATTACHMENTS} items max`, 'Remove one to add another.');
+      showInfo(`${MAX_ATTACHMENTS} items max`, 'Remove one to add another.');
       return;
     }
     const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.All, allowsMultipleSelection: true, selectionLimit: remaining, orderedSelection: true, quality: 0.9 });
@@ -91,7 +136,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
     const next = [...tMedia, ...picked].slice(0, MAX_ATTACHMENTS);
     setTMedia(next);
     if (res.assets.length > remaining) {
-      Alert.alert(`${MAX_ATTACHMENTS} items max`, `Kept the first ${MAX_ATTACHMENTS}.`);
+      showInfo(`${MAX_ATTACHMENTS} items max`, `Kept the first ${MAX_ATTACHMENTS}.`);
     }
   };
 
@@ -99,17 +144,24 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
     setTMedia((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const buildRec = (at: number | undefined, plats: string[], status: PostStatus): ManagedPost => {
+  /** Title is no longer typed — it's the first line of the post text, kept for lists + reminders. */
+  const buildRec = (at: number | undefined, plats: string[], status: PostStatus, types?: PlatformTypes, sourceUrl?: string, threadsTopic?: string, ttPrivacy?: string, ytPrivacy?: string): ManagedPost => {
     const firstImage = tMedia.find((m) => m.kind === 'image')?.uri;
     const firstVideo = tMedia.find((m) => m.kind === 'video')?.uri;
+    const firstLine = tBody.trim().split('\n')[0] ?? '';
     return {
       id: sheetRef.current?.post?.id || uid('post'),
-      title: tTitle.trim() || 'Untitled',
+      title: firstLine.slice(0, 80),
       body: tBody,
       imageUri: firstImage,
       videoUri: firstVideo,
       attachments: [...tMedia],
       platforms: plats,
+      platformTypes: types,
+      threadsTopic: threadsTopic?.trim() || undefined,
+      ttPrivacy: ttPrivacy || undefined,
+      ytPrivacy: ytPrivacy || undefined,
+      sourceUrl: sourceUrl || undefined,
       scheduledAt: at,
       createdAt: sheetRef.current?.post?.createdAt ?? Date.now(),
       status,
@@ -118,48 +170,85 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
 
   const bump = () => setRefreshedAt(Date.now());
 
-  const save = async (at: number, plats: string[]) => {
+  /** Every channel with live credentials right now. */
+  const connectedChannels = (m: MetaState): string[] => connectedChannelIds(m);
+
+  /** "Anywhere" means every connected channel — resolve to a concrete list at publish time. */
+  const resolvePlats = (plats: string[], m: MetaState): string[] => {
+    if (!plats || plats.length === 0 || plats.includes('any')) {
+      const c = connectedChannels(m);
+      return c.length > 0 ? c : ['any'];
+    }
+    return plats;
+  };
+
+  /** Channels that need media — and YouTube additionally needs it to be video.
+   *  Returns the offending channels (for brand tiles) plus the message. */
+  const mediaBlock = (resolved: string[]): { channels: string[]; message: string } | null => {
+    const flagged = [...new Set(resolved.filter((p) => p === 'tiktok' || p === 'instagram' || p === 'pinterest' || p === 'youtube'))];
+    const missing = flagged.filter((p) => (p === 'youtube' ? !tMedia.some((a) => a.kind === 'video') : tMedia.length === 0));
+    if (missing.length === 0) return null;
+    const onlyYt = missing.length === 1 && missing[0] === 'youtube';
+    return {
+      channels: missing,
+      message: onlyYt
+        ? 'YouTube needs a video — photos or text alone can’t go there.'
+        : 'Attach a photo or video — text-only posts can’t go to those channels.',
+    };
+  };
+
+  const save = async (at: number, plats: string[], types?: PlatformTypes, sourceUrl?: string, threadsTopic?: string, ttPrivacy?: string, ytPrivacy?: string) => {
     if (!sheetRef.current) return;
-    if (plats.some((p) => p === 'tiktok' || p === 'instagram') && tMedia.length === 0) {
-      Alert.alert('TikTok & Instagram need media', 'Attach a photo or video — text-only posts can’t go to those channels.');
+    const resolved = resolvePlats(plats, await loadMetaState());
+    const blocked = mediaBlock(resolved);
+    if (blocked) {
+      showInfo('That channel needs media', blocked.message, blocked.channels);
       return;
     }
     const keepApproval = sheetRef.current.post?.status === 'approval';
-    const rec = buildRec(at, plats, keepApproval ? 'approval' : 'queued');
+    const isMember = canSubmit(await loadActor());
+    const status: PostStatus = keepApproval || isMember ? 'approval' : 'queued';
+    const rec = buildRec(at, plats, status, types, sourceUrl, threadsTopic, ttPrivacy, ytPrivacy);
     await saveManagedPost(rec);
-    // Reminders are best-effort: the post queues regardless, then we try to arm one.
+    // Reminders are best-effort: only armed for posts that actually queue.
     let reminded = false;
-    if (await notificationsSupported()) {
+    if (status === 'queued' && await notificationsSupported()) {
       if (await ensureNotifPermission()) {
         reminded = await schedulePostReminder({ id: rec.id, title: rec.title, platforms: plats, at });
       }
     }
     setSheet(null);
     bump();
-    if (!reminded) {
-      Alert.alert('Queued without reminder', NO_NOTIF_MSG);
+    if (status === 'approval') {
+      showInfo('Sent for approval', 'An owner or admin will review it before it goes out.');
+    } else if (!reminded) {
+      showInfo('Queued without reminder', NO_NOTIF_MSG);
     }
   };
 
-  const saveDraft = async () => {
+  const saveDraft = async (types?: PlatformTypes, sourceUrl?: string, threadsTopic?: string, ttPrivacy?: string, ytPrivacy?: string) => {
     if (!sheetRef.current) return;
     const plats = sheetRef.current.post?.platforms?.length ? sheetRef.current.post.platforms : ['any'];
-    const rec = buildRec(undefined, plats, 'draft');
+    const rec = buildRec(undefined, plats, 'draft', types, sourceUrl, threadsTopic, ttPrivacy, ytPrivacy);
     await saveManagedPost(rec);
     await cancelPostReminder(rec.id);
     setSheet(null);
     bump();
   };
 
-  const moveTo = async (status: PostStatus) => {
-    const cur = sheetRef.current?.post;
-    if (!cur) return;
-    const rec: ManagedPost = { ...cur, status };
-    if (status !== 'queued') await cancelPostReminder(rec.id);
-    await saveManagedPost(rec);
-    setSheet(null);
+  /** Status transitions driven from the Post pipeline (by id, not the open sheet). */
+  const setPostStatus = async (id: string, status: PostStatus) => {
+    const all = await loadManagedPosts();
+    const p = all.find((x) => x.id === id);
+    if (!p) return;
+    await saveManagedPost({ ...p, status });
+    if (status !== 'queued') await cancelPostReminder(id);
     bump();
   };
+
+  const submitForApproval = useCallback((id: string) => setPostStatus(id, 'approval'), []);
+  const approvePost = useCallback((id: string) => setPostStatus(id, 'queued'), []);
+  const rejectPost = useCallback((id: string) => setPostStatus(id, 'draft'), []);
 
   const remove = async () => {
     const cur = sheetRef.current?.post;
@@ -184,142 +273,429 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
 
   const publish = async () => {
     const p = sheetRef.current?.post;
-    if (!p || publishing) return;
-    const r = await runPublish(p);
-    if (!r) return;
-    await finishPublish(p, r.done, r.errs, r.manual);
-  };
-
-  /** "Post now": save the new post, then publish it immediately through the same loop. */
-  const postNow = async (plats: string[]) => {
-    if (!sheetRef.current || publishing) return;
-    if (plats.some((p) => p === 'tiktok' || p === 'instagram') && tMedia.length === 0) {
-      Alert.alert('TikTok & Instagram need media', 'Attach a photo or video — text-only posts can’t go to those channels.');
+    if (!p) return;
+    if (publishing || publishingRef.current) {
+      showInfo('Already publishing', 'Wait for the current publish to finish before posting again.');
       return;
     }
-    let rec = buildRec(Date.now(), plats, 'queued');
-    await saveManagedPost(rec);
-    setSheet({ post: rec });
-    const r = await runPublish(rec);
-    if (!r) return;
-    if (!(r.done.length > 0 && r.errs.length === 0 && r.manual.length === 0)) {
-      // failed — leave it queued to retry in a minute, reminder armed silently
-      const retryAt = Date.now() + 60000;
-      rec = { ...rec, scheduledAt: retryAt };
-      await saveManagedPost(rec);
-      setSheet({ post: rec });
-      try {
-        if ((await notificationsSupported()) && (await ensureNotifPermission())) {
-          await schedulePostReminder({ id: rec.id, title: rec.title, platforms: plats, at: retryAt });
-        }
-      } catch {}
+    try {
+      const r = await runPublish(p);
+      if (!r) return;
+      await finishPublish(p, r.done, r.errs, r.manual, r.remoteIds);
+    } catch (e: any) {
+      // runPublish rethrows only for pre-blast failures — never reset silently
+      setNotice({ mode: 'result', title: 'Publish failed', rows: [{ id: 'post', label: 'Post', state: 'fail' as const, note: e?.message ?? 'Try again.' }] });
     }
-    await finishPublish(rec, r.done, r.errs, r.manual);
   };
 
-  const runPublish = async (p: ManagedPost): Promise<{ done: string[]; errs: string[]; manual: string[] } | null> => {
-    const plats = p.platforms?.length ? p.platforms : ['any'];
+  /** "Post now": publish immediately — no queueing, no scheduledAt. */
+  const postNow = async (plats: string[], types?: PlatformTypes, sourceUrl?: string, threadsTopic?: string, ttPrivacy?: string, ytPrivacy?: string) => {
+    if (!sheetRef.current) return;
+    // A stuck or background publish used to swallow taps silently here —
+    // say so, so a held lock is diagnosable instead of invisible.
+    if (publishing || publishingRef.current) {
+      showInfo('Already publishing', 'Wait for the current publish to finish before posting again.');
+      return;
+    }
+    try {
+      const resolved = resolvePlats(plats, await loadMetaState());
+      const blocked = mediaBlock(resolved);
+      if (blocked) {
+        showInfo('That channel needs media', blocked.message, blocked.channels);
+        return;
+      }
+      // Members can't publish directly — their "post now" becomes a pending approval.
+      if (canSubmit(await loadActor())) {
+        const rec = buildRec(undefined, plats, 'approval', types, sourceUrl, threadsTopic, ttPrivacy, ytPrivacy);
+        await saveManagedPost(rec);
+        await cancelPostReminder(rec.id);
+        setSheet(null);
+        bump();
+        showInfo('Sent for approval', 'An owner or admin will review it before it goes out.');
+        return;
+      }
+      // no scheduledAt → the auto-publish sweep ignores it, so it can't double-post
+      const rec = buildRec(undefined, plats, 'queued', types, sourceUrl, threadsTopic, ttPrivacy, ytPrivacy);
+      const r = await runPublish(rec);
+      if (!r) return;
+      const ok = r.done.length > 0 && r.errs.length === 0 && r.manual.length === 0;
+      if (!ok) {
+        // failed — keep it as a draft so nothing is lost; user can retry from Drafts
+        const draft = { ...rec, status: 'draft' as PostStatus, scheduledAt: undefined };
+        await saveManagedPost(draft);
+        setSheet({ post: draft });
+        bump();
+      }
+      await finishPublish(rec, r.done, r.errs, r.manual, r.remoteIds);
+    } catch (e: any) {
+      setNotice({ mode: 'result', title: 'Publish failed', rows: [{ id: 'post', label: 'Post', state: 'fail' as const, note: e?.message ?? 'Try again.' }] });
+    }
+  };
+
+  const labelFor = (id: string) => (id === 'any' ? 'Manual post' : id === 'tiktok' ? 'TikTok' : id[0].toUpperCase() + id.slice(1));
+
+  // cancel hook for a pending privacy ask (ref survives re-renders, unlike a fn property)
+  const privacyCancelRef = React.useRef<(() => void) | null>(null);
+
+  /** In-app TikTok audience picker — replaces the native Alert. Resolves one option. */
+  const askPrivacy = (options: string[]): Promise<string> =>
+    new Promise((resolve, reject) => {
+      setPrivacyAsk({
+        options: options.map((o) => ({ value: o, label: TT_PRIVACY_LABELS[o] ?? o })),
+        resolve: (v: string) => {
+          setPrivacyAsk(null);
+          resolve(v);
+        },
+      });
+      // hoist reject so cancel can bail the whole publish
+      privacyCancelRef.current = () => {
+        setPrivacyAsk(null);
+        reject(new Error('Login was cancelled.'));
+      };
+    });
+
+  const runPublish = async (p: ManagedPost, opts?: { silent?: boolean }): Promise<{ done: string[]; errs: string[]; manual: string[]; remoteIds: Record<string, string> } | null> => {
     const m = await loadMetaState();
-    const caption = [p.title, p.body].filter((x) => x && x.trim()).join('\n\n');
+    let plats = resolvePlats(p.platforms, m);
+    // buildRec derives title from the body's first line — posting title + body
+    // would print that line twice. Independent titles (e.g. design names from
+    // Export) still prefix the body.
+    const bodyText = (p.body ?? '').trim();
+    const titleText = (p.title ?? '').trim();
+    const caption = titleText && bodyText.split('\n')[0].startsWith(titleText)
+      ? bodyText
+      : [titleText, bodyText].filter((x) => x).join('\n\n');
     const atts = postAttachments(p);
     const firstVideo = atts.find((a) => a.kind === 'video');
     const done: string[] = [];
     const errs: string[] = [];
     const manual: string[] = [];
-    setPublishing(true);
+    /** per-channel remote ids for the Sent analytics view */
+    const remoteIds: Record<string, string> = {};
+    const keep = (ch: string, v: unknown) => {
+      const s = Array.isArray(v) ? v.map((x) => String(x)).join(',') : String(v ?? '');
+      if (s) remoteIds[ch] = s;
+    };
+    const silent = !!opts?.silent;
+    // silent background runs must not touch the visible flag — it was set
+    // unconditionally but only cleared for foreground runs, sticking the UI
+    // in "Posting…" and silently killing every later tap at the entry guard.
+    if (!silent) setPublishing(true);
+    publishingRef.current = true;
+    if (!silent) {
+      setNotice({
+        mode: 'loading',
+        title: 'Publishing…',
+        rows: plats.map((id) => ({ id, label: labelFor(id), state: 'pending' as const })),
+      });
+    }
     try {
-      // TikTok won't accept a hardcoded audience — ask once, use for the post
-      let ttPrivacy: string | null = null;
-      if (plats.includes('tiktok')) {
+      // TikTok won't accept a hardcoded audience — prefer the upfront pick,
+      // fall back to asking once at publish time
+      let ttPrivacy: string | null = p.ttPrivacy ?? null;
+      if (plats.includes('tiktok') && !ttPrivacy && silent) {
+        // Background runs must never prompt — without a saved audience the
+        // post needs the user, so skip TikTok quietly this pass instead of
+        // hanging on a modal no one asked for.
+        errs.push('TikTok: audience not chosen — TikTok skipped');
+        plats = plats.filter((p) => p !== 'tiktok');
+      }
+      if (plats.includes('tiktok') && !ttPrivacy) {
         try {
-          ttPrivacy = await askTikTokPrivacy();
+          const token = await getValidToken();
+          const ci = await fetchCreatorInfo(token);
+          const options = ci.privacyOptions.length > 0 ? ci.privacyOptions : ['SELF_ONLY'];
+          // NEVER wait on a modal here. A prompt that can't present over the
+          // composer sheet leaves this await pending forever, which holds the
+          // publish lock: the tap does nothing and every later tap is stuck.
+          // The sheet's Audience picker is the explicit control; this is just
+          // a safe default (remembered audience first, then the widest offered).
+          ttPrivacy =
+            options.find((o) => o === m.ttLastPrivacy) ??
+            options.find((o) => o === 'SELF_ONLY') ??
+            options.find((o) => o === 'PUBLIC_TO_EVERYONE') ??
+            options[0] ??
+            'SELF_ONLY';
         } catch (e: any) {
-          if (String(e?.message ?? '') === 'Login was cancelled.') return null; // backed out, stay silent
-          throw e;
+          // Backing out of the audience pick (or any pre-flight failure) must
+          // never kill the whole publish silently — fail TikTok alone with a
+          // visible row and keep blasting the rest.
+          const note =
+            String(e?.message ?? '') === 'Login was cancelled.'
+              ? 'audience not chosen — TikTok skipped'
+              : (e?.message ?? 'failed');
+          errs.push(`TikTok: ${note}`);
+          setRow('tiktok', { state: 'fail', note });
+          plats = plats.filter((p) => p !== 'tiktok');
         }
       }
-      for (const ch of plats) {
+      // blast: every channel publishes concurrently, rows flip independently.
+      // Each channel is capped so one stalled call can't hold the whole blast
+      // (and its loading overlay) open forever.
+      const perChannelMs = atts.some((a) => a.kind === 'video') ? 8 * 60 * 1000 : 150000;
+      await Promise.allSettled(plats.map((ch) => withTimeout(
+        (async () => {
+        setRow(ch, { state: 'working' });
         try {
+          const type = (p.platformTypes?.[ch as ChannelKey] as string | undefined) ?? defaultPlatformType(ch as ChannelKey, atts);
           if (ch === 'facebook') {
             if (!m.pageId || !m.pageToken) throw new Error('Facebook not connected');
-            await publishFacebook({ pageId: m.pageId, pageToken: m.pageToken, message: caption, imageUri: p.imageUri, videoUri: p.videoUri, attachments: atts });
+            if (type === 'story') {
+              keep(ch, await publishFacebookStory({ pageId: m.pageId, pageToken: m.pageToken, imageUri: p.imageUri, videoUri: p.videoUri, attachments: atts }));
+            } else if (type === 'reel') {
+              keep(ch, await publishFacebookReel({ pageId: m.pageId, pageToken: m.pageToken, message: caption, videoUri: p.videoUri, attachments: atts }));
+            } else {
+              keep(ch, await publishFacebook({ pageId: m.pageId, pageToken: m.pageToken, message: caption, imageUri: p.imageUri, videoUri: p.videoUri, attachments: atts }));
+            }
             done.push('Facebook');
           } else if (ch === 'instagram') {
             if (!m.igId || !m.igToken) throw new Error('Instagram not connected');
-            await publishInstagram({ igId: m.igId, igToken: m.igToken, caption, imageUri: p.imageUri, videoUri: p.videoUri, attachments: atts });
+            if (type === 'story') {
+              keep(ch, await publishInstagramStory({ igId: m.igId, igToken: m.igToken, caption, imageUri: p.imageUri, videoUri: p.videoUri, attachments: atts }));
+            } else if (type === 'reel' && !atts.some((a) => a.kind === 'video')) {
+              throw new Error('Instagram Reels need a video.');
+            } else {
+              keep(ch, await publishInstagram({ igId: m.igId, igToken: m.igToken, caption, imageUri: p.imageUri, videoUri: p.videoUri, attachments: atts }));
+            }
             done.push('Instagram');
           } else if (ch === 'threads') {
             if (!m.threadsId || !m.threadsToken) throw new Error('Threads not connected');
-            await publishThreads({ threadsId: m.threadsId, token: m.threadsToken, text: caption, imageUri: p.imageUri, videoUri: p.videoUri, attachments: atts });
+            if (type === 'ghost') {
+              // real ghost post: text-only container flagged to auto-archive in 24h
+              keep(ch, await publishThreads({ threadsId: m.threadsId, token: m.threadsToken, text: caption, ghost: true, topicTag: p.threadsTopic }));
+            } else {
+              keep(ch, await publishThreads({ threadsId: m.threadsId, token: m.threadsToken, text: caption, imageUri: p.imageUri, videoUri: p.videoUri, attachments: atts, topicTag: p.threadsTopic }));
+            }
             done.push('Threads');
           } else if (ch === 'tiktok') {
             if (!m.ttRefreshToken && !m.ttAccessToken) throw new Error('TikTok not connected');
-            if (!firstVideo) throw new Error('TikTok needs a video — photos publish manually for now');
-            await publishTikTokVideo({
-              title: caption.slice(0, 150) || 'Sosial post',
-              privacyLevel: ttPrivacy as string,
-              videoUri: firstVideo.uri,
-            });
+            const imgs = atts.filter((a) => a.kind === 'image').slice(0, ATTACH_LIMITS.tiktok.images);
+            if (type === 'photo' || !firstVideo) {
+              // photo carousel — TikTok pulls from public URLs
+              if (!imgs.length) throw new Error(type === 'photo' ? 'Attach at least one photo for a TikTok photo post.' : 'TikTok needs a photo or video');
+              const urls: string[] = [];
+              for (const img of imgs) {
+                urls.push(img.uri.startsWith('http') ? img.uri : await uploadTikTokPhoto(img.uri));
+              }
+              keep(ch, await publishTikTokPhotos({
+                title: caption || 'Sosial post',
+                privacyLevel: ttPrivacy as string,
+                imageUrls: urls,
+              }));
+            } else {
+              keep(ch, await publishTikTokVideo({
+                title: caption.slice(0, 150) || 'Sosial post',
+                privacyLevel: ttPrivacy as string,
+                videoUri: firstVideo.uri,
+              }));
+            }
             done.push('TikTok');
+            // remember the audience that actually published — an unaudited app
+            // can only post SELF_ONLY, and re-defaulting to Public would fail
+            // every future post the same way
+            if (ttPrivacy) saveMetaState({ ttLastPrivacy: ttPrivacy });
+          } else if (ch === 'x') {
+            if (!m.xUserId || (!m.xAccessToken && !m.xRefreshToken)) throw new Error('X not connected');
+            const imgs = atts.filter((a) => a.kind === 'image').slice(0, ATTACH_LIMITS.x.images);
+            keep(ch, await publishX({ text: caption, imageUris: imgs.map((a) => a.uri) }));
+            done.push('X');
+          } else if (ch === 'bluesky') {
+            if (!m.bskyDid || (!m.bskyAccessJwt && !m.bskyRefreshJwt)) throw new Error('Bluesky not connected');
+            const imgs = atts.filter((a) => a.kind === 'image').slice(0, ATTACH_LIMITS.bluesky.images);
+            keep(ch, await publishBsky({ text: caption, imageUris: imgs.map((a) => a.uri) }));
+            done.push('Bluesky');
+          } else if (ch === 'mastodon') {
+            if (!m.mastodonAccessToken || !m.mastodonInstance) throw new Error('Mastodon not connected');
+            // Mastodon takes either a single video or up to 4 images — never both
+            const imgs = atts.filter((a) => a.kind === 'image').slice(0, ATTACH_LIMITS.mastodon.images);
+            keep(ch, await publishMastodon({ text: caption, imageUris: imgs.map((a) => a.uri), videoUri: firstVideo?.uri }));
+            done.push('Mastodon');
+          } else if (ch === 'pinterest') {
+            if (!m.pinAccessToken) throw new Error('Pinterest not connected');
+            // One Pin per image on the default board, plus a video Pin when attached
+            const imgs = atts.filter((a) => a.kind === 'image').slice(0, ATTACH_LIMITS.pinterest.images);
+            keep(ch, await publishPinterest({ text: caption, imageUris: imgs.map((a) => a.uri), videoUri: firstVideo?.uri }));
+            done.push('Pinterest');
+          } else if (ch === 'linkedin') {
+            if (!m.liPersonUrn) throw new Error('LinkedIn not connected');
+            // Text and/or up to 9 photos as a member post
+            const imgs = atts.filter((a) => a.kind === 'image').slice(0, ATTACH_LIMITS.linkedin.images);
+            keep(ch, await publishLinkedIn({ text: caption, imageUris: imgs.map((a) => a.uri) }));
+            done.push('LinkedIn');
+          } else if (ch === 'youtube') {
+            if (!m.ytRefreshToken && !m.ytAccessToken) throw new Error('YouTube not connected');
+            // Video-only — photos/text alone throw a clear error
+            keep(ch, await publishYouTube({ text: caption, videoUri: firstVideo?.uri, kind: (type as 'video' | 'short' | undefined) ?? 'video', privacy: (p.ytPrivacy as 'public' | 'unlisted' | 'private' | undefined) ?? 'public' }));
+            done.push('YouTube');
           } else {
             manual.push(ch === 'any' ? 'manual post' : ch);
+            setRow(ch, { state: 'manual', note: 'Open the app and post it yourself' });
+            return;
           }
+          setRow(ch, { state: 'done' });
         } catch (e: any) {
-          errs.push(`${ch}: ${e?.message ?? 'failed'}`);
+          const note = e?.message ?? 'failed';
+          errs.push(`${labelFor(ch)}: ${note}`);
+          setRow(ch, { state: 'fail', note });
         }
-      }
+        })(),
+        perChannelMs,
+        labelFor(ch),
+      ).catch((e: any) => {
+        // only the timeout rejection lands here — the body swallows its own errors
+        const note = e?.message ?? 'failed';
+        errs.push(`${labelFor(ch)}: ${note}`);
+        setRow(ch, { state: 'fail', note });
+      })));
+    } catch (e) {
+      setNotice(null);
+      throw e;
     } finally {
-      setPublishing(false);
+      if (!silent) setPublishing(false);
+      publishingRef.current = false;
     }
-    return { done, errs, manual };
+    return { done, errs, manual, remoteIds };
   };
 
-  const finishPublish = async (p: ManagedPost, done: string[], errs: string[], manual: string[]) => {
-    const lines = [
-      done.length ? `Posted: ${done.join(', ')}` : '',
-      manual.length ? `Post yourself: ${manual.join(', ')}` : '',
-      errs.length ? `Failed:\n${errs.join('\n')}` : '',
-    ].filter(Boolean).join('\n\n');
-    Alert.alert(done.length > 0 && errs.length === 0 && manual.length === 0 ? 'Published ✓' : 'Publish result', lines || 'Nothing to publish.');
-    if (done.length > 0 && errs.length === 0 && manual.length === 0) {
+  const finishPublish = async (p: ManagedPost, done: string[], errs: string[], manual: string[], remoteIds?: Record<string, string>, opts?: { silent?: boolean }) => {
+    const rows: PubRow[] = [
+      ...done.map((n) => ({ id: n.toLowerCase(), label: n, state: 'done' as const })),
+      ...manual.map((n) => ({
+        id: n === 'manual post' ? 'any' : n,
+        label: labelFor(n === 'manual post' ? 'any' : n),
+        state: 'manual' as const,
+        note: 'Open the app and post it yourself',
+      })),
+      ...errs.map((e) => {
+        const i = e.indexOf(': ');
+        const label = i > 0 ? e.slice(0, i) : e;
+        const note = i > 0 ? e.slice(i + 2) : undefined;
+        return { id: label.toLowerCase(), label, state: 'fail' as const, note };
+      }),
+    ];
+    const allGood = done.length > 0 && errs.length === 0 && manual.length === 0;
+    if (!opts?.silent) setNotice({ mode: 'result', title: allGood ? 'Published' : 'Publish result', rows });
+    if (allGood) {
       await cancelPostReminder(p.id);
-      await saveManagedPost({ ...p, status: 'sent', sentAt: Date.now() });
-      setSheet(null);
+      const sent: ManagedPost = { ...p, status: 'sent', sentAt: Date.now(), remoteIds: { ...(p.remoteIds ?? {}), ...(remoteIds ?? {}) } };
+      await saveManagedPost(sent);
+      // On iOS keep the composer open on the sent record: the result then shows
+      // inside the one modal. Closing here would try to present the standalone
+      // notice modal during the sheet's dismissal — on iOS that double-modal
+      // hand-off leaves the whole app untouchable. Android closes as before.
+      if (Platform.OS === 'ios' && sheetRef.current) setSheet({ post: sent });
+      else setSheet(null);
       bump();
     }
   };
 
-  const approveAction = sheet?.post
-    ? () => {
-        const cur = sheetRef.current?.post;
-        if (!cur) return;
-        if (cur.status === 'approval') {
-          if (cur.scheduledAt) void moveTo('queued');
-          else Alert.alert('No time set', 'Queue it with a time first — tap the Queue button below.');
-        } else {
-          void moveTo('approval');
-        }
+  /** Auto-publish queued posts whose time has come (silent, one pass, in schedule order). */
+  const publishDueRef = useRef<() => Promise<void>>(async () => {});
+  publishDueRef.current = async () => {
+    if (publishingRef.current) return;
+    const all = await loadManagedPosts();
+    const now = Date.now();
+    const due = all
+      .filter((p) => p.status === 'queued' && !!p.scheduledAt && p.scheduledAt <= now)
+      .sort((a, b) => (a.scheduledAt ?? 0) - (b.scheduledAt ?? 0));
+    for (const p of due) {
+      // retry a failed/overdue post every few minutes while the app is open,
+      // so one blip doesn't strand it as "Overdue" forever.
+      if (now - (attemptTimesRef.current[p.id] ?? 0) < RETRY_MS) continue;
+      attemptTimesRef.current[p.id] = now;
+      if (publishingRef.current) return;
+      try {
+        const r = await runPublish(p, { silent: true });
+        if (r) await finishPublish(p, r.done, r.errs, r.manual, r.remoteIds, { silent: true });
+      } catch {
+        // silent sweep: a pre-blast throw must not kill the whole pass
       }
-    : undefined;
+    }
+  };
+
+  /** Reminder tap: the post is due — publish it now. */
+  const publishPostById = useCallback(
+    async (id: string) => {
+      const all = await loadManagedPosts();
+      const p = all.find((x) => x.id === id);
+      if (!p || p.status === 'sent') return;
+      try {
+        const r = await runPublish(p);
+        if (r) await finishPublish(p, r.done, r.errs, r.manual, r.remoteIds);
+      } catch (e: any) {
+        setNotice({ mode: 'result', title: 'Publish failed', rows: [{ id: 'post', label: 'Post', state: 'fail' as const, note: e?.message ?? 'Try again.' }] });
+      }
+    },
+    [runPublish, finishPublish],
+  );
+
+  // publish due posts on launch, on return-to-foreground, and while open (60s tick)
+  useEffect(() => {
+    const sweep = () => { void publishDueRef.current(); };
+    void sweep();
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') void sweep();
+    });
+    const timer = setInterval(sweep, 60000);
+    return () => {
+      sub.remove();
+      clearInterval(timer);
+    };
+  }, []);
 
   return (
-    <Ctx.Provider value={{ refreshedAt, openComposer, openPostById }}>
+    <Ctx.Provider value={{ refreshedAt, openComposer, openPostById, publishPostById, submitForApproval, approvePost, rejectPost }}>
       {children}
       <ScheduleSheet
         visible={sheet !== null}
         title={sheet?.post?.status === 'sent' ? 'Sent post' : sheet?.post ? 'Edit post' : 'New post'}
         readOnly={sheet?.post?.status === 'sent'}
         readOnlyNote={sheet?.post?.status === 'sent' && sheet.post.sentAt ? `Sent ${fmtDateTime(sheet.post.sentAt)}` : undefined}
+        remoteIds={sheet?.post?.remoteIds}
         initialAt={sheet?.post?.scheduledAt}
         initialPlatforms={sheet?.post?.platforms}
-        composer={{ title: tTitle, caption: tBody, onCaption: setTBody, onTitle: setTTitle }}
+        initialTypes={sheet?.post?.platformTypes}
+        initialSourceUrl={sheet?.post?.sourceUrl}
+        initialThreadsTopic={sheet?.post?.threadsTopic}
+        initialTtPrivacy={sheet?.post?.ttPrivacy}
+        initialYtPrivacy={sheet?.post?.ytPrivacy}
+        composer={{ title: '', caption: tBody, onCaption: setTBody }}
         media={{ items: tMedia, onPick: pickMedia, onRemove: removeMedia }}
         onSave={save}
         draftLabel="Save as draft"
         onDraft={saveDraft}
         onPostNow={postNow}
         onDelete={sheet?.post ? remove : undefined}
-        onClose={() => setSheet(null)}
+        onClose={() => { setSheet(null); setNotice(null); }}
+        publishing={publishing}
+        progress={notice?.rows}
+        statusTitle={notice?.title}
+        statusMessage={notice?.message}
+      />
+      {/* One native modal at a time: iOS can't reliably present the notice
+          Modal on top of the composer sheet's Modal — the second presentation
+          fails and leaves the whole app untouchable (frozen incl. the bottom
+          nav). While the sheet is open on iOS the same content is mirrored
+          inside it, so the standalone notice modal stays out of the way.
+          Android handles stacked modals fine, so its behaviour is unchanged. */}
+      <PublishNotice
+        visible={notice !== null && !(Platform.OS === 'ios' && sheet !== null)}
+        mode={notice?.mode ?? 'info'}
+        title={notice?.title ?? ''}
+        message={notice?.message}
+        channels={notice?.channels}
+        rows={notice?.rows}
+        onDone={() => setNotice(null)}
+        onHide={() => setNotice(null)}
+      />
+      <PublishNotice
+        visible={privacyAsk !== null}
+        mode="privacy"
+        title="TikTok audience"
+        message="Who can see this post?"
+        rows={(privacyAsk?.options ?? []).map((o) => ({ id: o.value, label: o.label, state: 'pending' as const }))}
+        onPick={(v) => privacyAsk?.resolve(v)}
+        onCancel={() => privacyCancelRef.current?.()}
       />
     </Ctx.Provider>
   );

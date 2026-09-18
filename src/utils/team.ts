@@ -85,6 +85,41 @@ export function canChangeRole(actor: Actor, target: TeamMember, next: 'admin' | 
   return target.role !== 'owner' && target.role !== next;
 }
 
+/** Owner or admin can approve/reject a post waiting for approval. */
+export function canApprove(actor: Actor): boolean {
+  return actor.role === 'owner' || actor.role === 'admin';
+}
+
+/** Members submit their drafts for approval before they queue. */
+export function canSubmit(actor: Actor): boolean {
+  return actor.role === 'member';
+}
+
+/* ---------------- persisted "acting as" (who you are on this device) ---------------- */
+
+const ACTOR_KEY = 'zap_acting_as_v1';
+
+/** Current actor: persisted member id, or the owner (device holder) when unset. */
+export async function loadActor(): Promise<Actor> {
+  try {
+    const id = await AsyncStorage.getItem(ACTOR_KEY);
+    if (!id) return { id: null, role: 'owner' };
+    const m = (await loadTeam()).find((x) => x.id === id);
+    return m ? { id: m.id, role: m.role } : { id: null, role: 'owner' };
+  } catch {
+    return { id: null, role: 'owner' };
+  }
+}
+
+/** Persist who is acting on this device (null = owner) and return the resolved actor. */
+export async function saveActor(id: string | null): Promise<Actor> {
+  try {
+    if (id) await AsyncStorage.setItem(ACTOR_KEY, id);
+    else await AsyncStorage.removeItem(ACTOR_KEY);
+  } catch {}
+  return loadActor();
+}
+
 /** 'All channels' or 'Facebook +2' style label. */
 export function memberChannelsLabel(ids: string[]): string {
   if (ids.includes('all')) return 'All channels';

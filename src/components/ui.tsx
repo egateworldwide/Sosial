@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, TextInputProps, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, TextInputProps, Platform, ActivityIndicator } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import FontAwesome6 from '@expo/vector-icons/build/FontAwesome6';
 import { Svg, Path } from 'react-native-svg';
@@ -165,12 +165,16 @@ export function Stepper({ value, onChange, step = 1, min = 0, max = 200, format 
 }
 
 /** Solid ink press button */
-export function PrimaryBtn({ label, onPress }: { label: string; onPress: () => void }) {
+export function PrimaryBtn({ label, onPress, icon, loading, loadingLabel }: { label: string; onPress: () => void; icon?: string; loading?: boolean; loadingLabel?: string }) {
   const { C } = useTheme();
   const s = makeS(C);
+  const busy = !!loading;
   return (
-    <TouchableOpacity onPress={onPress} style={s.btn} activeOpacity={0.85}>
-      <Text style={s.btnT}>{label}</Text>
+    <TouchableOpacity onPress={onPress} style={s.btn} activeOpacity={0.85} disabled={busy}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, justifyContent: 'center' }}>
+        {busy ? <ActivityIndicator size="small" color={C.onInk} /> : icon ? <Ionicons name={icon as any} size={15} color={C.onInk} /> : null}
+        <Text style={s.btnT}>{busy && loadingLabel ? loadingLabel : label}</Text>
+      </View>
     </TouchableOpacity>
   );
 }

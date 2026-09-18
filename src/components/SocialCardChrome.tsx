@@ -3,7 +3,7 @@ import { View, Text, Image } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import FontAwesome from '@expo/vector-icons/build/FontAwesome';
 import { PostPage } from '../types';
-import { F } from '../utils/fonts';
+import { F, FontId } from '../utils/fonts';
 import { SocialGlyph } from './ui';
 
 interface ChromeProps {
@@ -13,6 +13,8 @@ interface ChromeProps {
   fit?: boolean;
   /** hard ceiling for the auto height — content scales down rather than clipping */
   maxH?: number;
+  /** render the "made with Sosial" badge (free-plan watermark) */
+  watermark?: boolean;
   children: React.ReactNode;
 }
 
@@ -31,6 +33,17 @@ function Avatar({ page, pad, size }: { page: PostPage; pad: (v: number) => numbe
   return (
     <View style={{ width: d, height: d, borderRadius: d / 2, backgroundColor: '#111111', alignItems: 'center', justifyContent: 'center' }}>
       <Text style={{ color: '#fff', fontWeight: '800', fontSize: d * 0.38 }}>Y</Text>
+    </View>
+  );
+}
+
+/** In-card attribution badge: "made with (logo) Sosial", sized/colored to blend into the chrome. */
+function Watermark({ font, pad, size, color }: { font: FontId; pad: (v: number) => number; size: number; color: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: pad(2), flexShrink: 0 }}>
+      <Text style={{ ...F(font), fontSize: pad(size), color }}>made with</Text>
+      <Image source={require('../../assets/watermark.png')} style={{ width: pad(size + 1), height: pad(size + 1), borderRadius: pad(2) }} />
+      <Text style={{ ...F(font, true), fontSize: pad(size), color }}>Sosial</Text>
     </View>
   );
 }
@@ -79,7 +92,7 @@ function AutoFit({ style, children, fit, maxH }: { style: any; children: React.R
 }
 
 /** Platform-authentic card templates wrapping the content blocks. */
-export default function SocialCardChrome({ page, pad, fit, maxH, children }: ChromeProps) {
+export default function SocialCardChrome({ page, pad, fit, maxH, watermark, children }: ChromeProps) {
   const style = page.cardStyle ?? 'minimal';
   const cardBg = page.cardColor ?? '#FFFFFFF2';
   const { firstHandle, name } = useChrome(page);
@@ -111,7 +124,10 @@ export default function SocialCardChrome({ page, pad, fit, maxH, children }: Chr
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: pad(7), paddingHorizontal: pad(12), paddingTop: pad(10) }}>
           <Avatar page={page} pad={pad} size={24} />
           <View style={{ flex: 1, gap: 1 }}>
-            <Text style={{ ...F(font, true), fontSize: pad(9.5), color: ink }}>{name} {check(9)}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: pad(4) }}>
+              <Text style={{ ...F(font, true), fontSize: pad(9.5), color: ink, flexShrink: 1 }} numberOfLines={1}>{name} {check(9)}</Text>
+              {watermark ? <Watermark font={font} pad={pad} size={8} color={gray} /> : null}
+            </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
               <Text style={{ ...F(font), fontSize: pad(7.5), color: gray }}>2h · Public</Text>
               <Ionicons name="globe-outline" size={pad(8)} color={gray} />
@@ -155,12 +171,14 @@ export default function SocialCardChrome({ page, pad, fit, maxH, children }: Chr
         {/* author header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: pad(7), paddingHorizontal: pad(13), paddingTop: pad(11) }}>
           <Avatar page={page} pad={pad} size={22} />
-          <Text style={{ ...F(font, true), fontSize: pad(9), color: ink }} numberOfLines={1}>
+          <Text style={{ ...F(font, true), fontSize: pad(9), color: ink, flexShrink: 1 }} numberOfLines={1}>
             {name} {check(9)}
           </Text>
-          <Text style={{ ...F(font), fontSize: pad(8.5), color: gray, flex: 1 }} numberOfLines={1}>
+          <Text style={{ ...F(font), fontSize: pad(8.5), color: gray, flexShrink: 1 }} numberOfLines={1}>
             {firstHandle} · 2h
           </Text>
+          {watermark ? <Watermark font={font} pad={pad} size={8} color={gray} /> : null}
+          <View style={{ flex: 1 }} />
           <Ionicons name="ellipsis-horizontal" size={pad(11)} color={gray} />
         </View>
         <AutoFit fit={fit} maxH={maxH} style={body(true, true)}>{children}</AutoFit>
@@ -187,7 +205,9 @@ export default function SocialCardChrome({ page, pad, fit, maxH, children }: Chr
       <View style={{ ...rootFlex, backgroundColor: cardBg, borderRadius: pad(6), borderWidth: pad(1), borderColor: '#11111112', overflow: 'hidden' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: pad(7), paddingHorizontal: pad(12), paddingTop: pad(10) }}>
           <Avatar page={page} pad={pad} size={20} />
-          <Text style={{ ...F(font, true), fontSize: pad(9), color: ink, flex: 1 }}>{name} {check(9)}</Text>
+          <Text style={{ ...F(font, true), fontSize: pad(9), color: ink, flexShrink: 1 }} numberOfLines={1}>{name} {check(9)}</Text>
+          {watermark ? <Watermark font={font} pad={pad} size={8} color={gray} /> : null}
+          <View style={{ flex: 1 }} />
           <SocialGlyph platform="instagram" size={pad(11)} color="#E1306C" />
           <Ionicons name="ellipsis-horizontal" size={pad(12)} color={ink} />
         </View>
@@ -214,9 +234,11 @@ export default function SocialCardChrome({ page, pad, fit, maxH, children }: Chr
       <View style={{ ...rootFlex, backgroundColor: cardBg, borderRadius: pad(14), borderWidth: pad(1), borderColor: hairline, overflow: 'hidden' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: pad(7), paddingHorizontal: pad(13), paddingTop: pad(11) }}>
           <Avatar page={page} pad={pad} size={20} />
-          <Text style={{ ...F(font, true), fontSize: pad(9), color: ink, flex: 1 }}>
+          <Text style={{ ...F(font, true), fontSize: pad(9), color: ink, flexShrink: 1 }} numberOfLines={1}>
             {name} {check(8)} <Text style={{ ...F(font), color: faint }}>· 2h</Text>
           </Text>
+          {watermark ? <Watermark font={font} pad={pad} size={8} color={faint} /> : null}
+          <View style={{ flex: 1 }} />
           <SocialGlyph platform="threads" size={pad(12)} color={ink} />
         </View>
         <AutoFit fit={fit} maxH={maxH} style={body(true, true)}>{children}</AutoFit>
@@ -233,10 +255,178 @@ export default function SocialCardChrome({ page, pad, fit, maxH, children }: Chr
     );
   }
 
+  if (style === 'bluesky') {
+    return (
+      <View style={{ ...rootFlex, backgroundColor: cardBg, borderRadius: pad(14), borderWidth: pad(1), borderColor: hairline, overflow: 'hidden' }}>
+        {/* author header */}
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: pad(7), paddingHorizontal: pad(13), paddingTop: pad(11) }}>
+          <Avatar page={page} pad={pad} size={22} />
+          <View style={{ flex: 1, gap: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: pad(4) }}>
+              <Text style={{ ...F(font, true), fontSize: pad(9), color: ink, flexShrink: 1 }} numberOfLines={1}>{name} {check(9)}</Text>
+              {watermark ? <Watermark font={font} pad={pad} size={8} color={gray} /> : null}
+            </View>
+            <Text style={{ ...F(font), fontSize: pad(8), color: gray }} numberOfLines={1}>{firstHandle} · 2h</Text>
+          </View>
+          <Ionicons name="ellipsis-horizontal" size={pad(11)} color={gray} />
+        </View>
+        <AutoFit fit={fit} maxH={maxH} style={body(true, true)}>{children}</AutoFit>
+        {/* reply · repost · like · views */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: pad(14), paddingBottom: pad(10), gap: pad(4) }}>
+          {[
+            { icon: 'chatbubble-outline', count: '12', color: gray },
+            { icon: 'repeat-outline', count: '48', color: '#2E9E53' },
+            { icon: 'heart-outline', count: '312', color: '#EC245E' },
+            { icon: 'bar-chart-outline', count: '2.1K', color: gray },
+          ].map((a, i) => (
+            <View key={i} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+              <Ionicons name={a.icon as any} size={pad(11)} color={a.color} />
+              <Text style={{ ...F(font), fontSize: pad(8), color: gray }}>{a.count}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  }
+
+  if (style === 'mastodon') {
+    return (
+      <View style={{ ...rootFlex, backgroundColor: cardBg, borderRadius: pad(10), borderWidth: pad(1), borderColor: hairline, overflow: 'hidden' }}>
+        {/* author header — display name over @account */}
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: pad(7), paddingHorizontal: pad(12), paddingTop: pad(10) }}>
+          <Avatar page={page} pad={pad} size={24} />
+          <View style={{ flex: 1, gap: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: pad(4) }}>
+              <Text style={{ ...F(font, true), fontSize: pad(9.5), color: ink, flexShrink: 1 }} numberOfLines={1}>{name} {check(9)}</Text>
+              {watermark ? <Watermark font={font} pad={pad} size={8} color={gray} /> : null}
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+              <Text style={{ ...F(font), fontSize: pad(7.5), color: gray }} numberOfLines={1}>{firstHandle} · 2h</Text>
+              <Ionicons name="globe-outline" size={pad(8)} color={gray} />
+            </View>
+          </View>
+          <Ionicons name="ellipsis-horizontal" size={pad(12)} color={gray} />
+        </View>
+        <AutoFit fit={fit} maxH={maxH} style={body(true, true)}>{children}</AutoFit>
+        {/* reply · boost · favourite · bookmark */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: pad(14), paddingBottom: pad(10), gap: pad(4) }}>
+          {[
+            { icon: 'chatbubble-outline', count: '12', color: gray },
+            { icon: 'repeat-outline', count: '48', color: '#6364FF' },
+            { icon: 'star-outline', count: '312', color: '#CA8F04' },
+            { icon: 'bookmark-outline', count: '', color: gray },
+          ].map((a, i) => (
+            <View key={i} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+              <Ionicons name={a.icon as any} size={pad(11)} color={a.color} />
+              {a.count ? <Text style={{ ...F(font), fontSize: pad(8), color: gray }}>{a.count}</Text> : null}
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  }
+
+  if (style === 'linkedin') {
+    return (
+      <View style={{ ...rootFlex, backgroundColor: cardBg, borderRadius: pad(8), borderWidth: pad(1), borderColor: '#11111112', overflow: 'hidden' }}>
+        {/* author header — name over headline */}
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: pad(7), paddingHorizontal: pad(12), paddingTop: pad(10) }}>
+          <Avatar page={page} pad={pad} size={24} />
+          <View style={{ flex: 1, gap: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: pad(4) }}>
+              <Text style={{ ...F(font, true), fontSize: pad(9.5), color: ink, flexShrink: 1 }} numberOfLines={1}>{name} {check(9)}</Text>
+              {watermark ? <Watermark font={font} pad={pad} size={8} color={gray} /> : null}
+            </View>
+            <Text style={{ ...F(font), fontSize: pad(7.5), color: gray }} numberOfLines={1}>{firstHandle}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+              <Text style={{ ...F(font), fontSize: pad(7.5), color: gray }}>2h ·</Text>
+              <Ionicons name="globe-outline" size={pad(8)} color={gray} />
+            </View>
+          </View>
+          <Ionicons name="ellipsis-horizontal" size={pad(12)} color={gray} />
+        </View>
+        <AutoFit fit={fit} maxH={maxH} style={body(true, true)}>{children}</AutoFit>
+        {/* reaction summary */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: pad(12), paddingBottom: pad(7) }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {['#0A66C2', '#057642', '#DF704D'].map((bg, i) => (
+              <View key={i} style={{ width: pad(13), height: pad(13), borderRadius: pad(6.5), backgroundColor: bg, alignItems: 'center', justifyContent: 'center', marginLeft: i === 0 ? 0 : pad(-4), borderWidth: pad(1.5), borderColor: cardBg }}>
+                <FontAwesome name={['thumbs-up', 'handshake-o', 'heart'][i] as any} size={pad(7)} color="#fff" />
+              </View>
+            ))}
+          </View>
+          <Text style={{ ...F(font), fontSize: pad(8.5), color: gray, marginLeft: 5 }}>48</Text>
+          <View style={{ flex: 1 }} />
+          <Text style={{ ...F(font), fontSize: pad(8.5), color: gray }}>12 comments · 5 reposts</Text>
+        </View>
+        {/* actions */}
+        <View style={{ borderTopWidth: pad(1), borderTopColor: hairline, flexDirection: 'row', paddingVertical: pad(7) }}>
+          {[
+            { icon: 'thumbs-up-outline', label: 'Like' },
+            { icon: 'chatbubble-outline', label: 'Comment' },
+            { icon: 'repeat-outline', label: 'Repost' },
+            { icon: 'paper-plane-outline', label: 'Send' },
+          ].map((a) => (
+            <View key={a.label} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+              <Ionicons name={a.icon as any} size={pad(12)} color={gray} />
+              <Text style={{ ...F(font), fontSize: pad(9), color: gray }}>{a.label}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  }
+
+  if (style === 'snapchat') {
+    return (
+      <View style={{ ...rootFlex, backgroundColor: cardBg, borderRadius: pad(16), borderWidth: pad(1), borderColor: hairline, overflow: 'hidden' }}>
+        {/* ghost header — your pfp ringed in snapchat yellow + mini ghost badge */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: pad(7), paddingHorizontal: pad(13), paddingTop: pad(11) }}>
+          <View style={{ width: pad(28), height: pad(28) }}>
+            <View style={{ borderWidth: pad(1.5), borderColor: '#FFFC00', borderRadius: pad(14), padding: pad(1.5) }}>
+              <Avatar page={page} pad={pad} size={22} />
+            </View>
+            <View style={{ position: 'absolute', right: 0, bottom: 0, width: pad(12), height: pad(12), borderRadius: pad(6), backgroundColor: '#FFFC00', alignItems: 'center', justifyContent: 'center' }}>
+              <FontAwesome name="snapchat-ghost" size={pad(7)} color="#000" />
+            </View>
+          </View>
+          <View style={{ flex: 1, gap: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: pad(4) }}>
+              <Text style={{ ...F(font, true), fontSize: pad(9), color: ink, flexShrink: 1 }} numberOfLines={1}>{name} {check(9)}</Text>
+              {watermark ? <Watermark font={font} pad={pad} size={8} color={gray} /> : null}
+            </View>
+            <Text style={{ ...F(font), fontSize: pad(8), color: gray }} numberOfLines={1}>{firstHandle} · 2h</Text>
+          </View>
+          <Ionicons name="ellipsis-horizontal" size={pad(11)} color={gray} />
+        </View>
+        <AutoFit fit={fit} maxH={maxH} style={body(true, true)}>{children}</AutoFit>
+        {/* likes · views · share */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: pad(14), paddingBottom: pad(10), gap: pad(4) }}>
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+            <Ionicons name="heart" size={pad(11)} color="#FF3B5C" />
+            <Text style={{ ...F(font), fontSize: pad(8), color: gray }}>12.4K</Text>
+          </View>
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+            <Ionicons name="eye-outline" size={pad(11)} color={gray} />
+            <Text style={{ ...F(font), fontSize: pad(8), color: gray }}>48K views</Text>
+          </View>
+          <Ionicons name="paper-plane-outline" size={pad(11)} color={gray} />
+        </View>
+      </View>
+    );
+  }
+
   // minimal
   return (
-    <AutoFit fit={fit} maxH={maxH} style={{ flex: fit ? undefined : 1, flexShrink: fit ? 1 : 0, gap: pad(10), backgroundColor: cardBg, borderRadius: pad(14), padding: pad(13), borderWidth: pad(1), borderColor: '#11111112' }}>
-      {children}
-    </AutoFit>
+    <View style={{ flex: fit ? undefined : 1, flexShrink: fit ? 1 : 0 }}>
+      <AutoFit fit={fit} maxH={maxH} style={{ flex: 1, gap: pad(10), backgroundColor: cardBg, borderRadius: pad(14), padding: pad(13), borderWidth: pad(1), borderColor: '#11111112' }}>
+        {children}
+      </AutoFit>
+      {watermark ? (
+        <View style={{ position: 'absolute', right: pad(13), bottom: pad(13) }}>
+          <Watermark font={font} pad={pad} size={8} color={gray} />
+        </View>
+      ) : null}
+    </View>
   );
 }

@@ -8,10 +8,11 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
+      "bundleIdentifier": "com.sosial.app",
       "supportsTablet": true,
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "QuickPost saves your infographic posts to your photo library.",
-        "NSPhotoLibraryAddUsageDescription": "QuickPost saves your infographic posts to your photo library."
+        "NSPhotoLibraryUsageDescription": "Sosial saves your infographic posts to your photo library.",
+        "NSPhotoLibraryAddUsageDescription": "Sosial saves your infographic posts to your photo library."
       }
     },
     "android": {
@@ -31,14 +32,14 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "QuickPost needs access to your photos to use custom backgrounds and profile pictures."
+          "photosPermission": "Sosial needs access to your photos to use custom backgrounds and profile pictures."
         }
       ],
       [
         "expo-media-library",
         {
-          "photosPermission": "QuickPost saves your posts to your gallery.",
-          "savePhotosPermission": "QuickPost saves your posts to your gallery.",
+          "photosPermission": "Sosial saves your posts to your gallery.",
+          "savePhotosPermission": "Sosial saves your posts to your gallery.",
           "isAccessMediaLocationEnabled": true
         }
       ],
@@ -52,7 +53,8 @@
       ],
       "@react-native-community/datetimepicker",
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-video"
     ],
     "extra": {
       "eas": {

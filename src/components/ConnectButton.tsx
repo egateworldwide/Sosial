@@ -23,6 +23,12 @@ export default function ConnectButton({ onPress }: { onPress: () => void }) {
         if (m.igId) list.push('instagram');
         if (m.threadsId) list.push('threads');
         if (m.ttAccessToken || m.ttRefreshToken) list.push('tiktok');
+        if (m.xUserId && (m.xAccessToken || m.xRefreshToken)) list.push('x');
+        if (m.bskyDid && (m.bskyAccessJwt || m.bskyRefreshJwt)) list.push('bluesky');
+        if (m.mastodonAccessToken && m.mastodonInstance) list.push('mastodon');
+        if (m.pinAccessToken) list.push('pinterest');
+        if (m.liPersonUrn && (m.liAccessToken || m.liRefreshToken)) list.push('linkedin');
+        if (m.ytRefreshToken || m.ytAccessToken) list.push('youtube');
         setConnected(list);
       } catch {}
     })();
@@ -52,17 +58,7 @@ export default function ConnectButton({ onPress }: { onPress: () => void }) {
               </View>
             ))}
             {extra > 0 ? (
-              <View
-                style={{
-                  minWidth: 20, height: 20, borderRadius: 10,
-                  backgroundColor: C.ink,
-                  alignItems: 'center', justifyContent: 'center',
-                  marginLeft: -7, paddingHorizontal: 4,
-                  borderWidth: 1.5, borderColor: C.card,
-                }}
-              >
-                <Text style={{ fontFamily: 'PlusJakartaSans_700Bold', fontSize: 9, color: C.onInk }}>+{extra}</Text>
-              </View>
+              <Text style={{ fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: C.muted, marginLeft: 1 }}>+{extra}</Text>
             ) : null}
           </View>
         ) : null}
