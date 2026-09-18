@@ -102,7 +102,7 @@ export async function pushPostToCloud(post: ManagedPost): Promise<void> {
     )
     .select('id')
     .single();
-  if (pErr || !prow) throw new Error('cloud post upsert failed');
+  if (pErr || !prow) throw new Error(`cloud post upsert failed: ${pErr?.message ?? 'no row'}`);
   const postId = String((prow as any).id);
 
   // Cloud channels for this workspace (provider → first connected row).
@@ -129,6 +129,8 @@ export async function pushPostToCloud(post: ManagedPost): Promise<void> {
     if (post.ytPrivacy) options.ytPrivacy = post.ytPrivacy;
     if (post.sourceUrl) options.sourceUrl = post.sourceUrl;
     const format = (post.platformTypes as any)?.[platform];
+    // idempotency_key is NOT NULL with no default — deterministic so
+    // retries and re-saves converge instead of violating.
     const { error: tErr } = await sb.from('post_targets').upsert(
       {
         post_id: postId,
@@ -139,10 +141,11 @@ export async function pushPostToCloud(post: ManagedPost): Promise<void> {
         options,
         status,
         scheduled_at: scheduledIso,
+        idempotency_key: `cloud:${post.id}:${channelId}`,
       },
       { onConflict: 'post_id,channel_id' },
     );
-    if (tErr) throw new Error(`cloud target upsert failed (${platform})`);
+    if (tErr) throw new Error(`cloud target upsert failed (${platform}): ${tErr.message}`);
     made += 1;
   }
   console.log(`[cloud] pushed ${post.id}: ${made} target(s) for [${(post.platforms ?? []).join(',')}]`);
@@ -170,7 +173,7 @@ export async function pushPostToCloud(post: ManagedPost): Promise<void> {
       contentType: mime,
       upsert: true,
     });
-    if (upErr) throw new Error('cloud media upload failed');
+    if (upErr) throw new Error(`cloud media upload failed: ${upErr.message}`);
     let mediaId: string | null = null;
     const { data: existing } = await sb
       .from('media_assets')
@@ -194,13 +197,13 @@ export async function pushPostToCloud(post: ManagedPost): Promise<void> {
         })
         .select('id')
         .single();
-      if (mErr || !ins) throw new Error('cloud media row failed');
+      if (mErr || !ins) throw new Error(`cloud media row failed: ${mErr?.message ?? 'no row'}`);
       mediaId = String((ins as any).id);
     }
     const { error: linkErr } = await sb
       .from('post_media')
       .insert({ post_id: postId, media_id: mediaId, position });
-    if (linkErr) throw new Error('cloud media link failed');
+    if (linkErr) throw new Error(`cloud media link failed: ${linkErr.message}`);
     position += 1;
   }
 }
@@ -214,5 +217,5 @@ export async function deleteCloudPost(clientId: string): Promise<void> {
   const id = (prow as any)?.id;
   if (!id) return;
   const { error } = await sb.from('posts').delete().eq('id', id);
-  if (error) throw new Error('cloud post delete failed');
+  if (error) throw new Error(`cloud post delete failed: ${error.message}`);
 }
