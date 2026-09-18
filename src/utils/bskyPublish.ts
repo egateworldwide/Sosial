@@ -226,10 +226,22 @@ async function uploadVideo(creds: BskyCreds, uri: string): Promise<any> {
   }
 }
 
+/** A published post reference — the at:// uri plus the CID needed to reply. */
+export interface BskyRef {
+  uri: string;
+  cid: string;
+}
+
 async function publishBskyWith(
   creds: BskyCreds,
-  opts: { text: string; imageUris?: string[]; videoUri?: string },
-): Promise<string> {
+  opts: {
+    text: string;
+    imageUris?: string[];
+    videoUri?: string;
+    /** reply chain: root is the first post, parent the one directly above */
+    replyTo?: { root: BskyRef; parent: BskyRef };
+  },
+): Promise<BskyRef> {
   const text = fitText(opts.text);
   const uris = (opts.imageUris ?? []).filter(Boolean).slice(0, BSKY_MAX_IMAGES);
   const videoUri = opts.videoUri && opts.videoUri.trim() ? opts.videoUri : undefined;
@@ -285,6 +297,13 @@ async function publishBskyWith(
   if (facets.length) record.facets = facets;
   if (videoBlob) record.embed = { $type: 'app.bsky.embed.video', video: videoBlob };
   else if (images.length) record.embed = { $type: 'app.bsky.embed.images', images };
+  if (opts.replyTo) {
+    // Both refs are required; root pins the thread, parent the immediate reply.
+    record.reply = {
+      root: { uri: opts.replyTo.root.uri, cid: opts.replyTo.root.cid },
+      parent: { uri: opts.replyTo.parent.uri, cid: opts.replyTo.parent.cid },
+    };
+  }
   const r = await fetch(`${creds.pdsHost}/xrpc/com.atproto.repo.createRecord`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${creds.token}`, 'Content-Type': 'application/json' },
@@ -293,14 +312,20 @@ async function publishBskyWith(
   const j: any = await r.json().catch(() => ({}));
   if (r.status === 401) throw new Error('Bluesky session expired — reconnect Bluesky.');
   if (!r.ok || !j?.uri) throw new Error(bskyErr(j, 'Bluesky post failed.'));
-  return String(j.uri);
+  return { uri: String(j.uri), cid: String(j.cid ?? '') };
 }
 
 /**
  * Post to Bluesky: text (≤300, links auto-faceted) + up to 4 photos OR one
- * video. Retries once on an expired token. Returns the post URI.
+ * video, optionally as a chain reply. Retries once on an expired token.
+ * Returns the post ref (uri + cid) so callers can chain.
  */
-export async function publishBsky(opts: { text: string; imageUris?: string[]; videoUri?: string }): Promise<string> {
+export async function publishBsky(opts: {
+  text: string;
+  imageUris?: string[];
+  videoUri?: string;
+  replyTo?: { root: BskyRef; parent: BskyRef };
+}): Promise<BskyRef> {
   const creds = await getValidBsky();
   try {
     return await publishBskyWith(creds, opts);

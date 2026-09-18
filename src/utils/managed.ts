@@ -111,6 +111,23 @@ export interface ManagedPost {
   retryAfter?: Record<string, number>;
   /** sweep attempts so far; parked (not retried) past MAX_AUTO_TRIES. */
   autoTries?: number;
+  /** Thread chain segments, in order (manual or auto-split). When there's more
+   *  than one, chain-capable channels (X/Threads/Bluesky/Mastodon) publish them
+   *  as replies; every other channel gets `body` — the segments re-joined. */
+  thread?: string[];
+}
+
+/** Chain segments for a post: the explicit thread if any, else the body. */
+export function postSegments(p: ManagedPost): string[] {
+  const segs = (p.thread ?? []).map((s) => (s ?? '').trim()).filter(Boolean);
+  if (segs.length) return segs;
+  const b = (p.body ?? '').trim();
+  return b ? [b] : [];
+}
+
+/** True when this post should publish as a multi-post chain. */
+export function isThread(p: ManagedPost): boolean {
+  return (p.thread ?? []).filter((s) => (s ?? '').trim()).length > 1;
 }
 
 /** Cooldown after a channel times out (its promise may still land) before auto-retry touches it again. */

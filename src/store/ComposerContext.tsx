@@ -4,12 +4,13 @@ import * as ImagePicker from 'expo-image-picker';
 import { AppState, Platform } from 'react-native';
 import ScheduleSheet from '../components/ScheduleSheet';
 import { uid } from '../constants';
-import { loadManagedPosts, saveManagedPost, saveManagedPostLocal, deleteManagedPost, ManagedPost, PostStatus, MediaAttachment, postAttachments, PlatformTypes, defaultPlatformType, ChannelKey, queueTooSoon, minQueueLabel, isEmptyPost, LEG_COOLDOWN_MS, MAX_AUTO_TRIES, VIDEO_CHANNEL_MS, PHOTO_CHANNEL_MS } from '../utils/managed';
+import { loadManagedPosts, saveManagedPost, saveManagedPostLocal, deleteManagedPost, ManagedPost, PostStatus, MediaAttachment, postAttachments, postSegments, PlatformTypes, defaultPlatformType, ChannelKey, queueTooSoon, minQueueLabel, isEmptyPost, LEG_COOLDOWN_MS, MAX_AUTO_TRIES, VIDEO_CHANNEL_MS, PHOTO_CHANNEL_MS } from '../utils/managed';
+import { joinThread, isChainPlatform } from '../utils/thread';
 import { loadMetaState, saveMetaState, MetaState, connectedChannelIds } from '../utils/metaStore';
 import { publishFacebook, publishFacebookReel, publishFacebookStory, publishInstagram, publishInstagramStory, publishThreads, uploadTikTokPhoto, MAX_ATTACHMENTS, ATTACH_LIMITS } from '../utils/metaPublish';
 import { publishTikTokVideo, publishTikTokPhotos } from '../utils/tiktokPublish';
 import { publishX } from '../utils/xPublish';
-import { publishBsky } from '../utils/bskyPublish';
+import { publishBsky, BskyRef } from '../utils/bskyPublish';
 import { publishMastodon } from '../utils/mastodonPublish';
 import { publishPinterest } from '../utils/pinPublish';
 import { publishLinkedIn } from '../utils/liPublish';
@@ -37,6 +38,28 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
     timer = setTimeout(() => reject(new Error(`${label} took too long and was given up on — it may still finish, check the app.`)), ms);
   });
   return Promise.race([p, guard]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Publish ordered text segments as a reply chain: segment 0 (with media) is the
+ * head, each later segment replies to the one before it. `post` receives the
+ * previous ref (null for the head) so callers can build platform-specific reply
+ * structures; `idOf` extracts the remote id. Returns the HEAD's id — the head
+ * is the canonical post for analytics, and recording it is what stops retries
+ * from re-chaining.
+ */
+async function publishChain<T>(
+  segments: string[],
+  post: (text: string, parent: T | null) => Promise<T>,
+  idOf: (ref: T) => string,
+): Promise<string> {
+  let ref: T | null = null;
+  let head = '';
+  for (let i = 0; i < segments.length; i++) {
+    ref = await post(segments[i], ref);
+    if (i === 0) head = idOf(ref);
+  }
+  return head;
 }
 
 interface ComposerCtx {
@@ -70,6 +93,10 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
   const [publishing, setPublishing] = useState(false);
   const [refreshedAt, setRefreshedAt] = useState(0);
   const [tBody, setTBody] = useState('');
+  // Thread chain (null = normal single post). Segments double as the editable
+  // source of truth while chain mode is on; `tBody` mirrors them joined so the
+  // rest of the pipeline (title, guards, body) never needs to know.
+  const [tThread, setTThread] = useState<string[] | null>(null);
   const [tMedia, setTMedia] = useState<MediaAttachment[]>([]);
   const [notice, setNotice] = useState<{ mode: 'loading' | 'result' | 'info'; title: string; message?: string; rows?: PubRow[]; channels?: string[] } | null>(null);
   const [privacyAsk, setPrivacyAsk] = useState<{ options: { value: string; label: string }[]; resolve: (v: string) => void } | null>(null);
@@ -91,8 +118,15 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
   const openComposer = useCallback((p: ManagedPost | null) => {
     setNotice(null);
     setTBody(p?.body ?? '');
+    setTThread(p?.thread && p.thread.length > 1 ? [...p.thread] : null);
     setTMedia(p ? postAttachments(p) : []);
     setSheet({ post: p });
+  }, []);
+
+  /** Chain-mode editor bridge: keeps the joined body in lockstep with segments. */
+  const onThread = useCallback((segs: string[] | null) => {
+    setTThread(segs);
+    if (segs) setTBody(joinThread(segs));
   }, []);
 
   const openPostById = useCallback(
@@ -149,11 +183,18 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
   const buildRec = (at: number | undefined, plats: string[], status: PostStatus, types?: PlatformTypes, sourceUrl?: string, threadsTopic?: string, ttPrivacy?: string, ytPrivacy?: string): ManagedPost => {
     const firstImage = tMedia.find((m) => m.kind === 'image')?.uri;
     const firstVideo = tMedia.find((m) => m.kind === 'video')?.uri;
-    const firstLine = tBody.trim().split('\n')[0] ?? '';
+    const segs = tThread ? tThread.map((s) => (s ?? '').trim()).filter(Boolean) : [];
+    // A chain only survives when some selected channel can actually thread —
+    // otherwise the (possibly edited) single body is the post, not stale segments.
+    const chainAllowed = plats.includes('any') || plats.some(isChainPlatform);
+    const chain = chainAllowed && segs.length > 1 ? segs : undefined;
+    const body = chain ? joinThread(chain) : tBody;
+    const firstLine = body.trim().split('\n')[0] ?? '';
     return {
       id: sheetRef.current?.post?.id || uid('post'),
       title: firstLine.slice(0, 80),
-      body: tBody,
+      body,
+      thread: chain,
       imageUri: firstImage,
       videoUri: firstVideo,
       attachments: [...tMedia],
@@ -416,6 +457,10 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
       : [titleText, bodyText].filter((x) => x).join('\n\n');
     const atts = postAttachments(p);
     const firstVideo = atts.find((a) => a.kind === 'video');
+    // Chain mode: when the post carries >1 segment, the four chain-capable
+    // channels publish them as replies; every other channel keeps `caption`.
+    const segList = postSegments(p);
+    const chain = segList.length > 1 ? segList : null;
     const done: string[] = [];
     const errs: string[] = [];
     const manual: string[] = [];
@@ -564,12 +609,26 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
             }
             done.push('Instagram');
           } else if (ch === 'threads') {
-            if (!m.threadsId || !m.threadsToken) throw new Error('Threads not connected');
+            // Narrow into consts — TS drops property narrowing inside callbacks.
+            const thId = m.threadsId;
+            const thToken = m.threadsToken;
+            if (!thId || !thToken) throw new Error('Threads not connected');
             if (type === 'ghost') {
               // real ghost post: text-only container flagged to auto-archive in 24h
-              keep(ch, await publishThreads({ threadsId: m.threadsId, token: m.threadsToken, text: caption, ghost: true, topicTag: p.threadsTopic }));
+              keep(ch, await publishThreads({ threadsId: thId, token: thToken, text: caption, ghost: true, topicTag: p.threadsTopic }));
             } else {
-              keep(ch, await publishThreads({ threadsId: m.threadsId, token: m.threadsToken, text: caption, imageUri: p.imageUri, videoUri: p.videoUri, attachments: atts, topicTag: p.threadsTopic, mirrorClientId: p.id }));
+              keep(ch, chain
+                ? await publishChain<string>(chain, (text, parent) => publishThreads({
+                    threadsId: thId, token: thToken, text,
+                    // media rides the head only; replies are text-only
+                    imageUri: parent ? undefined : p.imageUri,
+                    videoUri: parent ? undefined : p.videoUri,
+                    attachments: parent ? [] : atts,
+                    topicTag: p.threadsTopic,
+                    mirrorClientId: parent ? undefined : p.id,
+                    replyToId: parent ?? undefined,
+                  }), (id) => id)
+                : await publishThreads({ threadsId: thId, token: thToken, text: caption, imageUri: p.imageUri, videoUri: p.videoUri, attachments: atts, topicTag: p.threadsTopic, mirrorClientId: p.id }));
             }
             done.push('Threads');
           } else if (ch === 'tiktok') {
@@ -605,7 +664,15 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
               throw new Error('X can’t mix photos and video — send one or the other.');
             }
             const imgs = atts.filter((a) => a.kind === 'image').slice(0, ATTACH_LIMITS.x.images);
-            keep(ch, await publishX({ text: caption, imageUris: imgs.map((a) => a.uri), videoUri: firstVideo?.uri }));
+            const imgUris = imgs.map((a) => a.uri);
+            keep(ch, chain
+              ? await publishChain<string>(chain, (text, parent) => publishX({
+                  text,
+                  imageUris: parent ? [] : imgUris,
+                  videoUri: parent ? undefined : firstVideo?.uri,
+                  replyTo: parent ?? undefined,
+                }), (id) => id)
+              : await publishX({ text: caption, imageUris: imgUris, videoUri: firstVideo?.uri }));
             done.push('X');
           } else if (ch === 'bluesky') {
             if (!m.bskyDid || (!m.bskyAccessJwt && !m.bskyRefreshJwt)) throw new Error('Bluesky not connected');
@@ -613,13 +680,35 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
               throw new Error('Bluesky can’t mix photos and video — send one or the other.');
             }
             const imgs = atts.filter((a) => a.kind === 'image').slice(0, ATTACH_LIMITS.bluesky.images);
-            keep(ch, await publishBsky({ text: caption, imageUris: imgs.map((a) => a.uri), videoUri: firstVideo?.uri }));
+            const bsImgUris = imgs.map((a) => a.uri);
+            let rootRef: BskyRef | null = null;
+            keep(ch, chain
+              ? await publishChain<BskyRef>(chain, async (text, parent) => {
+                  const ref = await publishBsky({
+                    text,
+                    imageUris: parent ? [] : bsImgUris,
+                    videoUri: parent ? undefined : firstVideo?.uri,
+                    // every reply points at the head as root, the one above as parent
+                    replyTo: parent && rootRef ? { root: rootRef, parent } : undefined,
+                  });
+                  if (!rootRef) rootRef = ref;
+                  return ref;
+                }, (r) => r.uri)
+              : (await publishBsky({ text: caption, imageUris: bsImgUris, videoUri: firstVideo?.uri })).uri);
             done.push('Bluesky');
           } else if (ch === 'mastodon') {
             if (!m.mastodonAccessToken || !m.mastodonInstance) throw new Error('Mastodon not connected');
             // Mastodon takes either a single video or up to 4 images — never both
             const imgs = atts.filter((a) => a.kind === 'image').slice(0, ATTACH_LIMITS.mastodon.images);
-            keep(ch, await publishMastodon({ text: caption, imageUris: imgs.map((a) => a.uri), videoUri: firstVideo?.uri }));
+            const mImgUris = imgs.map((a) => a.uri);
+            keep(ch, chain
+              ? await publishChain<string>(chain, (text, parent) => publishMastodon({
+                  text,
+                  imageUris: parent ? [] : mImgUris,
+                  videoUri: parent ? undefined : firstVideo?.uri,
+                  replyToId: parent ?? undefined,
+                }), (id) => id)
+              : await publishMastodon({ text: caption, imageUris: mImgUris, videoUri: firstVideo?.uri }));
             done.push('Mastodon');
           } else if (ch === 'pinterest') {
             if (!m.pinAccessToken) throw new Error('Pinterest not connected');
@@ -863,7 +952,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
         initialThreadsTopic={sheet?.post?.threadsTopic}
         initialTtPrivacy={sheet?.post?.ttPrivacy}
         initialYtPrivacy={sheet?.post?.ytPrivacy}
-        composer={{ title: '', caption: tBody, onCaption: setTBody }}
+        composer={{ title: '', caption: tBody, onCaption: setTBody, thread: tThread, onThread }}
         media={{ items: tMedia, onPick: pickMedia, onRemove: removeMedia }}
         onSave={save}
         draftLabel="Save as draft"

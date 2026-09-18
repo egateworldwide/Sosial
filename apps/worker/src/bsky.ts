@@ -30,6 +30,10 @@ interface Session {
   pdsHost: string;
 }
 
+/** Bluesky reply targets need both the strong-ref uri AND cid (per spec). */
+interface BskyRef { uri: string; cid: string }
+interface BskyReply { root: BskyRef; parent: BskyRef }
+
 function bskyErr(j: any, fallback: string): string {
   const m = j?.message;
   const base = typeof m === 'string' && m.length > 0 ? m : fallback;
@@ -162,11 +166,11 @@ async function prepareImage(buf: Buffer, mime: string): Promise<{ buf: Buffer; m
 }
 
 async function publishWith(
-  b: Bundle,
   sess: Session,
   imageBuffers: { buf: Buffer; mime: string }[],
-): Promise<string> {
-  const text = fitText(b.target.caption ?? b.post.body ?? '');
+  text: string,
+  replyTo?: BskyReply,
+): Promise<BskyRef> {
   if (!text && imageBuffers.length === 0) {
     throw new Error('Nothing to publish — empty text and no images.');
   }
@@ -186,6 +190,12 @@ async function publishWith(
   const facets = text ? linkFacets(text) : [];
   if (facets.length) record.facets = facets;
   if (images.length) record.embed = { $type: 'app.bsky.embed.images', images };
+  if (replyTo) {
+    record.reply = {
+      root: { uri: replyTo.root.uri, cid: replyTo.root.cid },
+      parent: { uri: replyTo.parent.uri, cid: replyTo.parent.cid },
+    };
+  }
   const r = await xrpc(sess.pdsHost, 'com.atproto.repo.createRecord', sess.token, JSON.stringify({
     repo: sess.did,
     collection: 'app.bsky.feed.post',
@@ -193,7 +203,7 @@ async function publishWith(
   }), 'application/json');
   if (r.status === 401) throw new Error('__EXPIRED__');
   if (!r.ok || !r.json?.uri) throw new Error(bskyErr(r.json, 'Bluesky post failed'));
-  return String(r.json.uri);
+  return { uri: String(r.json.uri), cid: String(r.json.cid ?? '') };
 }
 
 /**
@@ -260,11 +270,11 @@ async function uploadVideoBlob(sess: Session, buf: Buffer, mime: string): Promis
 }
 
 async function publishVideoWith(
-  b: Bundle,
   sess: Session,
   video: { storage_path: string; mime_type: string | null },
-): Promise<string> {
-  const text = fitText(b.target.caption ?? b.post.body ?? '');
+  text: string,
+  replyTo?: BskyReply,
+): Promise<BskyRef> {
   let raw: Buffer;
   try {
     raw = await storageDownload(await storageSign('post-media', video.storage_path));
@@ -282,6 +292,12 @@ async function publishVideoWith(
   };
   const facets = text ? linkFacets(text) : [];
   if (facets.length) record.facets = facets;
+  if (replyTo) {
+    record.reply = {
+      root: { uri: replyTo.root.uri, cid: replyTo.root.cid },
+      parent: { uri: replyTo.parent.uri, cid: replyTo.parent.cid },
+    };
+  }
   const r = await xrpc(sess.pdsHost, 'com.atproto.repo.createRecord', sess.token, JSON.stringify({
     repo: sess.did,
     collection: 'app.bsky.feed.post',
@@ -289,7 +305,7 @@ async function publishVideoWith(
   }), 'application/json');
   if (r.status === 401) throw new Error('__EXPIRED__');
   if (!r.ok || !r.json?.uri) throw new Error(bskyErr(r.json, 'Bluesky video post failed'));
-  return String(r.json.uri);
+  return { uri: String(r.json.uri), cid: String(r.json.cid ?? '') };
 }
 
 /** Full target publish: session → media → post. Returns the post URI. */
@@ -324,28 +340,60 @@ export async function publishBlueskyTarget(bundle: Bundle): Promise<string> {
       throw new Error(`Photo ${i + 1}: ${e?.message ?? 'too big'}`);
     }
   }
-  const attempt = async (force: boolean): Promise<string> => {
-    const sess = await ensureSession(b, force);
-    try {
-      if (videos.length > 0) {
-        return await publishVideoWith(b, sess, videos[0]);
-      }
-      return await publishWith(b, sess, prepared);
-    } catch (e: any) {
-      if (String(e?.message ?? '') === '__EXPIRED__' && !force) {
-        const sess2 = await ensureSession(b, true);
-        if (videos.length > 0) {
-          return await publishVideoWith(b, sess2, videos[0]);
+  const attemptOne = async (opts: {
+    text: string;
+    images: { buf: Buffer; mime: string }[];
+    video?: { storage_path: string; mime_type: string | null };
+    replyTo?: BskyReply;
+  }): Promise<BskyRef> => {
+    const run = async (force: boolean): Promise<BskyRef> => {
+      const sess = await ensureSession(b, force);
+      try {
+        if (opts.video) return await publishVideoWith(sess, opts.video, opts.text, opts.replyTo);
+        return await publishWith(sess, opts.images, opts.text, opts.replyTo);
+      } catch (e: any) {
+        if (String(e?.message ?? '') === '__EXPIRED__' && !force) {
+          const sess2 = await ensureSession(b, true);
+          if (opts.video) return await publishVideoWith(sess2, opts.video, opts.text, opts.replyTo);
+          return await publishWith(sess2, opts.images, opts.text, opts.replyTo);
         }
-        return await publishWith(b, sess2, prepared);
+        if (String(e?.message ?? '') === '__EXPIRED__') {
+          throw new Error('Bluesky session expired — toggle cloud publishing off and on in Connect to refresh.');
+        }
+        throw e;
       }
-      if (String(e?.message ?? '') === '__EXPIRED__') {
-        throw new Error('Bluesky session expired — toggle cloud publishing off and on in Connect to refresh.');
-      }
-      throw e;
-    }
+    };
+    return run(false);
   };
-  return attempt(false);
+
+  // Thread chain: head carries the media (one video OR up to four images),
+  // replies are text-only and reference the head as root (AT-proto spec).
+  const segments = ((b.target.options?.thread as string[] | undefined) ?? [])
+    .map((s) => (s ?? '').trim())
+    .filter(Boolean);
+  if (segments.length > 1) {
+    info(`bluesky target ${b.target.id}: THREAD ${segments.length}`);
+    let root: BskyRef | null = null;
+    let parent: BskyRef | null = null;
+    let head = '';
+    for (let i = 0; i < segments.length; i++) {
+      const ref = await attemptOne({
+        text: fitText(segments[i]),
+        images: i === 0 ? prepared : [],
+        video: i === 0 ? videos[0] : undefined,
+        replyTo: i > 0 && root && parent ? { root, parent } : undefined,
+      });
+      if (i === 0) { root = ref; head = ref.uri; }
+      parent = ref;
+    }
+    return head;
+  }
+  const ref = await attemptOne({
+    text: fitText(b.target.caption ?? b.post.body ?? ''),
+    images: prepared,
+    video: videos[0],
+  });
+  return ref.uri;
 }
 
 /** Public post URL from an at:// URI. */

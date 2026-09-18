@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { supabase, supabaseUrl, currentSession } from './supabase';
 import { loadManagedPosts, saveManagedPost, postAttachments, type ManagedPost } from './managed';
+import { isChainPlatform } from './thread';
 
 /**
  * App → cloud write path (post-Wave-A slice). Every local save/delete
@@ -176,6 +177,12 @@ export async function pushPostToCloud(post: ManagedPost): Promise<void> {
     if (post.ttPrivacy) options.ttPrivacy = post.ttPrivacy;
     if (post.ytPrivacy) options.ytPrivacy = post.ytPrivacy;
     if (post.sourceUrl) options.sourceUrl = post.sourceUrl;
+    // Chain segments ride on the target so the worker can replay the exact same
+    // thread the app would have posted (local publisher is source of truth).
+    if (isChainPlatform(platform) && post.thread && post.thread.length > 1) {
+      const segs = post.thread.map((s) => (s ?? '').trim()).filter(Boolean);
+      if (segs.length > 1) options.thread = segs;
+    }
     const format = (post.platformTypes as any)?.[platform];
     // idempotency_key is NOT NULL with no default — deterministic so
     // retries and re-saves converge instead of violating.

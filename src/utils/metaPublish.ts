@@ -697,6 +697,8 @@ export async function publishThreads(opts: {
   topicTag?: string;
   /** local post id — lets media resolve from our own storage before anon hosts */
   mirrorClientId?: string;
+  /** thread chain: publish this container as a reply to an earlier post */
+  replyToId?: string;
 }): Promise<string> {
   const tok = encodeURIComponent(opts.token);
   const atts = toAttachments(opts.imageUri, opts.videoUri, opts.attachments);
@@ -719,6 +721,7 @@ export async function publishThreads(opts: {
     (kind === 'IMAGE' ? `&image_url=${encodeURIComponent(mediaUrl)}` : '') +
     (kind === 'VIDEO' ? `&video_url=${encodeURIComponent(mediaUrl)}` : '') +
     (opts.ghost ? `&is_ghost_post=true` : '') +
+    (opts.replyToId ? `&reply_to_id=${encodeURIComponent(opts.replyToId)}` : '') +
     (tag ? `&topic_tag=${encodeURIComponent(tag)}` : '') +
     `&access_token=${tok}`;
   const c = await fetch(`${THREADS_API}/v1.0/${opts.threadsId}/threads?${params}`, {

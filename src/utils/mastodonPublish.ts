@@ -97,6 +97,8 @@ export async function publishMastodon(opts: {
   text: string;
   imageUris?: string[];
   videoUri?: string;
+  /** thread chain: publish this status as a reply to an earlier one */
+  replyToId?: string;
 }): Promise<string> {
   const { token, instance } = await getValidMastodon();
   const text = fitText(opts.text);
@@ -116,6 +118,7 @@ export async function publishMastodon(opts: {
   if (videoUri) mediaIds.push(await uploadMedia(instance, token, videoUri, 'video'));
   const body: Record<string, any> = { status: text };
   if (mediaIds.length) body.media_ids = mediaIds;
+  if (opts.replyToId) body.in_reply_to_id = opts.replyToId;
   const r = await fetch(`${mastodonBase(instance)}/api/v1/statuses`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

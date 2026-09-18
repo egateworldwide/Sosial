@@ -11,6 +11,7 @@ import { SOCIAL_META } from '../constants';
 import { MAX_ATTACHMENTS } from '../utils/metaPublish';
 import { fmtDateTime } from '../utils/reminders';
 import { PlatformTypes, POST_TYPE_OPTIONS, defaultPlatformType, ChannelKey, minQueueTime, queueTooSoon, minQueueLabel } from '../utils/managed';
+import { chainLimit, splitThread, joinThread } from '../utils/thread';
 import { loadMetaState, connectedChannelIds, MetaState } from '../utils/metaStore';
 import { getValidToken, fetchCreatorInfo } from '../utils/tiktokAuth';
 import { TT_PRIVACY_LABELS } from '../utils/tiktokConfig';
@@ -150,6 +151,9 @@ export interface Composer {
   caption: string;
   onCaption: (v: string) => void;
   onTitle?: (v: string) => void;
+  /** Chain segments while threading; null/absent = a normal single post. */
+  thread?: string[] | null;
+  onThread?: (segs: string[] | null) => void;
 }
 
 export interface SheetMediaItem {
@@ -222,6 +226,13 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
   const vCount = media?.items.length ?? 0;
   const vIdx = viewer !== null && vCount > 0 ? Math.min(viewer, vCount - 1) : null;
   const vItem = vIdx !== null ? media?.items[vIdx] : undefined;
+
+  // Threading is offered when at least one selected channel supports native
+  // replies. "Anywhere" resolves to the connected set, mirroring publish time,
+  // so the segment cap is the strictest channel the post can actually reach.
+  const chainPlats = plats.includes('any') ? connected : plats;
+  const chainCap = chainLimit(chainPlats);
+  const threadOn = !!composer?.thread && composer.thread.length > 0;
 
   useEffect(() => {
     if (visible) {
@@ -427,6 +438,47 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
                   <Text style={st.postT} numberOfLines={2}>{composer.title || 'Untitled'}</Text>
                   {composer.caption ? <Text style={st.postCap}>{composer.caption}</Text> : null}
                 </>
+              ) : threadOn && composer.onThread && chainCap ? (
+                <>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={st.label}>Thread · {composer.thread!.length} posts</Text>
+                    <TouchableOpacity onPress={() => composer.onThread!(null)} hitSlop={8}>
+                      <Text style={{ fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.accentInk }}>Turn off</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {composer.thread!.map((seg, i) => {
+                    const over = seg.length > chainCap;
+                    return (
+                      <View key={i} style={{ gap: 4 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <Text style={st.label}>{i + 1}/{composer.thread!.length}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                            <Text style={{ fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11.5, color: over ? '#D33131' : C.muted }}>{seg.length}/{chainCap}</Text>
+                            {composer.thread!.length > 1 ? (
+                              <TouchableOpacity onPress={() => composer.onThread!(composer.thread!.filter((_, j) => j !== i))} hitSlop={8}>
+                                <Ionicons name="close-circle" size={18} color={C.muted} />
+                              </TouchableOpacity>
+                            ) : null}
+                          </View>
+                        </View>
+                        <Txt
+                          value={seg}
+                          onChangeText={(v) => composer.onThread!(composer.thread!.map((s, j) => (j === i ? v : s)))}
+                          placeholder={i === 0 ? 'First post…' : 'Reply…'}
+                          multiline
+                          style={{ minHeight: 72, textAlignVertical: 'top' }}
+                        />
+                      </View>
+                    );
+                  })}
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <GhostBtn label="Add post" onPress={() => composer.onThread!([...composer.thread!, ''])} />
+                    <GhostBtn label="Auto-split" onPress={() => {
+                      const next = splitThread(joinThread(composer.thread!), chainCap);
+                      composer.onThread!(next.length ? next : ['']);
+                    }} />
+                  </View>
+                </>
               ) : (
                 <>
                   <Txt
@@ -436,6 +488,19 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
                     multiline
                     style={{ minHeight: 96, textAlignVertical: 'top' }}
                   />
+                  {chainCap && composer.onThread ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        const next = splitThread(composer.caption, chainCap);
+                        composer.onThread!(next.length ? next : ['']);
+                      }}
+                      hitSlop={6}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                    >
+                      <Ionicons name="git-branch-outline" size={15} color={C.accentInk} />
+                      <Text style={{ fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.accentInk }}>Post as thread</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </>
               )}
             </View>

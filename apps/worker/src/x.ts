@@ -220,18 +220,45 @@ async function uploadImage(buf: Buffer, mime: string, token: string): Promise<st
   return mediaId;
 }
 
+/** POST one tweet. Text is trimmed to the cap here (replies included). */
+async function sendTweet(token: string, text: string, mediaIds: string[], replyToId?: string): Promise<string> {
+  const t = text.length > X_MAX_TEXT ? text.slice(0, X_MAX_TEXT - 1) + '…' : text;
+  const body: Record<string, any> = {};
+  if (t) body.text = t;
+  if (replyToId) body.reply = { in_reply_to_tweet_id: replyToId };
+  if (mediaIds.length) body.media = { media_ids: mediaIds };
+  const j = await xjson(
+    `${X_API}/tweets`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+    'X post failed.',
+  );
+  if (!j?.data?.id) throw new Error(xerr(j, 'X post failed.'));
+  return String(j.data.id);
+}
+
 export async function publishXTarget(bundle: Bundle): Promise<{ tweetId: string; tweetUrl: string }> {
   const b = bundle as Bundle;
   const text = (b.target.caption ?? b.post.body ?? '').trim();
-  const sliced = text.length > X_MAX_TEXT ? text.slice(0, X_MAX_TEXT - 1) + '…' : text;
   const all = (b.media ?? []).sort((a, z) => a.position - z.position);
   const video = all.find((m) => m.kind === 'video');
   if (video && all.some((m) => m.kind !== 'video')) {
     throw new Error('X can’t mix photos and video — attach one or the other.');
   }
   const media = video ? [] : all.slice(0, X_MAX_IMAGES);
-  if (!sliced && all.length === 0) throw new Error('Nothing to publish — empty text and no media.');
-  info(`x target ${b.target.id}: ${video ? '1 video' : `${media.length} image(s)`}`);
+
+  // Manual/auto thread segments from the app. Media rides the head only;
+  // replies are text-only and chain via in_reply_to_tweet_id.
+  const segments = ((b.target.options?.thread as string[] | undefined) ?? [])
+    .map((s) => (s ?? '').trim())
+    .filter(Boolean);
+  const chain = segments.length > 1 ? segments : null;
+  const headText = chain ? chain[0] : text;
+  if (!headText && all.length === 0) throw new Error('Nothing to publish — empty text and no media.');
+  info(`x target ${b.target.id}: ${chain ? `THREAD ${chain.length}` : video ? '1 video' : `${media.length} image(s)`}`);
 
   const attempt = async (force: boolean): Promise<{ tweetId: string; tweetUrl: string }> => {
     const token = await ensureToken(b, force);
@@ -264,23 +291,14 @@ export async function publishXTarget(bundle: Bundle): Promise<{ tweetId: string;
         throw new Error(`Photo ${i + 1}/${media.length}: ${e?.message ?? 'upload failed'}`);
       }
     }
-    const body: Record<string, any> = {};
-    if (sliced) body.text = sliced;
-    const replyTo = String(b.target.options?.replyTo ?? '');
-    if (replyTo) body.reply = { in_reply_to_tweet_id: replyTo };
-    if (mediaIds.length) body.media = { media_ids: mediaIds };
     try {
-      const j = await xjson(
-        `${X_API}/tweets`,
-        {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        },
-        'X post failed.',
-      );
-      if (!j?.data?.id) throw new Error(xerr(j, 'X post failed.'));
-      const tweetId = String(j.data.id);
+      const tweetId = await sendTweet(token, headText, mediaIds);
+      if (chain) {
+        let parent = tweetId;
+        for (let i = 1; i < chain.length; i++) {
+          parent = await sendTweet(token, chain[i], [], parent);
+        }
+      }
       return { tweetId, tweetUrl: `https://x.com/i/status/${tweetId}` };
     } catch (e: any) {
       if (String(e?.message ?? '') === '__EXPIRED__' && !force) return attempt(true);
