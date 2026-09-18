@@ -8,7 +8,12 @@ import ChannelDrawer from '../components/ChannelDrawer';
 import { AreaChart, BarsChart } from '../components/charts';
 import { SOCIAL_META } from '../constants';
 import { loadMetaState, MetaState } from '../utils/metaStore';
-import { fetchAnalytics, Analytics, RANGES, RangeKey, ChannelStats, rangeBounds } from '../utils/analytics';
+import { fetchAnalytics, Analytics, RANGES, RangeKey, ChannelStats, PerPost, rangeBounds } from '../utils/analytics';
+
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DAY_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+type PostRow = PerPost & { channel: ChannelStats['channel'] };
 
 function compact(n: number | null): string {
   if (n === null || n === undefined) return '—';
@@ -17,16 +22,30 @@ function compact(n: number | null): string {
   return n.toFixed(1);
 }
 
+/** likes + comments + shares — the engagement score used for ranking & trends. */
+function scoreOf(p: { likes: number; comments: number; shares?: number }): number {
+  return p.likes + p.comments + (p.shares ?? 0);
+}
+
+/** Same score, for a whole channel's totals. */
+function channelScore(c: { reactions: number; comments: number; shares?: number }): number {
+  return c.reactions + c.comments + (c.shares ?? 0);
+}
+
 function agg(channels: ChannelStats[]) {
   const followers = channels.reduce((a, c) => a + (c.followers ?? 0), 0);
   const hasFollowers = channels.some((c) => c.followers !== null);
   const posts = channels.reduce((a, c) => a + c.posts, 0);
   const reactions = channels.reduce((a, c) => a + c.reactions, 0);
   const comments = channels.reduce((a, c) => a + c.comments, 0);
+  const shares = channels.reduce((a, c) => a + (c.shares ?? 0), 0);
+  const hasShares = channels.some((c) => (c.shares ?? 0) > 0);
   const views = channels.reduce((a, c) => a + (c.views ?? 0), 0);
   const hasViews = channels.some((c) => c.views !== null);
-  const engagement = hasFollowers && followers > 0 ? ((reactions + comments) / followers) * 100 : null;
-  return { followers: hasFollowers ? followers : null, posts, reactions, comments, views: hasViews ? views : null, engagement };
+  const interactions = reactions + comments;
+  const engagement = hasFollowers && followers > 0 ? (interactions / followers) * 100 : null;
+  const avgPerPost = posts > 0 ? interactions / posts : null;
+  return { followers: hasFollowers ? followers : null, posts, reactions, comments, shares, hasShares, views: hasViews ? views : null, hasViews, interactions, engagement, avgPerPost };
 }
 
 function timeAgo(ts: number): string {
@@ -53,20 +72,72 @@ function combinedFollowers(channels: ChannelStats[]): { ts: number; value: numbe
   return [...map.entries()].sort((a, b) => a[0] - b[0]).map(([ts, value]) => ({ ts, value }));
 }
 
-/** Posts-per-bucket across the range (≤ 40 buckets for a clean bar chart). */
-function activityBins(perPosts: { ts: number }[], start: number, end: number): number[] {
-  const spanDays = Math.max(1, Math.round((end - start) / 86400000));
-  const bins = Math.min(spanDays, 40);
-  const size = Math.max(1, Math.round(spanDays / bins));
-  const counts = new Array(bins).fill(0);
-  for (const p of perPosts) {
-    const idx = Math.floor((p.ts - start) / (size * 86400000));
-    if (idx >= 0 && idx < bins) counts[idx]++;
-  }
-  return counts;
+function allPosts(chans: ChannelStats[]): PostRow[] {
+  return chans.flatMap((c) => c.perPost.map((p) => ({ ...p, channel: c.channel })));
 }
 
-/** Analytics tab: hero totals, per-channel sections, ranked posts, comment feed. */
+/**
+ * Engagement (likes+comments+shares) over time. One bucket per day for short
+ * ranges, per week for long ones — works on every channel since it's derived
+ * from post timestamps instead of the follower series only FB/IG expose.
+ */
+function engagementBins(posts: PostRow[], start: number, end: number): { values: number[]; labels: string[]; bestLabel: string | null; bestValue: number } {
+  const DAY = 86400000;
+  const spanDays = Math.max(1, Math.round((end - start) / DAY));
+  const weekly = spanDays > 31;
+  const bucketDays = weekly ? 7 : 1;
+  const bins = Math.max(1, Math.min(30, Math.ceil(spanDays / bucketDays)));
+  const values = new Array(bins).fill(0);
+  for (const p of posts) {
+    const idx = Math.floor((p.ts - start) / (bucketDays * DAY));
+    if (idx >= 0 && idx < bins) values[idx] += scoreOf(p);
+  }
+  const labels = values.map((_, i) => {
+    const d = new Date(start + i * bucketDays * DAY);
+    return weekly ? `${d.getMonth() + 1}/${d.getDate()}` : String(d.getDate());
+  });
+  let bestIdx = -1;
+  values.forEach((v, i) => { if (v > 0 && (bestIdx < 0 || v > values[bestIdx])) bestIdx = i; });
+  return { values, labels, bestLabel: bestIdx >= 0 ? labels[bestIdx] : null, bestValue: bestIdx >= 0 ? values[bestIdx] : 0 };
+}
+
+/** Average engagement per weekday — answers "when should I post". */
+function weekdayProfile(posts: PostRow[]): { avgs: number[]; counts: number[]; bestIdx: number } {
+  const sums = new Array(7).fill(0);
+  const counts = new Array(7).fill(0);
+  for (const p of posts) {
+    const d = new Date(p.ts).getDay();
+    sums[d] += scoreOf(p);
+    counts[d] += 1;
+  }
+  const avgs = sums.map((s, i) => (counts[i] ? s / counts[i] : 0));
+  let bestIdx = -1;
+  for (let i = 0; i < 7; i++) if (counts[i] > 0 && (bestIdx < 0 || avgs[i] > avgs[bestIdx])) bestIdx = i;
+  return { avgs, counts, bestIdx };
+}
+
+/** Second half of the range vs the first, as a % change in engagement. */
+function momentum(posts: PostRow[], start: number, end: number): number | null {
+  const mid = start + (end - start) / 2;
+  let first = 0, second = 0, firstN = 0, secondN = 0;
+  for (const p of posts) {
+    if (p.ts < mid) { first += scoreOf(p); firstN++; } else { second += scoreOf(p); secondN++; }
+  }
+  if (!firstN || !secondN) return null;
+  if (!first) return second > 0 ? 100 : null;
+  return ((second - first) / first) * 100;
+}
+
+/** Channels ranked by average engagement per post (needs no follower count). */
+function channelRank(chans: ChannelStats[]): { channel: string; avg: number; posts: number }[] {
+  return chans
+    .filter((c) => c.posts > 0)
+    .map((c) => ({ channel: c.channel, avg: channelScore(c) / c.posts, posts: c.posts }))
+    .sort((a, b) => b.avg - a.avg);
+}
+
+/** Analytics tab: KPI grid, growth, engagement trend, channel leaderboard,
+ *  best-time-to-post, per-channel sections, ranked posts, comment feed. */
 export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
   email: string;
   team: string;
@@ -132,9 +203,9 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
   const live = chans.filter((c) => !(c.note ?? '').endsWith('not connected.'));
   const totals = agg(chans);
   const rangeLabel = RANGES.find((r) => r.key === range)?.label ?? '';
-  const bars = chans
-    .flatMap((c) => c.perPost.map((p) => ({ ...p, channel: c.channel })))
-    .map((p) => ({ ...p, score: p.likes + p.comments }))
+  const posts = allPosts(chans);
+  const bars = posts
+    .map((p) => ({ ...p, score: scoreOf(p) }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 8);
   const maxScore = Math.max(1, ...bars.map((b) => b.score));
@@ -142,22 +213,24 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
   const notes = chans.map((c) => c.note).filter(Boolean) as string[];
   const anyConnected = drawerChannels.some((c) => c.connected);
 
-  const hero = totals.followers !== null
-    ? { v: compact(totals.followers), l: totals.followers === 1 ? 'follower' : 'followers' }
-    : totals.reactions + totals.comments > 0
-      ? { v: compact(totals.reactions + totals.comments), l: 'interactions' }
-      : { v: compact(totals.posts), l: totals.posts === 1 ? 'post' : 'posts' };
-  const heroSub: string[] = [`${totals.posts} post${totals.posts === 1 ? '' : 's'}`];
-  if (totals.reactions > 0) heroSub.push(`${compact(totals.reactions)} reactions`);
-  if (totals.comments > 0) heroSub.push(`${compact(totals.comments)} comments`);
-  if (totals.views !== null) heroSub.push(`${compact(totals.views)} views`);
-  if (totals.engagement !== null) heroSub.push(`${totals.engagement.toFixed(1)}% engagement`);
-
   const followerDelta = chans.reduce<number>((a, c) => a + (seriesDelta(c.followerSeries) ?? 0), 0);
   const hasDelta = chans.some((c) => (c.followerSeries?.length ?? 0) >= 2);
   const combined = combinedFollowers(chans);
   const { start: rbStart, end: rbEnd } = rangeBounds(range);
-  const activity = activityBins(chans.flatMap((c) => c.perPost), rbStart, rbEnd);
+  const eng = engagementBins(posts, rbStart, rbEnd);
+  const week = weekdayProfile(posts);
+  const trend = momentum(posts, rbStart, rbEnd);
+  const rank = channelRank(live);
+  const maxAvg = Math.max(1, ...rank.map((r) => r.avg));
+
+  const kpis: { label: string; value: string; sub: string; tone?: 'up' | 'down' }[] = [
+    { label: 'Followers', value: compact(totals.followers), sub: hasDelta ? `${followerDelta >= 0 ? '+' : ''}${compact(followerDelta)} in range` : 'connected channels', tone: hasDelta ? (followerDelta >= 0 ? 'up' : 'down') : undefined },
+    { label: 'Engagement', value: totals.engagement !== null ? `${totals.engagement.toFixed(1)}%` : '—', sub: 'of followers in range' },
+    { label: 'Interactions', value: compact(totals.interactions), sub: trend !== null ? `${trend >= 0 ? '+' : ''}${trend.toFixed(0)}% vs first half` : 'likes + comments', tone: trend !== null ? (trend >= 0 ? 'up' : 'down') : undefined },
+    { label: 'Avg / post', value: totals.avgPerPost !== null ? compact(Math.round(totals.avgPerPost * 10) / 10) : '—', sub: 'interactions per post' },
+    { label: 'Views', value: compact(totals.views), sub: totals.hasViews ? 'where the API exposes it' : 'not exposed by these APIs' },
+    { label: 'Shares', value: compact(totals.shares), sub: totals.hasShares ? 'reposts, retweets & saves' : 'not exposed by these APIs' },
+  ];
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bone }}>
@@ -216,18 +289,25 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
             {/* hero */}
             <View style={{ paddingHorizontal: 24, marginTop: 22 }}>
               <Text style={s.eyebrow}>{rangeLabel} · {live.length} channel{live.length === 1 ? '' : 's'}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 12 }}>
-                <Text style={s.heroNum}>{hero.v}</Text>
-                {hasDelta ? (
-                  <View style={[s.deltaChip, { backgroundColor: followerDelta >= 0 ? C.paleGreen : C.paleRed }]}>
-                    <Text style={[s.deltaT, { color: followerDelta >= 0 ? C.greenText : C.redText }]}>
-                      {followerDelta >= 0 ? '+' : ''}{compact(followerDelta)}
-                    </Text>
+              <Text style={s.heroLabel}>
+                {totals.interactions > 0 ? `${compact(totals.interactions)} interactions from ${totals.posts} post${totals.posts === 1 ? '' : 's'}` : `${totals.posts} post${totals.posts === 1 ? '' : 's'} in range`}
+              </Text>
+            </View>
+
+            {/* KPI grid */}
+            <View style={[s.kpiWrap, { paddingHorizontal: 24 }]}>
+              {kpis.map((k) => (
+                <View key={k.label} style={s.kpi}>
+                  <Text style={s.kpiLabel}>{k.label}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                    <Text style={s.kpiVal}>{k.value}</Text>
+                    {k.tone ? (
+                      <Ionicons name={k.tone === 'up' ? 'arrow-up' : 'arrow-down'} size={13} color={k.tone === 'up' ? C.greenText : C.redText} />
+                    ) : null}
                   </View>
-                ) : null}
-              </View>
-              <Text style={s.heroLabel}>{hero.l}</Text>
-              <Text style={s.heroSub}>{heroSub.join('  ·  ')}</Text>
+                  <Text style={[s.kpiSub, k.tone === 'up' && { color: C.greenText }, k.tone === 'down' && { color: C.redText }]} numberOfLines={2}>{k.sub}</Text>
+                </View>
+              ))}
             </View>
 
             {/* follower growth */}
@@ -250,27 +330,82 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
               </View>
             ) : null}
 
-            {/* posting activity */}
+            {/* engagement over time */}
             <View style={{ paddingHorizontal: 24, marginTop: 16 }}>
               <View style={s.card}>
-                <Text style={s.cardT}>Posting activity</Text>
+                <Text style={s.cardT}>Engagement over time</Text>
                 <View style={{ marginTop: 14 }}>
-                  <BarsChart data={activity} color={C.soft} height={72} />
+                  <BarsChart data={eng.values} color={C.accent} height={84} />
                 </View>
-                <Text style={s.cardS}>{totals.posts} post{totals.posts === 1 ? '' : 's'} in {rangeLabel.toLowerCase()}</Text>
+                <Text style={s.cardS}>
+                  Likes, comments & shares per {rbEnd - rbStart > 31 * 86400000 ? 'week' : 'day'} · {compact(eng.values.reduce((a, b) => a + b, 0))} total
+                  {eng.bestLabel ? ` · peak ${eng.bestLabel} (${compact(eng.bestValue)})` : ''}
+                </Text>
               </View>
             </View>
+
+            {/* channel leaderboard */}
+            {rank.length >= 2 ? (
+              <View style={{ paddingHorizontal: 24, marginTop: 16 }}>
+                <View style={s.card}>
+                  <Text style={s.cardT}>Channel leaderboard</Text>
+                  <Text style={[s.cardS, { marginTop: 2, marginBottom: 10 }]}>Average interactions per post</Text>
+                  {rank.map((r, i) => {
+                    const brand = SOCIAL_META[r.channel]?.bg ?? C.ink;
+                    const name = SOCIAL_META[r.channel]?.label ?? r.channel;
+                    return (
+                      <View key={r.channel} style={s.rankRow}>
+                        <Text style={s.rankNo}>{String(i + 1).padStart(2, '0')}</Text>
+                        <View style={{ flex: 1, gap: 6 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                            <View style={[s.dot, { backgroundColor: brand }]} />
+                            <Text style={s.barT} numberOfLines={1}>{name}</Text>
+                            <Text style={s.microT}>{r.posts} post{r.posts === 1 ? '' : 's'}</Text>
+                          </View>
+                          <View style={s.track}>
+                            <View style={[s.trackFill, { width: `${Math.max(4, (r.avg / maxAvg) * 100)}%`, backgroundColor: brand }]} />
+                          </View>
+                        </View>
+                        <Text style={s.barV}>{compact(Math.round(r.avg * 10) / 10)}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : null}
+
+            {/* best time to post */}
+            {posts.length >= 3 ? (
+              <View style={{ paddingHorizontal: 24, marginTop: 16 }}>
+                <View style={s.card}>
+                  <Text style={s.cardT}>Best time to post</Text>
+                  <Text style={[s.cardS, { marginTop: 2 }]}>
+                    {week.bestIdx >= 0
+                      ? `Posts land best on ${DAY_FULL[week.bestIdx]}s — ${compact(Math.round(week.avgs[week.bestIdx] * 10) / 10)} avg interactions`
+                      : 'No posted days in this range.'}
+                  </Text>
+                  <View style={{ marginTop: 14 }}>
+                    <BarsChart data={week.avgs} color={C.soft} height={64} barGap={10} />
+                  </View>
+                  <View style={{ flexDirection: 'row', marginTop: 6 }}>
+                    {DAY_NAMES.map((d, i) => (
+                      <Text key={d} style={[s.dayLab, i === week.bestIdx && { color: C.accent, fontFamily: 'PlusJakartaSans_700Bold' }]}>{d[0]}</Text>
+                    ))}
+                  </View>
+                </View>
+              </View>
+            ) : null}
 
             {/* per-channel sections */}
             {live.map((c) => {
               const brand = SOCIAL_META[c.channel]?.bg ?? C.ink;
               const name = SOCIAL_META[c.channel]?.label ?? c.channel;
               const scores = c.perPost.map((p) => p.likes + p.comments);
-              const parts = [`${c.posts} post${c.posts === 1 ? '' : 's'}`];
-              if (c.reactions > 0) parts.push(`${compact(c.reactions)} reactions`);
-              if (c.comments > 0) parts.push(`${compact(c.comments)} comments`);
-              if ((c.shares ?? 0) > 0) parts.push(`${compact(c.shares ?? 0)} shares`);
-              if (c.views !== null) parts.push(`${compact(c.views)} views`);
+              const delta = seriesDelta(c.followerSeries);
+              const bits: string[] = [];
+              if ((c.shares ?? 0) > 0) bits.push(`${compact(c.shares ?? 0)} shares`);
+              if (c.views !== null) bits.push(`${compact(c.views)} views`);
+              if (c.posts > 0) bits.push(`${compact(Math.round((channelScore(c) / c.posts) * 10) / 10)} avg/post`);
               return (
                 <View key={c.channel} style={{ paddingHorizontal: 24, marginTop: 30 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -282,10 +417,35 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
                       <Text style={s.chanHandle} numberOfLines={1}>{c.label}</Text>
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={s.chanBig}>{compact(c.followers)}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                        <Text style={s.chanBig}>{compact(c.followers)}</Text>
+                        {delta !== null ? (
+                          <Text style={[s.chanDelta, { color: delta >= 0 ? C.greenText : C.redText }]}>
+                            {delta >= 0 ? '+' : ''}{compact(delta)}
+                          </Text>
+                        ) : null}
+                      </View>
                       <Text style={s.chanSmall}>followers</Text>
                     </View>
                   </View>
+
+                  <View style={s.chanStatsRow}>
+                    <View style={s.chanStat}>
+                      <Text style={s.chanStatV}>{c.engagementRate !== null ? `${c.engagementRate.toFixed(1)}%` : '—'}</Text>
+                      <Text style={s.chanStatL}>engagement</Text>
+                    </View>
+                    <View style={s.chanStatDiv} />
+                    <View style={s.chanStat}>
+                      <Text style={s.chanStatV}>{c.posts}</Text>
+                      <Text style={s.chanStatL}>posts</Text>
+                    </View>
+                    <View style={s.chanStatDiv} />
+                    <View style={s.chanStat}>
+                      <Text style={s.chanStatV}>{compact(c.reactions + c.comments)}</Text>
+                      <Text style={s.chanStatL}>interactions</Text>
+                    </View>
+                  </View>
+
                   {c.followerSeries && c.followerSeries.length >= 2 ? (
                     <View style={{ marginTop: 14 }}>
                       <AreaChart data={c.followerSeries.map((p) => p.value)} color={brand} height={60} />
@@ -295,7 +455,7 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
                       <BarsChart data={scores.slice(0, 14)} color={brand} height={48} />
                     </View>
                   ) : null}
-                  <Text style={s.statStrip}>{parts.join('  ·  ')}</Text>
+                  {bits.length ? <Text style={s.statStrip}>{bits.join('  ·  ')}</Text> : null}
                   {c.note ? <Text style={s.note}>{c.note}</Text> : null}
                 </View>
               );
@@ -310,10 +470,13 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
                 <View style={{ marginTop: 4 }}>
                   {bars.map((b, i) => {
                     const brand = SOCIAL_META[b.channel]?.bg ?? C.ink;
+                    const metaBits = [`${compact(b.likes)} likes`, `${compact(b.comments)} comments`];
+                    if ((b.shares ?? 0) > 0) metaBits.push(`${compact(b.shares ?? 0)} shares`);
+                    if (b.views !== null) metaBits.push(`${compact(b.views)} views`);
                     return (
                       <View key={`${b.channel}-${b.id}`} style={s.rankRow}>
                         <Text style={s.rankNo}>{String(i + 1).padStart(2, '0')}</Text>
-                        <View style={{ flex: 1, gap: 6 }}>
+                        <View style={{ flex: 1, gap: 5 }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                             <View style={[s.dot, { backgroundColor: brand }]} />
                             <Text style={s.barT} numberOfLines={1}>{b.title}</Text>
@@ -321,6 +484,9 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
                           <View style={s.track}>
                             <View style={[s.trackFill, { width: `${Math.max(4, (b.score / maxScore) * 100)}%`, backgroundColor: brand }]} />
                           </View>
+                          <Text style={s.metaLine} numberOfLines={1}>
+                            {metaBits.join(' · ')} · {b.ts ? timeAgo(b.ts) : ''}
+                          </Text>
                         </View>
                         <Text style={s.barV}>{compact(b.score)}</Text>
                       </View>
@@ -385,18 +551,29 @@ const makeS = (C: Palette) => StyleSheet.create({
   rangeT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.muted },
   eyebrow: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11.5, letterSpacing: 1.6, textTransform: 'uppercase', color: C.accent },
   heroNum: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 52, letterSpacing: -2, lineHeight: 56, color: C.ink, marginTop: 6 },
-  heroLabel: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15, color: C.soft, marginTop: 2 },
+  heroLabel: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15, lineHeight: 21, color: C.soft, marginTop: 6 },
   heroSub: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 19, color: C.muted, marginTop: 8 },
   deltaChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 8 },
   deltaT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, letterSpacing: -0.2 },
+  kpiWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 16 },
+  kpi: { flexGrow: 1, flexBasis: '46%', backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, padding: 14, gap: 3 },
+  kpiLabel: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11.5, letterSpacing: 0.6, textTransform: 'uppercase', color: C.muted },
+  kpiVal: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 26, letterSpacing: -0.6, color: C.ink, marginTop: 2 },
+  kpiSub: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11.5, lineHeight: 15, color: C.faint, marginTop: 2 },
   card: { backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, padding: 16 },
   cardT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15, color: C.ink },
-  cardS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.muted, marginTop: 8 },
+  cardS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, lineHeight: 17, color: C.muted, marginTop: 8 },
   tile: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   chanName: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 17, letterSpacing: -0.3, color: C.ink },
   chanHandle: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, color: C.muted, marginTop: 1 },
   chanBig: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 24, letterSpacing: -0.6, color: C.ink },
+  chanDelta: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, letterSpacing: -0.2 },
   chanSmall: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11.5, color: C.muted },
+  chanStatsRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.paper, borderRadius: R.md, borderWidth: 1, borderColor: C.lineSoft, paddingVertical: 11, marginTop: 14 },
+  chanStat: { flex: 1, alignItems: 'center', gap: 1 },
+  chanStatV: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 16, letterSpacing: -0.3, color: C.ink },
+  chanStatL: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 10.5, color: C.muted },
+  chanStatDiv: { width: StyleSheet.hairlineWidth, height: 26, backgroundColor: C.line },
   statStrip: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 20, color: C.muted, marginTop: 10 },
   secT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 19, letterSpacing: -0.4, color: C.ink },
   hint: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 19, color: C.muted, marginTop: 8 },
@@ -404,9 +581,12 @@ const makeS = (C: Palette) => StyleSheet.create({
   rankNo: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: C.accent, width: 22 },
   dot: { width: 10, height: 10, borderRadius: 5 },
   barT: { flex: 1, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.ink },
+  microT: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11, color: C.faint },
   track: { height: 5, borderRadius: 3, backgroundColor: C.surface, overflow: 'hidden' },
   trackFill: { height: 5, borderRadius: 3 },
   barV: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: C.ink, minWidth: 40, textAlign: 'right' },
+  metaLine: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11.5, color: C.faint, marginTop: 1 },
+  dayLab: { flex: 1, textAlign: 'center', fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11, color: C.faint },
   feedRow: { flexDirection: 'row', gap: 10, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.lineSoft },
   commentA: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.ink },
   commentOn: { fontFamily: 'PlusJakartaSans_400Regular', color: C.muted },
