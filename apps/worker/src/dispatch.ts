@@ -5,6 +5,8 @@
  * job to backoff/dead-letter via complete_job — never a silent success.
  */
 import type { Job } from './db';
+import { getPublishBundle, markTargetSent, markTargetFailed } from './db';
+import { publishBlueskyTarget, blueskyPostUrl } from './bsky';
 import { info } from './logger';
 
 function notPorted(kind: string): Error {
@@ -12,9 +14,38 @@ function notPorted(kind: string): Error {
 }
 
 async function handlePublishTarget(job: Job): Promise<void> {
-  const targetId = job.payload?.post_target_id;
+  const targetId = String(job.payload?.post_target_id ?? '');
+  if (!targetId) throw new Error(`job ${job.id}: missing post_target_id`);
   info(`publish_target ${targetId} (job ${job.id})`);
-  throw notPorted('publish_target');
+  const bundle = await getPublishBundle(targetId);
+  if (!bundle) throw new Error(`target ${targetId} not found — nothing to publish`);
+  const status = String(bundle?.target?.status ?? '');
+  // Terminal states never re-fire: sent = idempotent success (cron only
+  // enqueues 'queued', so reaching here sent means a retry after success).
+  if (status === 'sent') {
+    info(`target ${targetId} already sent — skipping`);
+    return;
+  }
+  if (status !== 'queued' && status !== 'publishing') {
+    throw new Error(`target ${targetId} in status '${status}' — refusing to publish`);
+  }
+  const provider = String(bundle?.target?.provider ?? '');
+  try {
+    if (provider === 'bluesky') {
+      const uri = await publishBlueskyTarget(bundle);
+      const did = String(bundle?.channel?.external_id ?? '');
+      await markTargetSent(targetId, uri, blueskyPostUrl(uri, did));
+      info(`target ${targetId} sent → ${uri}`);
+      return;
+    }
+    throw notPorted(`publish_target:${provider}`);
+  } catch (e: any) {
+    // Record terminal publish state (best-effort) before the job backoff.
+    try {
+      await markTargetFailed(targetId, String(e?.message ?? e ?? 'publish failed').slice(0, 500));
+    } catch {}
+    throw e;
+  }
 }
 
 async function handleRefreshToken(job: Job): Promise<void> {

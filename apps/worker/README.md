@@ -4,7 +4,8 @@ Long-running publish worker (Railway). Claims jobs from Supabase `job_queue`
 via the `claim_job` / `complete_job` RPCs (see
 `supabase/migrations/20260917000003_p3_worker_rpc.sql`) and runs them.
 
-Dependency-free: plain Node 18+ `fetch`, no pg driver, no framework.
+Near-dependency-free: plain Node 20 `fetch`, no pg driver, no framework —
+plus `sharp` for server-side image normalization (same ladder as the app).
 SKIP LOCKED lives in SQL so multiple replicas never double-claim.
 
 ## Run locally
