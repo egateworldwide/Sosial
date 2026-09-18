@@ -357,8 +357,10 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
                       <View key={r.channel} style={s.rankRow}>
                         <Text style={s.rankNo}>{String(i + 1).padStart(2, '0')}</Text>
                         <View style={{ flex: 1, gap: 6 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                            <View style={[s.dot, { backgroundColor: brand }]} />
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <View style={[s.leadTile, { backgroundColor: brand }]}>
+                              <SocialGlyph platform={r.channel} size={11} color="#fff" />
+                            </View>
                             <Text style={s.barT} numberOfLines={1}>{name}</Text>
                             <Text style={s.microT}>{r.posts} post{r.posts === 1 ? '' : 's'}</Text>
                           </View>
@@ -580,6 +582,7 @@ const makeS = (C: Palette) => StyleSheet.create({
   rankRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.lineSoft },
   rankNo: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: C.accent, width: 22 },
   dot: { width: 10, height: 10, borderRadius: 5 },
+  leadTile: { width: 22, height: 22, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
   barT: { flex: 1, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.ink },
   microT: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11, color: C.faint },
   track: { height: 5, borderRadius: 3, backgroundColor: C.surface, overflow: 'hidden' },

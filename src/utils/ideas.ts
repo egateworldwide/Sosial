@@ -1,13 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { uid } from '../constants';
 
-/** A content idea: social-style title + description + optional image.
- *  Tapping "Design" spins up a design-studio project linked via designProjectId. */
+/** A content idea: social-style title + description + optional image/video.
+ *  Tapping "Design" spins up a design-studio project linked via designProjectId.
+ *  `thread` holds an optional chain of segments when the idea is long-form. */
 export interface Idea {
   id: string;
   title: string;
   body: string;
   imageUri?: string;
+  videoUri?: string;
+  thread?: string[];
   designProjectId?: string;
   createdAt: number;
 }
@@ -31,6 +34,8 @@ export async function saveIdea(p: Partial<Idea> & { title: string }): Promise<Id
     title: p.title,
     body: p.body ?? '',
     imageUri: p.imageUri,
+    videoUri: p.videoUri,
+    thread: p.thread && p.thread.length > 0 ? p.thread : undefined,
     designProjectId: p.designProjectId,
     createdAt: p.createdAt ?? Date.now(),
   };
