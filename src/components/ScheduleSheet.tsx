@@ -10,7 +10,7 @@ import { SocialGlyph } from './ui';
 import { SOCIAL_META } from '../constants';
 import { MAX_ATTACHMENTS } from '../utils/metaPublish';
 import { fmtDateTime } from '../utils/reminders';
-import { PlatformTypes, POST_TYPE_OPTIONS, defaultPlatformType, ChannelKey, minQueueTime } from '../utils/managed';
+import { PlatformTypes, POST_TYPE_OPTIONS, defaultPlatformType, ChannelKey, minQueueTime, queueTooSoon, minQueueLabel } from '../utils/managed';
 import { loadMetaState, connectedChannelIds, MetaState } from '../utils/metaStore';
 import { getValidToken, fetchCreatorInfo } from '../utils/tiktokAuth';
 import { TT_PRIVACY_LABELS } from '../utils/tiktokConfig';
@@ -217,6 +217,7 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
   const [mode, setMode] = useState<'date' | 'time'>('date');
   const [pickingTime, setPickingTime] = useState(false);
   const [viewer, setViewer] = useState<number | null>(null);
+  const [, setTick] = useState(0);
 
   const vCount = media?.items.length ?? 0;
   const vIdx = viewer !== null && vCount > 0 ? Math.min(viewer, vCount - 1) : null;
@@ -334,6 +335,16 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
 
   const at = preset === 'now' ? Date.now() + 60000 : custom.getTime();
 
+  // The 5-minute floor slides forward as time passes — a pick that was fine
+  // a minute ago can go stale while the sheet sits open. Re-render on a tick
+  // so the warning lights up live instead of only at save time.
+  useEffect(() => {
+    if (!visible || preset !== 'custom') return;
+    const t = setInterval(() => setTick((x) => x + 1), 15000);
+    return () => clearInterval(t);
+  }, [visible, preset]);
+  const tooSoon = preset === 'custom' && queueTooSoon(custom.getTime());
+
   // Anywhere reads as selected when it literally is, or when every connected
   // channel is ticked (which is what tapping it produces)
   const anyOn = plats.includes('any') || (connected.length > 0 && connected.every((c) => plats.includes(c)));
@@ -368,6 +379,12 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
   };
 
   const save = () => {
+    // Loud stop for custom times under the 5-minute floor (scoped to custom —
+    // the Now/bulk path queues at +60s by design and has its own guards).
+    if (preset === 'custom' && queueTooSoon(at)) {
+      Alert.alert('Too soon to queue', `Earliest is ${minQueueLabel()} — scheduled posts need at least 5 minutes lead time. Pick a later time.`);
+      return;
+    }
     if (at <= Date.now() + 30000) {
       Alert.alert('Pick a future time', 'Reminders can only fire in the future.');
       return;
@@ -650,6 +667,16 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
             );
           })}
 
+          {tooSoon ? (
+            <View style={st.warnBox}>
+              <Ionicons name="warning" size={20} color={C.redText} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={st.warnT}>Too soon to queue</Text>
+                <Text style={st.warnS}>Earliest is {minQueueLabel()} — scheduled posts need at least 5 minutes lead time. Pick a later time.</Text>
+              </View>
+            </View>
+          ) : null}
+
           {showPicker && preset === 'custom' ? (
             <View style={{ alignItems: 'center', paddingVertical: 8 }}>
               <DateTimePicker
@@ -840,6 +867,9 @@ const makeSt = (C: Palette) => ({
   radioOn: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.accent } as const,
   optT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14.5, color: C.ink } as const,
   optS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, color: C.muted, marginTop: 1 } as const,
+  warnBox: { flexDirection: 'row', gap: 10, backgroundColor: C.accentSoft, borderWidth: 1.5, borderColor: C.redText, borderRadius: R.lg, padding: 12, alignItems: 'flex-start' } as const,
+  warnT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14, color: C.redText } as const,
+  warnS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 17, color: C.ink } as const,
   progress: { marginTop: 10, backgroundColor: C.card, borderRadius: R.lg, padding: 12, gap: 9 } as const,
   progressRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9 } as const,
   progressDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.faint, marginTop: 5 } as const,
