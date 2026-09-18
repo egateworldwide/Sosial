@@ -223,6 +223,35 @@ async function waitIgContainer(id: string, tok: string, label: string, timeoutMs
   }
 }
 
+/**
+ * Threads processes media containers asynchronously. Publishing before the
+ * container reaches FINISHED races Meta's backend and fails with an opaque
+ * "The requested resource does not exist" — video (slower to transcode) loses
+ * the race almost every time. The worker already polls; mirror it here so
+ * video posts stop bouncing. Text containers publish instantly — caller skips.
+ */
+async function waitThreadsContainer(id: string, token: string, timeoutMs = 90000): Promise<void> {
+  const start = Date.now();
+  let delay = 1500;
+  for (;;) {
+    const s = await fetch(
+      `${THREADS_API}/v1.0/${encodeURIComponent(id)}?fields=status&access_token=${encodeURIComponent(token)}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    const sj: any = await gjson(s);
+    const status = String(sj?.status ?? '').toUpperCase();
+    if (status === 'FINISHED' || status === 'PUBLISHED') return;
+    if (status === 'ERROR' || status === 'EXPIRED') {
+      throw new Error(gerr(sj, 'Threads could not process the media — try a different file or publish again.'));
+    }
+    if (Date.now() - start >= timeoutMs) {
+      throw new Error(`Threads is still processing the media (${status || 'unknown'}) — try again shortly.`);
+    }
+    await sleep(delay);
+    delay = Math.min(delay * 2, 4000);
+  }
+}
+
 /* ---------------- Facebook Page (bytes go direct — no host needed) ---------------- */
 
 export async function publishFacebook(opts: {
@@ -698,6 +727,9 @@ export async function publishThreads(opts: {
   });
   const cj: any = await gjson(c);
   if (cj.error || !cj.id) throw new Error(gerr(cj, 'Threads container failed.'));
+  // Media containers transcode async — wait for FINISHED or the publish call
+  // races Meta and 404s. Text is ready immediately, so no wasted request there.
+  if (kind !== 'TEXT') await waitThreadsContainer(String(cj.id), opts.token);
   const p = await fetch(`${THREADS_API}/v1.0/${opts.threadsId}/threads_publish?creation_id=${encodeURIComponent(String(cj.id))}&access_token=${tok}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${opts.token}` },
