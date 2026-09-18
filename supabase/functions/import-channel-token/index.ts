@@ -77,14 +77,25 @@ serve(async (req: Request): Promise<Response> => {
     .maybeSingle();
   if (!mem) return bad("Not a member of this workspace.", 403);
 
-  // Secrets first (ids only ever stored, ciphertext never leaves Vault).
+  // Re-import hygiene: clear canonical names FIRST (Vault enforces unique
+  // names). By-name (not by previous row) so orphan secrets from any failed
+  // removal can never collide. If creation fails after this, the channel is
+  // left secret-less and a retry heals it.
   const tag = `ch/${workspace_id}/${provider}/${external_id}`;
+  for (const n of [`${tag}/access`, `${tag}/refresh`]) {
+    await admin.rpc("vault_delete_secret_by_name", { secret_name: n });
+  }
+
+  // Secrets (ids only ever stored, ciphertext never leaves Vault).
   const { data: accessId, error: aErr } = await admin.rpc("vault_create_secret", {
     secret: access_token,
     secret_name: `${tag}/access`,
     secret_description: "channel access token (Sosial cloud publishing)",
   });
-  if (aErr || !accessId) return bad("Could not store the access token.", 500);
+  // TEMP DEBUG: raw Vault error surfaced until re-import is proven.
+  if (aErr || !accessId) {
+    return bad(`Could not store the access token [${aErr?.message ?? "no id returned"}].`, 500);
+  }
 
   let refreshId: string | null = null;
   if (refresh_token) {
