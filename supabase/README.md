@@ -63,6 +63,10 @@ Migrations are versioned and never edited after push — new change, new file.
   membership gate, metadata passthrough, IG/Threads parenting).
 - `functions/remove-channel-token` — opt-out/disconnect cleanup (idempotent,
   deletes Vault secrets).
+- `migrations/20260917000008_p8_publish_rpc.sql` — P8: `get_publish_bundle()`
+  (target+post+media+channel+secret-ids, no plaintext), `mark_target_sent()` /
+  `mark_target_failed()` terminal states (**service_role only**). Consumed by
+  `apps/worker` dispatch.
 
 ## RLS testing
 
