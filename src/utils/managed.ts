@@ -122,9 +122,27 @@ export function withStatus(p: ManagedPost): ManagedPost {
 /** Queue rule: scheduled posts need ≥5 min lead (pipeline lag + no overdue-on-arrival). */
 export const MIN_QUEUE_LEAD_MS = 5 * 60 * 1000;
 
+/**
+ * Earliest queueable instant, floored to the minute — pickers are
+ * minute-granular, so without flooring the exact +5min minute would almost
+ * always be (seconds-)blocked. 7:51:37 → 7:56:00 allowed, 7:55 blocked.
+ */
+export function minQueueTime(now: number = Date.now()): number {
+  return Math.floor((now + MIN_QUEUE_LEAD_MS) / 60000) * 60000;
+}
+
 /** True when the picked time is too close to queue. */
 export function queueTooSoon(at: number, now: number = Date.now()): boolean {
-  return at < now + MIN_QUEUE_LEAD_MS;
+  return at < minQueueTime(now);
+}
+
+/** "7:56" style label for the guard messages. */
+export function minQueueLabel(now: number = Date.now()): string {
+  try {
+    return new Date(minQueueTime(now)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '5 minutes from now';
+  }
 }
 
 /** A post with neither text nor media is unpublishable (drafts excepted — scratch is allowed). */

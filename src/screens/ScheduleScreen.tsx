@@ -7,7 +7,7 @@ import { useTheme, Palette, R, T } from '../theme';
 import { SocialGlyph, PrimaryBtn, GhostBtn } from '../components/ui';
 import { uid } from '../constants';
 import ScheduleSheet from '../components/ScheduleSheet';
-import { loadManagedPosts, saveManagedPost, deleteManagedPost, ManagedPost, queueTooSoon } from '../utils/managed';
+import { loadManagedPosts, saveManagedPost, deleteManagedPost, ManagedPost, queueTooSoon, minQueueLabel } from '../utils/managed';
 import { loadMetaState, MetaState } from '../utils/metaStore';
 import { publishFacebook, publishInstagram, publishThreads } from '../utils/metaPublish';
 import {
@@ -107,7 +107,7 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
   const save = async (at: number, plats: string[]) => {
     if (!sheet) return;
     if (queueTooSoon(at)) {
-      Alert.alert('Give it 5 minutes', 'Scheduled posts need at least 5 minutes lead time — the cloud pipeline needs a minute to pick them up.');
+      Alert.alert('Too soon', `Earliest is ${minQueueLabel()} — scheduled posts need at least 5 minutes lead time.`);
       return;
     }
     if (!tBody.trim() && !tUri) {
