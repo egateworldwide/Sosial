@@ -22,6 +22,10 @@
  *    on POST /2/tweets mean the dev account needs Basic or higher.
  * 4. Up to 4 images per post, each <= 5 MB (PNG/JPEG/WEBP). Images finish
  *    synchronously at FINALIZE — no STATUS polling needed for photos.
+ * 5. Video needs the v2 CHUNKED flow (INIT/APPEND/FINALIZE/STATUS), not the
+ *    one-shot endpoint: POST /2/media/upload/initialize (JSON), then
+ *    /2/media/upload/{id}/append per <=5 MB segment, /{id}/finalize, then
+ *    GET ?command=STATUS. One video per post; video can't mix with photos.
  */
 
 export const X_CLIENT_ID = process.env.EXPO_PUBLIC_X_CLIENT_ID ?? '';

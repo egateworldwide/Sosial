@@ -1,8 +1,8 @@
 /**
  * X publish adapter (Wave A). Ports xPublish.ts + xAuth.ts refresh logic:
  * rotating-refresh session (client id travels in channel metadata), simple
- * multipart image upload (≤5 MB, GIFs included), POST /tweets.
- * Videos are rejected loudly — the app never produces X videos either.
+ * multipart image upload (≤5 MB, GIFs included), v2 chunked video upload
+ * (INIT/APPEND/FINALIZE/STATUS), POST /tweets.
  */
 import { readSecret, updateSecret } from './db';
 import { storageSign, storageDownload } from './rest';
@@ -14,6 +14,7 @@ const X_MEDIA_UPLOAD = 'https://api.x.com/2/media/upload';
 const X_MAX_IMAGES = 4;
 const X_MAX_TEXT = 280;
 const X_IMG_CAP = 5 * 1024 * 1024;
+const X_CHUNK_BYTES = 4 * 1024 * 1024; // APPEND segments must stay under 5 MB
 
 interface Bundle {
   target: { id: string; provider: string; caption: string | null; options: any; status: string };
@@ -120,6 +121,72 @@ function mimeFor(path: string, declared: string | null): string {
   return 'image/png';
 }
 
+function videoMimeFor(path: string, declared: string | null): string {
+  if (declared && declared.startsWith('video/')) return declared;
+  const u = path.toLowerCase().split('?')[0];
+  if (u.endsWith('.mov')) return 'video/quicktime';
+  if (u.endsWith('.webm')) return 'video/webm';
+  return 'video/mp4';
+}
+
+/** Poll STATUS after FINALIZE until the video finishes processing. */
+async function waitVideoReady(mediaId: string, token: string, timeoutMs = 15 * 60 * 1000): Promise<void> {
+  const start = Date.now();
+  for (;;) {
+    const s = await xjson(
+      `${X_MEDIA_UPLOAD}?command=STATUS&media_id=${encodeURIComponent(mediaId)}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+      'X video status failed.',
+    );
+    const info = s?.data?.processing_info;
+    if (!info || info.state === 'succeeded') return;
+    if (info.state === 'failed') throw new Error(xerr(info.error, 'X could not process that video.'));
+    if (Date.now() - start >= timeoutMs) throw new Error('X is still processing the video — try again in a few minutes.');
+    await sleep(Math.min(10000, (Number(info.check_after_secs) || 5) * 1000));
+  }
+}
+
+/**
+ * Video needs the v2 chunked flow: INIT (JSON) → APPEND (one multipart POST
+ * per ≤4 MB segment) → FINALIZE → STATUS poll.
+ */
+async function uploadVideo(buf: Buffer, mime: string, token: string): Promise<string> {
+  const init = await xjson(
+    `${X_MEDIA_UPLOAD}/initialize`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ media_type: mime, total_bytes: buf.length, media_category: 'tweet_video' }),
+    },
+    'X video upload failed.',
+  );
+  const mediaId = String(init?.data?.id ?? '');
+  if (!mediaId) throw new Error(xerr(init, 'X video upload failed.'));
+
+  let segment = 0;
+  for (let start = 0; start < buf.length; start += X_CHUNK_BYTES) {
+    const chunk = buf.subarray(start, Math.min(start + X_CHUNK_BYTES, buf.length));
+    const form = new FormData();
+    form.append('segment_index', String(segment));
+    form.append('media', new Blob([Uint8Array.from(chunk)], { type: 'application/octet-stream' }), `chunk${segment}`);
+    await xjson(
+      `${X_MEDIA_UPLOAD}/${encodeURIComponent(mediaId)}/append`,
+      { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form as any },
+      'X video upload failed.',
+    );
+    segment += 1;
+  }
+
+  const fin = await xjson(
+    `${X_MEDIA_UPLOAD}/${encodeURIComponent(mediaId)}/finalize`,
+    { method: 'POST', headers: { Authorization: `Bearer ${token}` } },
+    'X video finalize failed.',
+  );
+  const proc = fin?.data?.processing_info;
+  if (proc && proc.state !== 'succeeded') await waitVideoReady(mediaId, token);
+  return mediaId;
+}
+
 async function uploadImage(buf: Buffer, mime: string, token: string): Promise<string> {
   if (buf.length > X_IMG_CAP) throw new Error('Photo over X’s 5 MB image limit.');
   const form = new FormData();
@@ -157,16 +224,32 @@ export async function publishXTarget(bundle: Bundle): Promise<{ tweetId: string;
   const b = bundle as Bundle;
   const text = (b.target.caption ?? b.post.body ?? '').trim();
   const sliced = text.length > X_MAX_TEXT ? text.slice(0, X_MAX_TEXT - 1) + '…' : text;
-  const media = (b.media ?? []).sort((a, z) => a.position - z.position).slice(0, X_MAX_IMAGES);
-  for (const m of media) {
-    if (m.kind === 'video') throw new Error('X video posts aren’t supported — attach photos or post text only.');
+  const all = (b.media ?? []).sort((a, z) => a.position - z.position);
+  const video = all.find((m) => m.kind === 'video');
+  if (video && all.some((m) => m.kind !== 'video')) {
+    throw new Error('X can’t mix photos and video — attach one or the other.');
   }
-  if (!sliced && media.length === 0) throw new Error('Nothing to publish — empty text and no images.');
-  info(`x target ${b.target.id}: ${media.length} image(s)`);
+  const media = video ? [] : all.slice(0, X_MAX_IMAGES);
+  if (!sliced && all.length === 0) throw new Error('Nothing to publish — empty text and no media.');
+  info(`x target ${b.target.id}: ${video ? '1 video' : `${media.length} image(s)`}`);
 
   const attempt = async (force: boolean): Promise<{ tweetId: string; tweetUrl: string }> => {
     const token = await ensureToken(b, force);
     const mediaIds: string[] = [];
+    if (video) {
+      let raw: Buffer;
+      try {
+        raw = await storageDownload(await storageSign('post-media', video.storage_path));
+      } catch (e: any) {
+        throw new Error(`Video: download failed — ${e?.message ?? 'storage error'}`);
+      }
+      try {
+        mediaIds.push(await uploadVideo(raw, videoMimeFor(video.storage_path, video.mime_type), token));
+      } catch (e: any) {
+        if (String(e?.message ?? '') === '__EXPIRED__' && !force) return attempt(true);
+        throw new Error(`Video: ${e?.message ?? 'upload failed'}`);
+      }
+    }
     for (let i = 0; i < media.length; i++) {
       let raw: Buffer;
       try {

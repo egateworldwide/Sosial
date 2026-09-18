@@ -1,5 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { X_MEDIA_UPLOAD, X_API, X_MAX_IMAGES, X_MAX_TEXT } from './xConfig';
+import { X_MEDIA_UPLOAD, X_API, X_MAX_IMAGES, X_MAX_TEXT, X_CHUNK_BYTES } from './xConfig';
 import { getValidXToken } from './xAuth';
 
 /** X error shapes: {error, error_description}, {title, detail}, {errors:[{message}]}. */
@@ -140,6 +140,73 @@ async function waitReady(mediaId: string, token: string, timeoutMs = 60000): Pro
   }
 }
 
+function videoMimeFor(uri: string): string {
+  const u = uri.toLowerCase().split('?')[0];
+  if (u.endsWith('.mov')) return 'video/quicktime';
+  if (u.endsWith('.webm')) return 'video/webm';
+  return 'video/mp4';
+}
+
+/**
+ * Video needs the v2 chunked flow: INIT (JSON) → APPEND (one multipart POST
+ * per ≤4 MB segment) → FINALIZE → STATUS poll.
+ * Hermes can't build Blobs from bytes, so each segment is written to a temp
+ * cache file and handed to XHR as a {uri,name,type} part.
+ */
+async function uploadVideo(uri: string, token: string): Promise<string> {
+  const total = await fileSize(uri);
+  const mime = videoMimeFor(uri);
+  const init = await xjson(
+    `${X_MEDIA_UPLOAD}/initialize`,
+    {
+      method: 'POST',
+      headers: { ...authH(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ media_type: mime, total_bytes: total, media_category: 'tweet_video' }),
+    },
+    'X video upload failed.',
+  );
+  const mediaId = String(init?.data?.id ?? '');
+  if (!mediaId) throw new Error(xerr(init, 'X video upload failed.'));
+
+  const dir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory ?? '';
+  let segment = 0;
+  for (let start = 0; start < total; start += X_CHUNK_BYTES) {
+    const len = Math.min(X_CHUNK_BYTES, total - start);
+    let chunkUri = '';
+    try {
+      const b64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+        position: start,
+        length: len,
+      });
+      chunkUri = `${dir}sosial_x_chunk_${Date.now()}_${segment}`;
+      await FileSystem.writeAsStringAsync(chunkUri, b64, { encoding: FileSystem.EncodingType.Base64 });
+      const form = new FormData();
+      form.append('segment_index', String(segment));
+      form.append('media', { uri: chunkUri, name: `chunk${segment}`, type: 'application/octet-stream' } as any);
+      await xhrForm(`${X_MEDIA_UPLOAD}/${encodeURIComponent(mediaId)}/append`, token, form, 300000);
+    } finally {
+      if (chunkUri) {
+        try {
+          await FileSystem.deleteAsync(chunkUri, { idempotent: true });
+        } catch {}
+      }
+    }
+    segment += 1;
+  }
+
+  const fin = await xjson(
+    `${X_MEDIA_UPLOAD}/${encodeURIComponent(mediaId)}/finalize`,
+    { method: 'POST', headers: authH(token) },
+    'X video finalize failed.',
+  );
+  const proc = fin?.data?.processing_info;
+  if (proc && proc.state !== 'succeeded') {
+    await waitReady(mediaId, token, 15 * 60 * 1000);
+  }
+  return mediaId;
+}
+
 /** Resolve a pasted X URL (or numeric id) to a status id for replies. */
 export function xStatusId(source: string): string {
   const s = (source ?? '').trim();
@@ -151,22 +218,39 @@ export function xStatusId(source: string): string {
 }
 
 /**
- * Post to X: text (≤280) + up to 4 photos, optionally as a reply.
- * Returns the tweet id. Videos aren't produced by this app — photo or text only.
+ * Post to X: text (≤280) + up to 4 photos OR one video, optionally as a reply.
+ * Returns the tweet id. X can't mix photos and video in one post.
  */
-export async function publishX(opts: { text: string; imageUris?: string[]; replyTo?: string }): Promise<string> {
+export async function publishX(opts: {
+  text: string;
+  imageUris?: string[];
+  videoUri?: string;
+  replyTo?: string;
+}): Promise<string> {
   const token = await getValidXToken();
   const text = fitText(opts.text);
   const uris = (opts.imageUris ?? []).filter(Boolean).slice(0, X_MAX_IMAGES);
-  if (!text && uris.length === 0) {
-    throw new Error('Write something or attach a photo — X needs one of them.');
+  const videoUri = (opts.videoUri ?? '').trim() ? opts.videoUri : undefined;
+  if (videoUri && uris.length > 0) {
+    throw new Error('X can’t mix photos and a video — send one or the other.');
+  }
+  if (!text && uris.length === 0 && !videoUri) {
+    throw new Error('Write something or attach a photo or video — X needs one of them.');
   }
   const mediaIds: string[] = [];
-  for (let i = 0; i < uris.length; i++) {
+  if (videoUri) {
     try {
-      mediaIds.push(await uploadOneImage(uris[i], token));
+      mediaIds.push(await uploadVideo(videoUri, token));
     } catch (e: any) {
-      throw new Error(`Photo ${i + 1}/${uris.length}: ${e?.message ?? 'upload failed'}`);
+      throw new Error(`Video: ${e?.message ?? 'upload failed'}`);
+    }
+  } else {
+    for (let i = 0; i < uris.length; i++) {
+      try {
+        mediaIds.push(await uploadOneImage(uris[i], token));
+      } catch (e: any) {
+        throw new Error(`Photo ${i + 1}/${uris.length}: ${e?.message ?? 'upload failed'}`);
+      }
     }
   }
   const body: Record<string, any> = {};

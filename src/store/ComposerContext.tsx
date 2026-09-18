@@ -508,8 +508,11 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
             if (ttPrivacy) saveMetaState({ ttLastPrivacy: ttPrivacy });
           } else if (ch === 'x') {
             if (!m.xUserId || (!m.xAccessToken && !m.xRefreshToken)) throw new Error('X not connected');
+            if (firstVideo && atts.some((a) => a.kind === 'image')) {
+              throw new Error('X can’t mix photos and video — send one or the other.');
+            }
             const imgs = atts.filter((a) => a.kind === 'image').slice(0, ATTACH_LIMITS.x.images);
-            keep(ch, await publishX({ text: caption, imageUris: imgs.map((a) => a.uri) }));
+            keep(ch, await publishX({ text: caption, imageUris: imgs.map((a) => a.uri), videoUri: firstVideo?.uri }));
             done.push('X');
           } else if (ch === 'bluesky') {
             if (!m.bskyDid || (!m.bskyAccessJwt && !m.bskyRefreshJwt)) throw new Error('Bluesky not connected');
