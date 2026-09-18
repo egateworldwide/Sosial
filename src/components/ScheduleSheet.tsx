@@ -10,7 +10,7 @@ import { SocialGlyph } from './ui';
 import { SOCIAL_META } from '../constants';
 import { MAX_ATTACHMENTS } from '../utils/metaPublish';
 import { fmtDateTime } from '../utils/reminders';
-import { PlatformTypes, POST_TYPE_OPTIONS, defaultPlatformType, ChannelKey } from '../utils/managed';
+import { PlatformTypes, POST_TYPE_OPTIONS, defaultPlatformType, ChannelKey, MIN_QUEUE_LEAD_MS } from '../utils/managed';
 import { loadMetaState, connectedChannelIds, MetaState } from '../utils/metaStore';
 import { getValidToken, fetchCreatorInfo } from '../utils/tiktokAuth';
 import { TT_PRIVACY_LABELS } from '../utils/tiktokConfig';
@@ -656,7 +656,7 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
                 onChange={onPick}
                 themeVariant={themeMode}
                 textColor={C.ink}
-                minimumDate={new Date()}
+                minimumDate={new Date(Date.now() + MIN_QUEUE_LEAD_MS)}
               />
               {Platform.OS === 'ios' ? (
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>

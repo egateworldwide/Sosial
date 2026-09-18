@@ -119,6 +119,26 @@ export function withStatus(p: ManagedPost): ManagedPost {
   return { ...p, status: p.scheduledAt ? 'queued' : 'draft' };
 }
 
+/** Queue rule: scheduled posts need ≥5 min lead (pipeline lag + no overdue-on-arrival). */
+export const MIN_QUEUE_LEAD_MS = 5 * 60 * 1000;
+
+/** True when the picked time is too close to queue. */
+export function queueTooSoon(at: number, now: number = Date.now()): boolean {
+  return at < now + MIN_QUEUE_LEAD_MS;
+}
+
+/** A post with neither text nor media is unpublishable (drafts excepted — scratch is allowed). */
+export function isEmptyPost(p: {
+  title?: string;
+  body?: string;
+  attachments?: MediaAttachment[];
+  imageUri?: string;
+  videoUri?: string;
+}): boolean {
+  if ((p.title ?? '').trim() || (p.body ?? '').trim()) return false;
+  return postAttachments(p as ManagedPost).length === 0;
+}
+
 const KEY = 'quickpost_managed_posts_v1';
 const LEGACY_KEY = 'quickpost_text_posts_v1';
 

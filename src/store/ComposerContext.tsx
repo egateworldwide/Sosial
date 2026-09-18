@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { AppState, Platform } from 'react-native';
 import ScheduleSheet from '../components/ScheduleSheet';
 import { uid } from '../constants';
-import { loadManagedPosts, saveManagedPost, deleteManagedPost, ManagedPost, PostStatus, MediaAttachment, postAttachments, PlatformTypes, defaultPlatformType, ChannelKey } from '../utils/managed';
+import { loadManagedPosts, saveManagedPost, deleteManagedPost, ManagedPost, PostStatus, MediaAttachment, postAttachments, PlatformTypes, defaultPlatformType, ChannelKey, queueTooSoon, isEmptyPost } from '../utils/managed';
 import { loadMetaState, saveMetaState, MetaState, connectedChannelIds } from '../utils/metaStore';
 import { publishFacebook, publishFacebookReel, publishFacebookStory, publishInstagram, publishInstagramStory, publishThreads, uploadTikTokPhoto, MAX_ATTACHMENTS, ATTACH_LIMITS } from '../utils/metaPublish';
 import { publishTikTokVideo, publishTikTokPhotos } from '../utils/tiktokPublish';
@@ -199,6 +199,14 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
 
   const save = async (at: number, plats: string[], types?: PlatformTypes, sourceUrl?: string, threadsTopic?: string, ttPrivacy?: string, ytPrivacy?: string) => {
     if (!sheetRef.current) return;
+    if (queueTooSoon(at)) {
+      showInfo('Give it 5 minutes', 'Scheduled posts need at least 5 minutes lead time — the cloud pipeline needs a minute to pick them up.');
+      return;
+    }
+    if (isEmptyPost({ body: tBody, attachments: tMedia })) {
+      showInfo('Nothing to post', 'Write something or attach a photo/video first.');
+      return;
+    }
     const resolved = resolvePlats(plats, await loadMetaState());
     const blocked = mediaBlock(resolved);
     if (blocked) {
@@ -295,6 +303,10 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
     // say so, so a held lock is diagnosable instead of invisible.
     if (publishing || publishingRef.current) {
       showInfo('Already publishing', 'Wait for the current publish to finish before posting again.');
+      return;
+    }
+    if (isEmptyPost({ body: tBody, attachments: tMedia })) {
+      showInfo('Nothing to post', 'Write something or attach a photo/video first.');
       return;
     }
     try {

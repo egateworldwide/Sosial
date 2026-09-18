@@ -7,7 +7,7 @@ import { useTheme, Palette, R, T } from '../theme';
 import { SocialGlyph, PrimaryBtn, GhostBtn } from '../components/ui';
 import { uid } from '../constants';
 import ScheduleSheet from '../components/ScheduleSheet';
-import { loadManagedPosts, saveManagedPost, deleteManagedPost, ManagedPost } from '../utils/managed';
+import { loadManagedPosts, saveManagedPost, deleteManagedPost, ManagedPost, queueTooSoon } from '../utils/managed';
 import { loadMetaState, MetaState } from '../utils/metaStore';
 import { publishFacebook, publishInstagram, publishThreads } from '../utils/metaPublish';
 import {
@@ -106,6 +106,14 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
 
   const save = async (at: number, plats: string[]) => {
     if (!sheet) return;
+    if (queueTooSoon(at)) {
+      Alert.alert('Give it 5 minutes', 'Scheduled posts need at least 5 minutes lead time — the cloud pipeline needs a minute to pick them up.');
+      return;
+    }
+    if (!tBody.trim() && !tUri) {
+      Alert.alert('Nothing to post', 'Write something or attach a photo/video first.');
+      return;
+    }
     if (plats.some((p) => p === 'tiktok' || p === 'instagram') && !tUri) {
       Alert.alert('TikTok & Instagram need media', 'Attach a photo or video — text-only posts can’t go to those channels.');
       return;
