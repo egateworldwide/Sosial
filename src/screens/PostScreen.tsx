@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, RefreshControl } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R, T } from '../theme';
 import { SocialGlyph } from '../components/ui';
@@ -76,11 +76,23 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
   const [drawer, setDrawer] = useState(false);
   const [tab, setTab] = useState<Tab>('queued');
   const [sort, setSort] = useState<Sort>('newest');
+  const [refreshing, setRefreshing] = useState(false);
 
   const reload = async () => {
     setPosts(await loadManagedPosts());
     setMeta(await loadMetaState());
     setActor(await loadActor());
+  };
+
+  /** Pull-to-refresh: reload the pipeline (local first; cloud statuses follow in a later slice). */
+  const onRefresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await reload();
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   useEffect(() => {
@@ -192,7 +204,11 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bone }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 40 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { void onRefresh(); }} tintColor={C.accent} />}
+      >
         {bare ? null : (
           <View style={st.masthead}>
             <Text style={[T.h1, { color: C.ink, fontSize: 30, lineHeight: 36 }]}>Post</Text>
