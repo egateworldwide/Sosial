@@ -21,6 +21,12 @@ export function isSupabaseConfigured(): boolean {
   return URL.length > 0 && ANON.length > 0;
 }
 
+/** Base URL for hand-built Storage calls (signed-URL uploads). */
+export function supabaseUrl(): string {
+  supabase(); // throws the friendly error when unconfigured
+  return URL;
+}
+
 const SecureSession = {
   getItem: (key: string): Promise<string | null> => SecureStore.getItemAsync(key),
   setItem: (key: string, value: string): Promise<void> => SecureStore.setItemAsync(key, value),

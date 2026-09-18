@@ -1,5 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { supabase, currentSession } from './supabase';
+import { supabase, supabaseUrl, currentSession } from './supabase';
 import { loadManagedPosts, saveManagedPost, type ManagedPost } from './managed';
 
 /**
@@ -9,28 +9,8 @@ import { loadManagedPosts, saveManagedPost, type ManagedPost } from './managed';
  *
  * Identity: posts.client_id = local ManagedPost.id (P3 unique key), so
  * re-saves upsert instead of duplicating. Media uses deterministic storage
- * paths (<workspace>/<client_id>/<index>.<ext>) with storage upsert:true.
+ * paths (<workspace>/<client_id>/<index>.<ext>), uploaded natively.
  */
-
-const B64ABC = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-
-function b64ToBytes(b64: string): Uint8Array {
-  const clean = (b64 ?? '').replace(/[^A-Za-z0-9+/]/g, '');
-  const pad = clean.endsWith('==') ? 2 : 0;
-  const out = new Uint8Array(Math.max(0, Math.floor((clean.length * 3) / 4) - pad));
-  let p = 0;
-  for (let i = 0; i < clean.length; i += 4) {
-    const a = B64ABC.indexOf(clean[i] ?? '');
-    const b = B64ABC.indexOf(clean[i + 1] ?? '');
-    const c = B64ABC.indexOf(clean[i + 2] ?? '');
-    const d = B64ABC.indexOf(clean[i + 3] ?? '');
-    const n = (a << 18) | (b << 12) | ((c < 0 ? 0 : c) << 6) | (d < 0 ? 0 : d);
-    out[p++] = (n >> 16) & 255;
-    if (p < out.length) out[p++] = (n >> 8) & 255;
-    if (p < out.length) out[p++] = n & 255;
-  }
-  return out;
-}
 
 function extFor(uri: string, kind: string): string {
   const u = uri.toLowerCase().split('?')[0];
@@ -135,20 +115,29 @@ export async function pushPostToCloud(post: ManagedPost): Promise<void> {
     const ext = extFor(a.uri, kind);
     const mime = mimeFor(ext, kind);
     const path = `${wsId}/${post.id}/${linked.length}.${ext}`;
-    let b64: string;
-    try {
-      b64 = await FileSystem.readAsStringAsync(a.uri, { encoding: FileSystem.EncodingType.Base64 });
-    } catch (e: any) {
-      throw new Error(`cloud media read failed (${kind}): ${e?.message ?? 'unreadable file'}`);
+    // Native binary upload: Hermes cannot build Blobs from TypedArrays, so
+    // the file goes straight from disk via a signed upload slot — no JS
+    // Blob, no base64 round-trip through JS memory.
+    const { data: slot, error: slotErr } = await sb.storage.from('post-media').createSignedUploadUrl(path);
+    if (slotErr || !slot?.signedUrl) {
+      throw new Error(`cloud media upload slot failed: ${slotErr?.message ?? 'no url'}`);
     }
-    const bytes = b64ToBytes(b64);
-    if (!bytes.length) throw new Error(`cloud media read failed (${kind}): empty file`);
-    const blob = new Blob([Uint8Array.from(bytes)], { type: mime });
-    const { error: upErr } = await sb.storage.from('post-media').upload(path, blob, {
-      contentType: mime,
-      upsert: true,
+    const signed = slot.signedUrl.startsWith('http')
+      ? slot.signedUrl
+      : `${supabaseUrl()}/storage/v1${slot.signedUrl.startsWith('/') ? '' : '/'}${slot.signedUrl}`;
+    const up = await FileSystem.uploadAsync(signed, a.uri, {
+      httpMethod: 'PUT',
+      headers: { 'Content-Type': mime },
+      uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
     });
-    if (upErr) throw new Error(`cloud media upload failed: ${upErr.message}`);
+    if (up.status < 200 || up.status >= 300) {
+      throw new Error(`cloud media upload failed (${up.status})`);
+    }
+    let byteSize: number | null = null;
+    try {
+      const info: any = await FileSystem.getInfoAsync(a.uri);
+      if (info?.exists && typeof info.size === 'number' && info.size > 0) byteSize = info.size;
+    } catch {}
     let mediaId: string | null = null;
     const { data: existing } = await sb
       .from('media_assets')
@@ -167,7 +156,7 @@ export async function pushPostToCloud(post: ManagedPost): Promise<void> {
           storage_path: path,
           kind,
           mime_type: mime,
-          byte_size: bytes.length,
+          byte_size: byteSize,
           status: 'ready',
         })
         .select('id')
