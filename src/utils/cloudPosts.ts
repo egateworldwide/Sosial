@@ -71,7 +71,10 @@ function mapStatus(p: ManagedPost): CloudStatus {
 /** Mirror one local post (idempotent by client_id). Resolves when done. */
 export async function pushPostToCloud(post: ManagedPost): Promise<void> {
   const session = await currentSession().catch(() => null);
-  if (!session) return; // signed out: local-only, syncs on next save after sign-in
+  if (!session) {
+    console.log('[cloud] skip push — signed out');
+    return; // signed out: local-only, syncs on next save after sign-in
+  }
   const sb = supabase();
   const wsId = session.workspace.id;
   const userId = session.user.id;
@@ -103,11 +106,12 @@ export async function pushPostToCloud(post: ManagedPost): Promise<void> {
   const postId = String((prow as any).id);
 
   // Cloud channels for this workspace (provider → first connected row).
-  const { data: chans } = await sb
+  const { data: chans, error: chansErr } = await sb
     .from('connected_channels')
     .select('id, provider')
     .eq('workspace_id', wsId)
     .eq('status', 'connected');
+  if (chansErr) console.log('[cloud] channels lookup failed:', chansErr.message);
   const byProvider = new Map<string, string>();
   for (const c of (chans ?? []) as any[]) {
     if (!byProvider.has(String(c.provider))) byProvider.set(String(c.provider), String(c.id));
@@ -115,6 +119,7 @@ export async function pushPostToCloud(post: ManagedPost): Promise<void> {
 
   // Targets: one per platform that is BOTH selected AND cloud-connected.
   // Platforms with no cloud row stay local-only (correct — nothing to publish with).
+  let made = 0;
   for (const platform of post.platforms ?? []) {
     const channelId = byProvider.get(platform);
     if (!channelId) continue;
@@ -138,7 +143,9 @@ export async function pushPostToCloud(post: ManagedPost): Promise<void> {
       { onConflict: 'post_id,channel_id' },
     );
     if (tErr) throw new Error(`cloud target upsert failed (${platform})`);
+    made += 1;
   }
+  console.log(`[cloud] pushed ${post.id}: ${made} target(s) for [${(post.platforms ?? []).join(',')}]`);
 
   // Media: deterministic paths, storage upsert, fresh post_media links.
   const atts = [

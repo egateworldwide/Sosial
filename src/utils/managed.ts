@@ -169,7 +169,7 @@ export async function saveManagedPost(p: ManagedPost): Promise<ManagedPost[]> {
     await AsyncStorage.setItem(KEY, JSON.stringify(list));
   } catch {}
   // Cloud mirror is best-effort: local save already succeeded above.
-  void pushPostToCloud(rec).catch(() => {});
+  void pushPostToCloud(rec).catch((e: any) => console.log('[cloud] push failed:', e?.message ?? e));
   return list;
 }
 
@@ -179,6 +179,6 @@ export async function deleteManagedPost(id: string): Promise<ManagedPost[]> {
   try {
     await AsyncStorage.setItem(KEY, JSON.stringify(next));
   } catch {}
-  void deleteCloudPost(id).catch(() => {});
+  void deleteCloudPost(id).catch((e: any) => console.log('[cloud] delete failed:', e?.message ?? e));
   return next;
 }
