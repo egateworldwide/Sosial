@@ -1,6 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { supabase, supabaseUrl, currentSession } from './supabase';
-import { loadManagedPosts, saveManagedPost, type ManagedPost } from './managed';
+import { loadManagedPosts, saveManagedPost, postAttachments, type ManagedPost } from './managed';
 
 /**
  * App → cloud write path (post-Wave-A slice). Every local save/delete
@@ -102,12 +102,10 @@ export async function pushPostToCloud(post: ManagedPost): Promise<void> {
   // never publish a half-built (e.g. text-only) post — the failure stays
   // loud in Metro instead of masquerading as success.
 
-  // Media: deterministic paths, storage upsert. Returns linked ids in order.
-  const atts = [
-    ...(post.attachments ?? []),
-    ...(post.imageUri ? [{ uri: post.imageUri, kind: 'image' as const }] : []),
-    ...(post.videoUri ? [{ uri: post.videoUri, kind: 'video' as const }] : []),
-  ].slice(0, 10);
+  // Media: canonical accessor only — `attachments` already contains EVERY
+  // item, and legacy imageUri/videoUri just mirror it. Concatenating all
+  // three uploaded each mirrored file twice (2 rows → worker saw "2 videos").
+  const atts = postAttachments(post).slice(0, 10);
   const linked: string[] = [];
   for (const a of atts) {
     if (!a?.uri || linked.length >= 10) continue;
