@@ -100,9 +100,26 @@ export interface ManagedPost {
   status?: PostStatus;
   sentAt?: number;
   /** per-channel remote ids returned at publish time (post/media/tweet/video id
-   *  or at:// URI) — powers the per-post analytics in the Sent view. */
+   *  or at:// URI) — powers the per-post analytics in the Sent view.
+   *  ALSO the duplicate guard: a channel recorded here is never reposted. */
   remoteIds?: Record<string, string>;
+  /** lowercase channel → last failure note (cleared when that leg succeeds).
+   *  Survives across attempts so the queue row can say WHY it's stuck. */
+  channelErr?: Record<string, string>;
+  /** lowercase channel → timestamp: auto-retry must not touch that leg before
+   *  then. Set when a leg times out — its promise may still land. */
+  retryAfter?: Record<string, number>;
+  /** sweep attempts so far; parked (not retried) past MAX_AUTO_TRIES. */
+  autoTries?: number;
 }
+
+/** Cooldown after a channel times out (its promise may still land) before auto-retry touches it again. */
+export const LEG_COOLDOWN_MS = 30 * 60 * 1000;
+/** Sweep gives up auto-retrying a post after this many attempts — parks loud for manual retry. */
+export const MAX_AUTO_TRIES = 5;
+/** Per-channel publish caps: video uploads + processing polls run long. */
+export const VIDEO_CHANNEL_MS = 20 * 60 * 1000;
+export const PHOTO_CHANNEL_MS = 150000;
 
 /** Attachments with legacy fallback (posts saved before multi-attach existed). */
 export function postAttachments(p: ManagedPost): MediaAttachment[] {
@@ -198,6 +215,13 @@ export async function loadManagedPosts(): Promise<ManagedPost[]> {
 }
 
 export async function saveManagedPost(p: ManagedPost): Promise<ManagedPost[]> {
+  const { list, rec } = await writeManagedPost(p);
+  // Cloud mirror is best-effort: local save already succeeded above.
+  void pushPostToCloud(rec).catch((e: any) => console.log('[cloud] push failed:', e?.message ?? e));
+  return list;
+}
+
+async function writeManagedPost(p: ManagedPost): Promise<{ list: ManagedPost[]; rec: ManagedPost }> {
   const list = await loadManagedPosts();
   const i = list.findIndex((x) => x.id === p.id);
   const rec = { ...p, id: p.id || uid('post') };
@@ -206,8 +230,17 @@ export async function saveManagedPost(p: ManagedPost): Promise<ManagedPost[]> {
   try {
     await AsyncStorage.setItem(KEY, JSON.stringify(list));
   } catch {}
-  // Cloud mirror is best-effort: local save already succeeded above.
-  void pushPostToCloud(rec).catch((e: any) => console.log('[cloud] push failed:', e?.message ?? e));
+  return { list, rec };
+}
+
+/**
+ * Local-only save — same AsyncStorage write, NO cloud mirror.
+ * Progress writes (per-leg results, cooldowns, retry counters) must use this:
+ * a full push re-uploads every media byte and upserts targets, which would
+ * clobber worker verdicts and waste video bandwidth on every attempt.
+ */
+export async function saveManagedPostLocal(p: ManagedPost): Promise<ManagedPost[]> {
+  const { list } = await writeManagedPost(p);
   return list;
 }
 

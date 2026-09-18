@@ -7,7 +7,7 @@ import { AvatarButton } from '../components/ProfileMenu';
 import ConnectButton from '../components/ConnectButton';
 import ChannelDrawer from '../components/ChannelDrawer';
 import { SOCIAL_META } from '../constants';
-import { loadManagedPosts, ManagedPost } from '../utils/managed';
+import { loadManagedPosts, ManagedPost, MAX_AUTO_TRIES } from '../utils/managed';
 import { pullCloudStatus } from '../utils/cloudPosts';
 import { loadMetaState, MetaState } from '../utils/metaStore';
 import { fmtDateTime, platformsLabel } from '../utils/reminders';
@@ -146,6 +146,8 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
     const when =
       tab === 'sent' && p.sentAt ? `Sent · ${fmtDateTime(p.sentAt)}` :
       p.scheduledAt ? `${overdue ? 'Overdue · ' : ''}${fmtDateTime(p.scheduledAt)}` : 'Not scheduled';
+    const legErr = Object.values(p.channelErr ?? {})[0] as string | undefined;
+    const parked = tab === 'queued' && (p.autoTries ?? 0) >= MAX_AUTO_TRIES;
     return (
       <View key={p.id}>
         <TouchableOpacity onPress={() => openComposer(p)} style={st.card} activeOpacity={0.75}>
@@ -154,6 +156,8 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
             <Text style={st.t} numberOfLines={1}>{p.title || 'Untitled'}</Text>
             <Text style={st.meta} numberOfLines={1}>{p.body || 'No description'}</Text>
             <Text style={[st.meta, overdue && { color: C.redText }]}>{when} · {platformsLabel(plats)}</Text>
+            {tab === 'queued' && legErr ? <Text style={st.errT} numberOfLines={2}>⚠ {legErr}</Text> : null}
+            {tab === 'queued' && !legErr && parked ? <Text style={st.errT} numberOfLines={2}>Auto-retry stopped — open to retry manually</Text> : null}
           </View>
           {/* overlapping channel stack, like the Connect button */}
           <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 0 }}>
@@ -330,6 +334,7 @@ const makeS = (C: Palette) => StyleSheet.create({
   coverT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 17, color: C.accentInk },
   t: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15, letterSpacing: -0.2, color: C.ink },
   meta: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, color: C.muted },
+  errT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: C.redText },
   empty: { backgroundColor: C.card, borderRadius: R.lg, padding: 28, alignItems: 'center', marginTop: 6 },
   emptyT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 16, color: C.ink },
   emptyS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, color: C.muted, marginTop: 6, textAlign: 'center', lineHeight: 19 },

@@ -7,7 +7,7 @@ import { useTheme, Palette, R, T } from '../theme';
 import { SocialGlyph, PrimaryBtn, GhostBtn } from '../components/ui';
 import { uid } from '../constants';
 import ScheduleSheet from '../components/ScheduleSheet';
-import { loadManagedPosts, saveManagedPost, deleteManagedPost, ManagedPost, queueTooSoon, minQueueLabel } from '../utils/managed';
+import { loadManagedPosts, saveManagedPost, deleteManagedPost, ManagedPost, queueTooSoon, minQueueLabel, MAX_AUTO_TRIES } from '../utils/managed';
 import { useComposer } from '../store/ComposerContext';
 import { loadMetaState, MetaState } from '../utils/metaStore';
 import { publishFacebook, publishInstagram, publishThreads } from '../utils/metaPublish';
@@ -249,6 +249,10 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
     const plats = p.platforms?.length ? p.platforms : ['any'];
     const lead = plats.includes('any') ? 'any' : plats[0];
     const overdue = !!p.scheduledAt && p.scheduledAt <= Date.now();
+    // Loud stuck reason: the stored per-leg error, or the parked notice when
+    // auto-retry gave up — never a bare red "Overdue" with no explanation.
+    const legErr = Object.values(p.channelErr ?? {})[0] as string | undefined;
+    const parked = (p.autoTries ?? 0) >= MAX_AUTO_TRIES;
     return (
       <TouchableOpacity key={p.id} onPress={() => openSheet(p)} style={s.card} activeOpacity={0.75}>
         <Cover uri={p.imageUri ?? p.videoUri} kind={p.videoUri ? 'video' : 'image'} />
@@ -262,6 +266,8 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
           ) : (
             <Text style={s.meta}>Not scheduled · {platformsLabel(plats)}</Text>
           )}
+          {legErr ? <Text style={s.errT} numberOfLines={2}>⚠ {legErr}</Text> : null}
+          {!legErr && parked ? <Text style={s.errT} numberOfLines={2}>Auto-retry stopped — open to retry manually</Text> : null}
         </View>
         {lead === 'any' ? (
           <Ionicons name="globe-outline" size={18} color={C.muted} />
@@ -347,6 +353,7 @@ const makeS = (C: Palette) => StyleSheet.create({
   coverT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 17, color: C.accentInk },
   t: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15, letterSpacing: -0.2, color: C.ink },
   meta: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, color: C.muted },
+  errT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: C.redText },
   chip: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft },
   chipT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.muted },
   qBtn: { backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 15, paddingVertical: 9 },

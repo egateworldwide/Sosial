@@ -210,6 +210,40 @@ export async function pushPostToCloud(post: ManagedPost): Promise<void> {
   );
 }
 
+/**
+ * Mark one mirrored leg sent (light PATCH — no media re-upload). Called when a
+ * LOCAL leg lands so the worker won't republish that channel if the app dies
+ * mid-queue. Never throws.
+ */
+export async function markCloudLegSent(clientId: string, provider: string, remoteId: string): Promise<void> {
+  try {
+    const session = await currentSession().catch(() => null);
+    if (!session) return;
+    const sb = supabase();
+    const { data: prow } = await sb.from('posts').select('id').eq('client_id', clientId).maybeSingle();
+    const pid = (prow as any)?.id;
+    if (!pid) return;
+    await sb
+      .from('post_targets')
+      .update({ status: 'sent', remote_id: remoteId })
+      .eq('post_id', pid)
+      .eq('provider', provider);
+  } catch {}
+}
+
+/**
+ * Mark the mirrored post sent (light PATCH). The full push upserts every
+ * target row, so flipping via push would clobber per-leg worker verdicts.
+ * Never throws.
+ */
+export async function markCloudPostSent(clientId: string): Promise<void> {
+  try {
+    const session = await currentSession().catch(() => null);
+    if (!session) return;
+    await supabase().from('posts').update({ status: 'sent' }).eq('client_id', clientId);
+  } catch {}
+}
+
 /** Delete the cloud mirror (cascade clears targets + links; bytes fall to the worker janitor). */
 export async function deleteCloudPost(clientId: string): Promise<void> {
   const session = await currentSession().catch(() => null);

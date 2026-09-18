@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { AppState, Platform } from 'react-native';
 import ScheduleSheet from '../components/ScheduleSheet';
 import { uid } from '../constants';
-import { loadManagedPosts, saveManagedPost, deleteManagedPost, ManagedPost, PostStatus, MediaAttachment, postAttachments, PlatformTypes, defaultPlatformType, ChannelKey, queueTooSoon, minQueueLabel, isEmptyPost } from '../utils/managed';
+import { loadManagedPosts, saveManagedPost, saveManagedPostLocal, deleteManagedPost, ManagedPost, PostStatus, MediaAttachment, postAttachments, PlatformTypes, defaultPlatformType, ChannelKey, queueTooSoon, minQueueLabel, isEmptyPost, LEG_COOLDOWN_MS, MAX_AUTO_TRIES, VIDEO_CHANNEL_MS, PHOTO_CHANNEL_MS } from '../utils/managed';
 import { loadMetaState, saveMetaState, MetaState, connectedChannelIds } from '../utils/metaStore';
 import { publishFacebook, publishFacebookReel, publishFacebookStory, publishInstagram, publishInstagramStory, publishThreads, uploadTikTokPhoto, MAX_ATTACHMENTS, ATTACH_LIMITS } from '../utils/metaPublish';
 import { publishTikTokVideo, publishTikTokPhotos } from '../utils/tiktokPublish';
@@ -23,7 +23,7 @@ import {
   notificationsSupported, NO_NOTIF_MSG, fmtDateTime,
 } from '../utils/reminders';
 import PublishNotice, { PubRow } from '../components/PublishNotice';
-import { pullCloudStatus } from '../utils/cloudPosts';
+import { pullCloudStatus, markCloudLegSent, markCloudPostSent } from '../utils/cloudPosts';
 
 /** Minimum gap between automatic retries of a failed/overdue queued post. */
 const RETRY_MS = 5 * 60 * 1000;
@@ -171,6 +171,33 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
 
   const bump = () => setRefreshedAt(Date.now());
 
+  /**
+   * Serialize progress writes. Channel legs run concurrently (Promise.allSettled)
+   * and late-finishing promises outlive their run — without this, concurrent
+   * read-modify-writes drop each other's remoteIds on the floor.
+   */
+  const serRef = useRef<Promise<void>>(Promise.resolve());
+  const serialize = <T,>(fn: () => Promise<T>): Promise<T> => {
+    const nxt: Promise<T> = serRef.current.then(fn);
+    serRef.current = nxt.then(
+      () => undefined,
+      () => undefined,
+    );
+    return nxt;
+  };
+
+  /** Load-fresh, patch, local-save (no mirror — progress writes must not
+   *  re-upload media or clobber worker verdicts). Returns the fresh record. */
+  const mergePost = async (postId: string, patch: (f: ManagedPost) => ManagedPost): Promise<ManagedPost | null> =>
+    serialize(async () => {
+      const all = await loadManagedPosts();
+      const f = all.find((x) => x.id === postId);
+      if (!f) return null;
+      const next = patch(f);
+      await saveManagedPostLocal(next);
+      return next;
+    });
+
   /** Every channel with live credentials right now. */
   const connectedChannels = (m: MetaState): string[] => connectedChannelIds(m);
 
@@ -290,7 +317,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
     try {
       const r = await runPublish(p);
       if (!r) return;
-      await finishPublish(p, r.done, r.errs, r.manual, r.remoteIds);
+      await finishPublish(p, r);
     } catch (e: any) {
       // runPublish rethrows only for pre-blast failures — never reset silently
       setNotice({ mode: 'result', title: 'Publish failed', rows: [{ id: 'post', label: 'Post', state: 'fail' as const, note: e?.message ?? 'Try again.' }] });
@@ -339,7 +366,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
         setSheet({ post: draft });
         bump();
       }
-      await finishPublish(rec, r.done, r.errs, r.manual, r.remoteIds);
+      await finishPublish(rec, r);
     } catch (e: any) {
       setNotice({ mode: 'result', title: 'Publish failed', rows: [{ id: 'post', label: 'Post', state: 'fail' as const, note: e?.message ?? 'Try again.' }] });
     }
@@ -367,7 +394,16 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
       };
     });
 
-  const runPublish = async (p: ManagedPost, opts?: { silent?: boolean }): Promise<{ done: string[]; errs: string[]; manual: string[]; remoteIds: Record<string, string> } | null> => {
+  interface RunResult {
+    done: string[];
+    errs: string[];
+    manual: string[];
+    remoteIds: Record<string, string>;
+    /** resolved plats this run covered (TikTok pre-flight may narrow it) */
+    resolved: string[];
+  }
+
+  const runPublish = async (p: ManagedPost, opts?: { silent?: boolean }): Promise<RunResult | null> => {
     const m = await loadMetaState();
     let plats = resolvePlats(p.platforms, m);
     // buildRec derives title from the body's first line — posting title + body
@@ -390,6 +426,49 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
       if (s) remoteIds[ch] = s;
     };
     const silent = !!opts?.silent;
+    // Seed from already-recorded legs: a channel with a remote id already
+    // posted — never repost it (the duplicate guard). Foreground retries and
+    // sweep passes alike skip done legs; timed-out legs park in cooldown.
+    const prevIds: Record<string, string> = {};
+    for (const [k, v] of Object.entries(p.remoteIds ?? {})) if (v) prevIds[k] = String(v);
+    for (const ch of plats) {
+      if (prevIds[ch] && ch !== 'any') {
+        if (remoteIds[ch] === undefined) remoteIds[ch] = prevIds[ch];
+        const l = labelFor(ch);
+        if (!done.includes(l)) done.push(l);
+      }
+    }
+    const honorCooldown = silent; // foreground taps always attempt now
+    let pending = plats.filter((ch) => {
+      if (ch === 'any' || !prevIds[ch]) {
+        if (ch !== 'any' && honorCooldown && (p.retryAfter?.[ch] ?? 0) > Date.now()) return false;
+        return true;
+      }
+      return false;
+    });
+    /** A leg landed (possibly late, after its run timed out): record it now so
+     *  the row heals instead of reposting. Never throws. */
+    const recordLegDone = async (ch: string): Promise<void> => {
+      const ids = remoteIds[ch];
+      if (!ids) return;
+      try {
+        await mergePost(p.id, (f) => {
+          const ce = { ...(f.channelErr ?? {}) };
+          delete ce[ch];
+          const ra = { ...(f.retryAfter ?? {}) };
+          delete ra[ch];
+          return { ...f, remoteIds: { ...(f.remoteIds ?? {}), [ch]: ids }, channelErr: ce, retryAfter: ra };
+        });
+        bump();
+      } catch {}
+      void markCloudLegSent(p.id, ch, ids);
+    };
+    /** Persist a leg failure note for the loud queue row. Never throws. */
+    const noteLegErr = async (ch: string, note: string): Promise<void> => {
+      try {
+        await mergePost(p.id, (f) => ({ ...f, channelErr: { ...(f.channelErr ?? {}), [ch]: note } }));
+      } catch {}
+    };
     // silent background runs must not touch the visible flag — it was set
     // unconditionally but only cleared for foreground runs, sticking the UI
     // in "Posting…" and silently killing every later tap at the entry guard.
@@ -399,21 +478,22 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
       setNotice({
         mode: 'loading',
         title: 'Publishing…',
-        rows: plats.map((id) => ({ id, label: labelFor(id), state: 'pending' as const })),
+        rows: plats.map((id) => ({ id, label: labelFor(id), state: (prevIds[id] ? 'done' : 'pending') as 'done' | 'pending' })),
       });
     }
     try {
       // TikTok won't accept a hardcoded audience — prefer the upfront pick,
       // fall back to asking once at publish time
       let ttPrivacy: string | null = p.ttPrivacy ?? null;
-      if (plats.includes('tiktok') && !ttPrivacy && silent) {
+      if (pending.includes('tiktok') && plats.includes('tiktok') && !ttPrivacy && silent) {
         // Background runs must never prompt — without a saved audience the
         // post needs the user, so skip TikTok quietly this pass instead of
         // hanging on a modal no one asked for.
         errs.push('TikTok: audience not chosen — TikTok skipped');
+        void noteLegErr('tiktok', 'audience not chosen — TikTok skipped');
         plats = plats.filter((p) => p !== 'tiktok');
       }
-      if (plats.includes('tiktok') && !ttPrivacy) {
+      if (pending.includes('tiktok') && plats.includes('tiktok') && !ttPrivacy) {
         try {
           const token = await getValidToken();
           const ci = await fetchCreatorInfo(token);
@@ -438,15 +518,27 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
               ? 'audience not chosen — TikTok skipped'
               : (e?.message ?? 'failed');
           errs.push(`TikTok: ${note}`);
+          void noteLegErr('tiktok', note);
           setRow('tiktok', { state: 'fail', note });
           plats = plats.filter((p) => p !== 'tiktok');
         }
       }
+      // TikTok pre-flight above may narrow plats — keep the blast in sync.
+      pending = pending.filter((c) => plats.includes(c));
+      if (silent && pending.length > 0) {
+        // Count the attempt first (local-only write): unbounded silent retries
+        // of a slow video is how duplicate tweets happen. No pending legs (all
+        // done or cooling) burns no attempt.
+        await mergePost(p.id, (f) => ({ ...f, autoTries: (f.autoTries ?? 0) + 1 }));
+      }
       // blast: every channel publishes concurrently, rows flip independently.
       // Each channel is capped so one stalled call can't hold the whole blast
-      // (and its loading overlay) open forever.
-      const perChannelMs = atts.some((a) => a.kind === 'video') ? 8 * 60 * 1000 : 150000;
-      await Promise.allSettled(plats.map((ch) => withTimeout(
+      // (and its loading overlay) open forever. Video uploads + processing
+      // polls run an order of magnitude longer than photos — an 8-minute cap
+      // turned every slow video into a false failure (the post still landed,
+      // the row stuck overdue, the retry duplicated it).
+      const perChannelMs = atts.some((a) => a.kind === 'video') ? VIDEO_CHANNEL_MS : PHOTO_CHANNEL_MS;
+      await Promise.allSettled(pending.map((ch) => withTimeout(
         (async () => {
         setRow(ch, { state: 'working' });
         try {
@@ -551,20 +643,42 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
             setRow(ch, { state: 'manual', note: 'Open the app and post it yourself' });
             return;
           }
+          await recordLegDone(ch);
           setRow(ch, { state: 'done' });
         } catch (e: any) {
           const note = e?.message ?? 'failed';
           errs.push(`${labelFor(ch)}: ${note}`);
+          void noteLegErr(ch, note);
           setRow(ch, { state: 'fail', note });
         }
         })(),
         perChannelMs,
         labelFor(ch),
-      ).catch((e: any) => {
-        // only the timeout rejection lands here — the body swallows its own errors
+      ).catch(async (e: any) => {
+        // Only the timeout rejection lands here — the body swallows its own
+        // errors. Timeout ≠ failure: the promise is still running and may
+        // land. Park the leg in cooldown so no retry duplicates it, and only
+        // record the error if the leg hasn't recorded success meanwhile.
         const note = e?.message ?? 'failed';
-        errs.push(`${labelFor(ch)}: ${note}`);
-        setRow(ch, { state: 'fail', note });
+        const landed = await serialize(async () => {
+          const all = await loadManagedPosts();
+          const f = all.find((x) => x.id === p.id);
+          if (!f) return false;
+          if ((f.remoteIds ?? {})[ch]) return true;
+          await saveManagedPostLocal({
+            ...f,
+            retryAfter: { ...(f.retryAfter ?? {}), [ch]: Date.now() + LEG_COOLDOWN_MS },
+            channelErr: { ...(f.channelErr ?? {}), [ch]: note },
+          });
+          return false;
+        }).catch(() => false);
+        if (!landed) {
+          errs.push(`${labelFor(ch)}: ${note}`);
+          void noteLegErr(ch, note);
+          setRow(ch, { state: 'fail', note });
+        } else {
+          setRow(ch, { state: 'done' });
+        }
       })));
     } catch (e) {
       setNotice(null);
@@ -573,10 +687,53 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
       if (!silent) setPublishing(false);
       publishingRef.current = false;
     }
-    return { done, errs, manual, remoteIds };
+    return { done, errs, manual, remoteIds, resolved: plats };
   };
 
-  const finishPublish = async (p: ManagedPost, done: string[], errs: string[], manual: string[], remoteIds?: Record<string, string>, opts?: { silent?: boolean }) => {
+  /**
+   * Settle a run against the STORED record (not just this run's arrays — legs
+   * may have landed late from an earlier timed-out run). Sent iff at least one
+   * real channel exists and every real channel has a remote id. Manual-only
+   * posts never auto-flip. Always persists merged progress + bump, so the
+   * queue repaints with no manual refresh.
+   */
+  const settlePost = async (
+    base: ManagedPost,
+    resolved: string[],
+    run: RunResult,
+    opts?: { silent?: boolean },
+  ): Promise<{ rec: ManagedPost; sent: boolean }> => {
+    await serRef.current.catch(() => {});
+    const all = await loadManagedPosts();
+    const found = all.find((x) => x.id === base.id);
+    const fresh = found ?? base;
+    const mergedIds = { ...(fresh.remoteIds ?? {}), ...run.remoteIds };
+    const real = resolved.filter((c) => c !== 'any');
+    const flippable = (fresh.status ?? 'queued') === 'queued' || fresh.status === 'approval';
+    const sent = flippable && real.length > 0 && real.every((c) => !!mergedIds[c]);
+    const next: ManagedPost = {
+      ...fresh,
+      remoteIds: mergedIds,
+      autoTries: opts?.silent ? (fresh.autoTries ?? 0) : 0,
+      status: sent ? 'sent' : fresh.status,
+      sentAt: sent ? (fresh.sentAt ?? Date.now()) : fresh.sentAt,
+    };
+    if (sent && !found) {
+      // brand-new row (Post Now) — full save so the cloud mirror is created sent
+      await saveManagedPost(next);
+    } else {
+      await saveManagedPostLocal(next);
+    }
+    if (sent) {
+      await cancelPostReminder(next.id);
+      void markCloudPostSent(next.id);
+    }
+    bump();
+    return { rec: next, sent };
+  };
+
+  const finishPublish = async (p: ManagedPost, run: RunResult, opts?: { silent?: boolean }) => {
+    const { done, errs, manual } = run;
     const rows: PubRow[] = [
       ...done.map((n) => ({ id: n.toLowerCase(), label: n, state: 'done' as const })),
       ...manual.map((n) => ({
@@ -594,17 +751,16 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
     ];
     const allGood = done.length > 0 && errs.length === 0 && manual.length === 0;
     if (!opts?.silent) setNotice({ mode: 'result', title: allGood ? 'Published' : 'Publish result', rows });
-    if (allGood) {
-      await cancelPostReminder(p.id);
-      const sent: ManagedPost = { ...p, status: 'sent', sentAt: Date.now(), remoteIds: { ...(p.remoteIds ?? {}), ...(remoteIds ?? {}) } };
-      await saveManagedPost(sent);
+    // The sent verdict comes from the STORED record (late legs included), not
+    // just this run's arrays — a timed-out-then-landed video still flips sent.
+    const { rec, sent } = await settlePost(p, run.resolved, run, opts);
+    if (sent) {
       // On iOS keep the composer open on the sent record: the result then shows
       // inside the one modal. Closing here would try to present the standalone
       // notice modal during the sheet's dismissal — on iOS that double-modal
       // hand-off leaves the whole app untouchable. Android closes as before.
-      if (Platform.OS === 'ios' && sheetRef.current) setSheet({ post: sent });
+      if (Platform.OS === 'ios' && sheetRef.current) setSheet({ post: rec });
       else setSheet(null);
-      bump();
     }
   };
 
@@ -614,10 +770,27 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
     if (publishingRef.current) return;
     const all = await loadManagedPosts();
     const now = Date.now();
+    const meta = await loadMetaState();
     const due = all
       .filter((p) => p.status === 'queued' && !!p.scheduledAt && p.scheduledAt <= now)
       .sort((a, b) => (a.scheduledAt ?? 0) - (b.scheduledAt ?? 0));
     for (const p of due) {
+      // Healer: late-recorded legs (a timed-out promise that landed after its
+      // run) may have completed the set — flip sent without reposting.
+      try {
+        const fresh0 = (await loadManagedPosts()).find((x) => x.id === p.id);
+        const resolved0 = resolvePlats((fresh0 ?? p).platforms, meta);
+        const real0 = resolved0.filter((c) => c !== 'any');
+        if (
+          fresh0 && (fresh0.status ?? 'queued') === 'queued' && real0.length > 0 &&
+          real0.every((c) => !!((fresh0.remoteIds ?? {})[c]))
+        ) {
+          await settlePost(fresh0, resolved0, { done: [], errs: [], manual: [], remoteIds: {}, resolved: resolved0 }, { silent: true });
+          continue;
+        }
+        // Parked: auto-retry gave up — the row says why; only a manual tap re-arms.
+        if ((fresh0?.autoTries ?? p.autoTries ?? 0) >= MAX_AUTO_TRIES) continue;
+      } catch {}
       // retry a failed/overdue post every few minutes while the app is open,
       // so one blip doesn't strand it as "Overdue" forever.
       if (now - (attemptTimesRef.current[p.id] ?? 0) < RETRY_MS) continue;
@@ -625,7 +798,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
       if (publishingRef.current) return;
       try {
         const r = await runPublish(p, { silent: true });
-        if (r) await finishPublish(p, r.done, r.errs, r.manual, r.remoteIds, { silent: true });
+        if (r) await finishPublish(p, r, { silent: true });
       } catch {
         // silent sweep: a pre-blast throw must not kill the whole pass
       }
@@ -640,7 +813,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
       if (!p || p.status === 'sent') return;
       try {
         const r = await runPublish(p);
-        if (r) await finishPublish(p, r.done, r.errs, r.manual, r.remoteIds);
+        if (r) await finishPublish(p, r);
       } catch (e: any) {
         setNotice({ mode: 'result', title: 'Publish failed', rows: [{ id: 'post', label: 'Post', state: 'fail' as const, note: e?.message ?? 'Try again.' }] });
       }
@@ -648,18 +821,19 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
     [runPublish, finishPublish],
   );
 
-  // publish due posts on launch, on return-to-foreground, and while open (60s tick);
-  // also back-sync worker verdicts (the worker publishes when the app is closed,
-  // so without this a cloud-published post sits in the queue as Overdue until
-  // someone pull-to-refreshes). Bump only when something actually flipped.
+  // Back-sync worker verdicts FIRST, then publish due posts (launch, foreground,
+  // 60s tick). Ordering matters: the worker publishes when the app is closed,
+  // so its verdicts must land before the local pass reads the rows — otherwise
+  // the sweep republishes what the worker already posted. Bump only when
+  // something actually flipped.
   useEffect(() => {
     const sweep = () => {
-      void publishDueRef.current();
       void (async () => {
         try {
           const r = await pullCloudStatus();
           if (r.updated > 0) bump();
         } catch {}
+        await publishDueRef.current();
       })();
     };
     void sweep();
