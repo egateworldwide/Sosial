@@ -7,6 +7,7 @@
 import type { Job } from './db';
 import { getPublishBundle, markTargetSent, markTargetFailed } from './db';
 import { publishBlueskyTarget, blueskyPostUrl } from './bsky';
+import { publishThreadsTarget } from './threads';
 import { info } from './logger';
 
 function notPorted(kind: string): Error {
@@ -36,6 +37,12 @@ async function handlePublishTarget(job: Job): Promise<void> {
       const did = String(bundle?.channel?.external_id ?? '');
       await markTargetSent(targetId, uri, blueskyPostUrl(uri, did));
       info(`target ${targetId} sent → ${uri}`);
+      return;
+    }
+    if (provider === 'threads') {
+      const { remoteId, remoteUrl } = await publishThreadsTarget(bundle);
+      await markTargetSent(targetId, remoteId, remoteUrl);
+      info(`target ${targetId} sent → ${remoteId}`);
       return;
     }
     throw notPorted(`publish_target:${provider}`);
