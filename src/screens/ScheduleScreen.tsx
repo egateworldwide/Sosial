@@ -8,6 +8,7 @@ import { SocialGlyph, PrimaryBtn, GhostBtn } from '../components/ui';
 import { uid } from '../constants';
 import ScheduleSheet from '../components/ScheduleSheet';
 import { loadManagedPosts, saveManagedPost, deleteManagedPost, ManagedPost, queueTooSoon, minQueueLabel } from '../utils/managed';
+import { useComposer } from '../store/ComposerContext';
 import { loadMetaState, MetaState } from '../utils/metaStore';
 import { publishFacebook, publishInstagram, publishThreads } from '../utils/metaPublish';
 import {
@@ -61,10 +62,19 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
   const [tUri, setTUri] = useState<string | undefined>(undefined);
   const [tKind, setTKind] = useState<'image' | 'video'>('image');
 
+  const { refreshedAt } = useComposer();
+
   const reload = async () => {
     setPosts(await loadManagedPosts());
     setMeta(await loadMetaState());
   };
+
+  // the silent due-sweep publishes with no UI of its own — refresh here so a
+  // post that just went out disappears from the queue instead of going stale.
+  useEffect(() => {
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshedAt]);
 
   useEffect(() => {
     reload();
@@ -218,7 +228,11 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
     meta.threadsName ? `Threads ${meta.threadsName}` : '',
   ].filter(Boolean).join(' · ') || 'No accounts connected';
 
-  const scheduled = posts.filter((p) => !!p.scheduledAt).sort((a, b) => (a.scheduledAt as number) - (b.scheduledAt as number));
+  // sent posts leave the queue — without the status filter a published post
+  // keeps its past scheduledAt and renders as a stuck red "Overdue" row.
+  const scheduled = posts
+    .filter((p) => !!p.scheduledAt && (p.status ?? 'queued') !== 'sent')
+    .sort((a, b) => (a.scheduledAt as number) - (b.scheduledAt as number));
   const visible = scheduled.filter((p) =>
     filter === 'all' ? true : (p.platforms?.length ? p.platforms : ['any']).includes(filter),
   );

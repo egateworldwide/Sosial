@@ -23,6 +23,7 @@ import {
   notificationsSupported, NO_NOTIF_MSG, fmtDateTime,
 } from '../utils/reminders';
 import PublishNotice, { PubRow } from '../components/PublishNotice';
+import { pullCloudStatus } from '../utils/cloudPosts';
 
 /** Minimum gap between automatic retries of a failed/overdue queued post. */
 const RETRY_MS = 5 * 60 * 1000;
@@ -647,9 +648,20 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
     [runPublish, finishPublish],
   );
 
-  // publish due posts on launch, on return-to-foreground, and while open (60s tick)
+  // publish due posts on launch, on return-to-foreground, and while open (60s tick);
+  // also back-sync worker verdicts (the worker publishes when the app is closed,
+  // so without this a cloud-published post sits in the queue as Overdue until
+  // someone pull-to-refreshes). Bump only when something actually flipped.
   useEffect(() => {
-    const sweep = () => { void publishDueRef.current(); };
+    const sweep = () => {
+      void publishDueRef.current();
+      void (async () => {
+        try {
+          const r = await pullCloudStatus();
+          if (r.updated > 0) bump();
+        } catch {}
+      })();
+    };
     void sweep();
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') void sweep();
