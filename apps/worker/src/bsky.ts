@@ -196,6 +196,11 @@ async function publishWith(
 /** Full target publish: session → media → post. Returns the post URI. */
 export async function publishBlueskyTarget(bundle: Bundle): Promise<string> {
   const b = bundle as Bundle;
+  // Video is rejected LOUDLY (never silently dropped): the adapter is
+  // image+text only until a video path lands.
+  if ((b.media ?? []).some((m) => m.kind === 'video')) {
+    throw new Error('Bluesky video posts aren’t supported yet — attach photos or post text only.');
+  }
   const imgs = (b.media ?? [])
     .filter((m) => m.kind === 'image')
     .sort((a, z) => a.position - z.position)
