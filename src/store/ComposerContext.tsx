@@ -513,8 +513,11 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
             done.push('X');
           } else if (ch === 'bluesky') {
             if (!m.bskyDid || (!m.bskyAccessJwt && !m.bskyRefreshJwt)) throw new Error('Bluesky not connected');
+            if (firstVideo && atts.some((a) => a.kind === 'image')) {
+              throw new Error('Bluesky can’t mix photos and video — send one or the other.');
+            }
             const imgs = atts.filter((a) => a.kind === 'image').slice(0, ATTACH_LIMITS.bluesky.images);
-            keep(ch, await publishBsky({ text: caption, imageUris: imgs.map((a) => a.uri) }));
+            keep(ch, await publishBsky({ text: caption, imageUris: imgs.map((a) => a.uri), videoUri: firstVideo?.uri }));
             done.push('Bluesky');
           } else if (ch === 'mastodon') {
             if (!m.mastodonAccessToken || !m.mastodonInstance) throw new Error('Mastodon not connected');

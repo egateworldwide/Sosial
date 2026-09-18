@@ -3,6 +3,10 @@ import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { BSKY_MAX_IMAGES, BSKY_MAX_TEXT, BSKY_BLOB_CAP } from './bskyConfig';
 import { getValidBsky, BskyCreds } from './bskyAuth';
 
+/** Dedicated video service (not the PDS) + bounded processing poll. */
+const BSKY_VIDEO_HOST = 'https://video.bsky.app';
+const BSKY_VIDEO_POLL_MS = 5 * 60 * 1000;
+
 /** Bluesky errors look like { error, message }. */
 function bskyErr(j: any, fallback: string): string {
   const m = j?.message;
@@ -151,38 +155,125 @@ async function uploadBlob(creds: BskyCreds, bytes: Uint8Array, mime: string): Pr
   return j.blob;
 }
 
-async function publishBskyWith(creds: BskyCreds, opts: { text: string; imageUris?: string[] }): Promise<string> {
+function videoMimeFor(uri: string): string {
+  const u = uri.toLowerCase().split('?')[0];
+  if (u.endsWith('.mov')) return 'video/quicktime';
+  if (u.endsWith('.webm')) return 'video/webm';
+  return 'video/mp4';
+}
+
+/**
+ * The video service does NOT accept the session access token — it needs a
+ * short-lived service token (getServiceAuth) whose audience is the account's
+ * own PDS. Mirrors the worker adapter so both paths publish identically.
+ */
+async function getBskyServiceToken(creds: BskyCreds): Promise<string> {
+  const host = creds.pdsHost.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  const exp = Math.floor(Date.now() / 1000) + 1800;
+  const url =
+    `${creds.pdsHost}/xrpc/com.atproto.server.getServiceAuth` +
+    `?aud=${encodeURIComponent(`did:web:${host}`)}` +
+    `&lxm=${encodeURIComponent('com.atproto.repo.uploadBlob')}` +
+    `&exp=${exp}`;
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${creds.token}` } });
+  const j: any = await r.json().catch(() => ({}));
+  if (r.status === 401) throw new Error('Bluesky session expired — reconnect Bluesky.');
+  if (!r.ok || !j?.token) throw new Error(bskyErr(j, 'Bluesky video auth failed.'));
+  return String(j.token);
+}
+
+/**
+ * Upload to the video service and wait for processing; returns the embed
+ * blob. The file streams from disk natively (Hermes can't build Blobs).
+ */
+async function uploadVideo(creds: BskyCreds, uri: string): Promise<any> {
+  const svc = await getBskyServiceToken(creds);
+  const mime = videoMimeFor(uri);
+  const url =
+    `${BSKY_VIDEO_HOST}/xrpc/app.bsky.video.uploadVideo` +
+    `?did=${encodeURIComponent(creds.did)}&name=${encodeURIComponent('sosial.mp4')}`;
+  const up = await FileSystem.uploadAsync(url, uri, {
+    httpMethod: 'POST',
+    headers: { Authorization: `Bearer ${svc}`, 'Content-Type': mime },
+    uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+  });
+  let uj: any = {};
+  try {
+    uj = JSON.parse(up.body || '{}');
+  } catch {}
+  if (up.status === 401) throw new Error('Bluesky session expired — reconnect Bluesky.');
+  if (up.status < 200 || up.status >= 300 || !uj?.jobId) {
+    throw new Error(bskyErr(uj, 'Bluesky video upload failed.'));
+  }
+  const jobId = String(uj.jobId);
+  const start = Date.now();
+  for (;;) {
+    const r = await fetch(
+      `${BSKY_VIDEO_HOST}/xrpc/app.bsky.video.getJobStatus?jobId=${encodeURIComponent(jobId)}`,
+      { headers: { Authorization: `Bearer ${svc}` } },
+    );
+    const j: any = await r.json().catch(() => ({}));
+    if (r.status === 401) throw new Error('Bluesky session expired — reconnect Bluesky.');
+    // already_exists (and any other response) carrying a blob is usable.
+    if (j?.jobStatus?.blob) return j.jobStatus.blob;
+    if (String(j?.jobStatus?.state ?? '') === 'JOB_STATE_FAILED') {
+      throw new Error(`Bluesky rejected the video — ${String(j?.jobStatus?.message ?? 'processing failed')}`);
+    }
+    if (Date.now() - start > BSKY_VIDEO_POLL_MS) {
+      throw new Error('Bluesky is still processing the video — try again in a few minutes.');
+    }
+    await new Promise((res) => setTimeout(res, 3000));
+  }
+}
+
+async function publishBskyWith(
+  creds: BskyCreds,
+  opts: { text: string; imageUris?: string[]; videoUri?: string },
+): Promise<string> {
   const text = fitText(opts.text);
   const uris = (opts.imageUris ?? []).filter(Boolean).slice(0, BSKY_MAX_IMAGES);
-  if (!text && uris.length === 0) {
-    throw new Error('Write something or attach a photo — Bluesky needs one of them.');
+  const videoUri = opts.videoUri && opts.videoUri.trim() ? opts.videoUri : undefined;
+  if (videoUri && uris.length > 0) {
+    throw new Error('Bluesky can’t mix photos and video — send one or the other.');
   }
+  if (!text && uris.length === 0 && !videoUri) {
+    throw new Error('Write something or attach a photo or video — Bluesky needs one of them.');
+  }
+  let videoBlob: any = null;
   const images: any[] = [];
-  const temps: string[] = [];
-  try {
-    for (let i = 0; i < uris.length; i++) {
-      const tag = `Photo ${i + 1}/${uris.length}`;
-      let small;
-      try {
-        small = await ensureSmallImage(uris[i], mimeFor(uris[i]));
-      } catch (e: any) {
-        throw new Error(`${tag}: ${e?.message ?? 'too big'}`);
-      }
-      temps.push(...small.cleanup);
-      const b64 = await FileSystem.readAsStringAsync(small.uri, { encoding: FileSystem.EncodingType.Base64 });
-      let blob;
-      try {
-        blob = await uploadBlob(creds, b64ToBytes(b64), small.mime);
-      } catch (e: any) {
-        throw new Error(`${tag}: ${e?.message ?? 'upload failed'}`);
-      }
-      images.push({ alt: text.slice(0, 200) || 'Image', image: blob });
+  if (videoUri) {
+    try {
+      videoBlob = await uploadVideo(creds, videoUri);
+    } catch (e: any) {
+      throw new Error(`Video: ${e?.message ?? 'upload failed'}`);
     }
-  } finally {
-    for (const t of temps) {
-      try {
-        await FileSystem.deleteAsync(t, { idempotent: true });
-      } catch {}
+  } else {
+    const temps: string[] = [];
+    try {
+      for (let i = 0; i < uris.length; i++) {
+        const tag = `Photo ${i + 1}/${uris.length}`;
+        let small;
+        try {
+          small = await ensureSmallImage(uris[i], mimeFor(uris[i]));
+        } catch (e: any) {
+          throw new Error(`${tag}: ${e?.message ?? 'too big'}`);
+        }
+        temps.push(...small.cleanup);
+        const b64 = await FileSystem.readAsStringAsync(small.uri, { encoding: FileSystem.EncodingType.Base64 });
+        let blob;
+        try {
+          blob = await uploadBlob(creds, b64ToBytes(b64), small.mime);
+        } catch (e: any) {
+          throw new Error(`${tag}: ${e?.message ?? 'upload failed'}`);
+        }
+        images.push({ alt: text.slice(0, 200) || 'Image', image: blob });
+      }
+    } finally {
+      for (const t of temps) {
+        try {
+          await FileSystem.deleteAsync(t, { idempotent: true });
+        } catch {}
+      }
     }
   }
   const record: Record<string, any> = {
@@ -192,7 +283,8 @@ async function publishBskyWith(creds: BskyCreds, opts: { text: string; imageUris
   };
   const facets = text ? linkFacets(text) : [];
   if (facets.length) record.facets = facets;
-  if (images.length) record.embed = { $type: 'app.bsky.embed.images', images };
+  if (videoBlob) record.embed = { $type: 'app.bsky.embed.video', video: videoBlob };
+  else if (images.length) record.embed = { $type: 'app.bsky.embed.images', images };
   const r = await fetch(`${creds.pdsHost}/xrpc/com.atproto.repo.createRecord`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${creds.token}`, 'Content-Type': 'application/json' },
@@ -205,10 +297,10 @@ async function publishBskyWith(creds: BskyCreds, opts: { text: string; imageUris
 }
 
 /**
- * Post to Bluesky: text (≤300, links auto-faceted) + up to 4 photos.
- * Retries once on an expired token. Returns the post URI.
+ * Post to Bluesky: text (≤300, links auto-faceted) + up to 4 photos OR one
+ * video. Retries once on an expired token. Returns the post URI.
  */
-export async function publishBsky(opts: { text: string; imageUris?: string[] }): Promise<string> {
+export async function publishBsky(opts: { text: string; imageUris?: string[]; videoUri?: string }): Promise<string> {
   const creds = await getValidBsky();
   try {
     return await publishBskyWith(creds, opts);
