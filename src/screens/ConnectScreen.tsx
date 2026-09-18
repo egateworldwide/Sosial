@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, Switch } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R, T } from '../theme';
@@ -26,10 +26,7 @@ import { loginPinterest, completePinLogin } from '../utils/pinAuth';
 import { PIN_CLIENT_ID } from '../utils/pinConfig';
 import { listPinBoards, PinBoard } from '../utils/pinPublish';
 import { BUILD_TAG } from '../utils/build';
-import {
-  loadCloudChannels, enableCloudChannel, disableCloudChannel,
-  type CloudChannelKey,
-} from '../utils/cloudChannels';
+import { disableCloudChannel, syncCloudChannels } from '../utils/cloudChannels';
 import { subscribeAuthResult, flushAuthResults, clearPendingAuth, getPendingAuth, wasCodeDone, markCodeDone, AuthResult } from '../utils/authFlow';
 import { IG_APP_ID } from '../utils/metaConfig';
 import { TT_CLIENT_KEY } from '../utils/tiktokConfig';
@@ -59,12 +56,15 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
   const [pinBoards, setPinBoards] = useState<PinBoard[] | null>(null);
   const [pinBoardsLoading, setPinBoardsLoading] = useState(false);
   const [liOrgs, setLiOrgs] = useState<LiOrg[]>([]);
-  const [cloudOn, setCloudOn] = useState<string[]>([]);
-  const [cloudBusy, setCloudBusy] = useState<string | null>(null);
   useEffect(() => {
     loadMetaState().then((m) => { setMeta(m); setPhotoHost(m.ttPhotoHost ?? ''); });
-    loadCloudChannels().then(setCloudOn);
   }, []);
+
+  // Master-switch reconciler: any credential change auto-imports (master on)
+  // or stays inert (master off / signed out). Idempotent — safe per change.
+  useEffect(() => {
+    void syncCloudChannels();
+  }, [meta]);
 
   const completeRef = useRef<(r: AuthResult) => void>(() => {});
   const lastCodeRef = useRef<string | null>(null);
@@ -471,44 +471,6 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
   const ytOn = !!(meta.ytRefreshToken || meta.ytAccessToken);
   const pinOn = !!meta.pinAccessToken;
 
-  /** Per-channel cloud opt-in: mirrors device credentials into Vault (revocable). */
-  const CloudRow = ({ ch }: { ch: CloudChannelKey }) => {
-    const on = cloudOn.includes(ch);
-    const busyRow = cloudBusy === ch;
-    const flip = async (v: boolean) => {
-      if (busyRow) return;
-      setCloudBusy(ch);
-      // Optimistic: the switch animates instantly; truth re-syncs below.
-      // The OS default thumb tint (blue on Android) is overridden below.
-      setCloudOn((prev) => (v ? [...new Set([...prev, ch])] : prev.filter((k) => k !== ch)));
-      try {
-        if (v) await enableCloudChannel(ch);
-        else await disableCloudChannel(ch);
-        setCloudOn(await loadCloudChannels());
-      } catch (e: any) {
-        setCloudOn(await loadCloudChannels()); // revert to truth on failure
-        Alert.alert('Cloud publishing', e?.message ?? 'Something went wrong.');
-      } finally {
-        setCloudBusy(null);
-      }
-    };
-    return (
-      <View style={s.cloudRow}>
-        <Ionicons name="cloud-upload-outline" size={18} color={C.accent} />
-        <View style={{ flex: 1 }}>
-          <Text style={s.cloudT}>Cloud publishing{busyRow ? '…' : ''}</Text>
-          <Text style={s.cloudS} numberOfLines={3}>
-            {on
-              ? 'On — publishes from the cloud, even with the app closed.'
-              : 'Off — turn on to publish from the cloud.'}
-            {ch === 'bluesky' && !on ? ' Uses your current session; re-enable if publishing stops.' : ''}
-          </Text>
-        </View>
-        <Switch value={on} disabled={busyRow} onValueChange={(v) => { void flip(v); }} trackColor={{ true: C.accent, false: '#D8D1BF' }} thumbColor="#ffffff" />
-      </View>
-    );
-  };
-
   const tap = (ch: 'facebook' | 'instagram' | 'threads' | 'tiktok' | 'x' | 'bluesky' | 'mastodon' | 'linkedin' | 'youtube' | 'pinterest', connected: boolean, connect: () => void) => {
     if (!connected) connect();
     else setOpenCh(openCh === ch ? null : ch);
@@ -551,7 +513,6 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
             <Text style={s.pageT}>Load my Pages</Text>
           </TouchableOpacity>
         )}
-        <CloudRow ch="facebook" />
         <TouchableOpacity onPress={disconnectFB} activeOpacity={0.7} style={s.disc}>
           <Text style={s.discT}>Disconnect Facebook</Text>
         </TouchableOpacity>
@@ -574,7 +535,6 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
     </TouchableOpacity>
     {igOn && openCh === 'instagram' ? (
       <View style={s.sub}>
-        <CloudRow ch="instagram" />
         <TouchableOpacity onPress={disconnectIG} activeOpacity={0.7} style={s.disc}>
           <Text style={s.discT}>Disconnect Instagram</Text>
         </TouchableOpacity>
@@ -597,7 +557,6 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
     </TouchableOpacity>
     {thOn && openCh === 'threads' ? (
       <View style={s.sub}>
-        <CloudRow ch="threads" />
         <TouchableOpacity onPress={disconnectThreads} activeOpacity={0.7} style={s.disc}>
           <Text style={s.discT}>Disconnect Threads</Text>
         </TouchableOpacity>
@@ -620,7 +579,6 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
     </TouchableOpacity>
     {ttOn && openCh === 'tiktok' ? (
       <View style={s.sub}>
-        <CloudRow ch="tiktok" />
         <TouchableOpacity onPress={disconnectTikTok} activeOpacity={0.7} style={s.disc}>
           <Text style={s.discT}>Disconnect TikTok</Text>
         </TouchableOpacity>
@@ -643,7 +601,6 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
     </TouchableOpacity>
     {xOn && openCh === 'x' ? (
       <View style={s.sub}>
-        <CloudRow ch="x" />
         <TouchableOpacity onPress={disconnectX} activeOpacity={0.7} style={s.disc}>
           <Text style={s.discT}>Disconnect X</Text>
         </TouchableOpacity>
@@ -667,12 +624,9 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
     {openCh === 'bluesky' ? (
       <View style={s.sub}>
         {bskyOn ? (
-          <>
-          <CloudRow ch="bluesky" />
         <TouchableOpacity onPress={disconnectBsky} activeOpacity={0.7} style={s.disc}>
             <Text style={s.discT}>Disconnect Bluesky</Text>
           </TouchableOpacity>
-          </>
         ) : (
           <>
             <View style={s.bskyField}>
@@ -727,12 +681,9 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
     {openCh === 'mastodon' ? (
       <View style={s.sub}>
         {mastodonOn ? (
-          <>
-          <CloudRow ch="mastodon" />
         <TouchableOpacity onPress={disconnectMastodon} activeOpacity={0.7} style={s.disc}>
             <Text style={s.discT}>Disconnect Mastodon</Text>
           </TouchableOpacity>
-          </>
         ) : (
           <>
             <View style={s.bskyField}>
@@ -814,7 +765,6 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
             <Text style={s.pageT}>Load my Company Pages</Text>
           </TouchableOpacity>
         )}
-        <CloudRow ch="linkedin" />
         <TouchableOpacity onPress={disconnectLinkedin} activeOpacity={0.7} style={s.disc}>
           <Text style={s.discT}>Disconnect LinkedIn</Text>
         </TouchableOpacity>
@@ -838,12 +788,9 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
     {openCh === 'youtube' ? (
       <View style={s.sub}>
         {ytOn ? (
-          <>
-          <CloudRow ch="youtube" />
         <TouchableOpacity onPress={disconnectYoutube} activeOpacity={0.7} style={s.disc}>
             <Text style={s.discT}>Disconnect YouTube</Text>
           </TouchableOpacity>
-          </>
         ) : (
           <TouchableOpacity onPress={doYoutube} activeOpacity={0.7} style={s.pageRow}>
             <Text style={s.pageT}>Connect YouTube</Text>
@@ -890,7 +837,6 @@ export default function ConnectScreen({ onBack }: { onBack: () => void }) {
             <Text style={s.pageT}>Load my boards</Text>
           </TouchableOpacity>
         )}
-        <CloudRow ch="pinterest" />
         <TouchableOpacity onPress={disconnectPinterest} activeOpacity={0.7} style={s.disc}>
           <Text style={s.discT}>Disconnect Pinterest</Text>
         </TouchableOpacity>
@@ -1029,9 +975,6 @@ const makeS = (C: Palette) => StyleSheet.create({
   pageT: { flex: 1, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13.5, color: C.ink },
   disc: { alignItems: 'center', paddingVertical: 10 },
   discT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.redText },
-  cloudRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.paper, borderRadius: R.md, borderWidth: 1, borderColor: C.lineSoft, paddingHorizontal: 13, paddingVertical: 10 },
-  cloudT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13.5, color: C.ink },
-  cloudS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.muted, marginTop: 1 },
   soonHead: { borderTopWidth: 1, borderTopColor: C.lineSoft, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 2 },
   soonHeadT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, letterSpacing: 0.6, textTransform: 'uppercase', color: C.faint },
   soon: { backgroundColor: C.accentSoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },

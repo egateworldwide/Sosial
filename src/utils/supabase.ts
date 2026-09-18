@@ -318,11 +318,13 @@ export async function importChannelToken(body: Record<string, unknown>): Promise
   return String(json.channel_id);
 }
 
-/** Remove one channel's cloud copy (Vault secrets included). Idempotent. */
+/** Remove one channel's cloud copy (Vault secrets included). Idempotent.
+ * Without external_id, removes ALL rows of that provider in the workspace
+ * (cleanup when device tokens are already gone). */
 export async function removeChannelToken(body: {
   workspace_id: string;
   provider: string;
-  external_id: string;
+  external_id?: string;
 }): Promise<void> {
   await callChannelFunction('remove-channel-token', body);
 }

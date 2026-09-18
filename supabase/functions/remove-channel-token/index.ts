@@ -5,7 +5,9 @@
 // secrets so nothing orphaned survives. Idempotent: unknown channel → 200
 // { removed: false }.
 //
-// POST { workspace_id, provider, external_id }
+// POST { workspace_id, provider, external_id? }
+// Without external_id, removes ALL rows of that provider in the workspace
+// (cleanup path when device tokens are already gone).
 // → 200 { removed: boolean }
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -49,10 +51,10 @@ serve(async (req: Request): Promise<Response> => {
   }
   const workspace_id = body["workspace_id"];
   const provider = body["provider"];
-  const external_id = body["external_id"];
+  const external_id =
+    typeof body["external_id"] === "string" && body["external_id"] ? body["external_id"] : null;
   if (typeof workspace_id !== "string" || !workspace_id) return bad("workspace_id required.");
   if (typeof provider !== "string" || !PROVIDERS.has(provider)) return bad("Unknown provider.");
-  if (typeof external_id !== "string" || !external_id) return bad("external_id required.");
 
   const admin = createClient(supaUrl, serviceKey);
 
@@ -65,28 +67,29 @@ serve(async (req: Request): Promise<Response> => {
     .maybeSingle();
   if (!mem) return bad("Not a member of this workspace.", 403);
 
-  const { data: ch } = await admin
+  let query = admin
     .from("connected_channels")
     .select("id")
     .eq("workspace_id", workspace_id)
-    .eq("provider", provider)
-    .eq("external_id", external_id)
-    .maybeSingle();
-  if (!ch) return Response.json({ removed: false });
+    .eq("provider", provider);
+  if (external_id) query = query.eq("external_id", external_id);
+  const { data: rows } = await query;
+  if (!rows || rows.length === 0) return Response.json({ removed: false });
 
-  // Collect secret ids BEFORE the cascade deletes the token row.
-  const { data: tok } = await admin
+  // Collect secret ids BEFORE the cascade deletes the token rows.
+  const ids = rows.map((r: { id: string }) => r.id);
+  const { data: toks } = await admin
     .from("channel_tokens")
     .select("access_token_secret_id, refresh_token_secret_id")
-    .eq("channel_id", ch.id)
-    .maybeSingle();
+    .in("channel_id", ids);
 
-  await admin.from("connected_channels").delete().eq("id", ch.id);
+  await admin.from("connected_channels").delete().in("id", ids);
 
-  const secrets = [tok?.access_token_secret_id, tok?.refresh_token_secret_id].filter(
-    (s): s is string => typeof s === "string" && !!s,
-  );
-  for (const sid of secrets) {
+  const secrets = (toks ?? []).flatMap((t: Record<string, unknown>) => [
+    t.access_token_secret_id,
+    t.refresh_token_secret_id,
+  ]).filter((s): s is string => typeof s === "string" && !!s);
+  for (const sid of new Set(secrets)) {
     await admin.rpc("vault_delete_secret", { secret_id: sid });
   }
 

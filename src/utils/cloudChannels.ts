@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { loadMetaState, type MetaState } from './metaStore';
+import { loadMetaState, connectedChannelIds, type MetaState } from './metaStore';
 import { getValidYt } from './ytAuth';
 import { currentSession, importChannelToken, removeChannelToken } from './supabase';
 
@@ -191,9 +191,118 @@ export async function disableCloudChannel(key: CloudChannelKey, snapshot?: MetaS
         provider: payload.provider,
         external_id: payload.external_id,
       });
+    } else if (session) {
+      // Tokens already gone (disconnect cleared first) — provider-wide sweep.
+      await removeChannelToken({ workspace_id: session.workspace.id, provider: key });
     }
   } catch {
     // server cleanup is best-effort; the flag still clears below
   }
   await setCloudChannel(key, false);
+}
+
+/* ---------------- Master switch (one setting, all channels) ---------------- */
+
+const MASTER_KEY = 'sosial_cloud_master_v1';
+
+/** Desired state. Absent key = true: cloud publishing is on by default. */
+export async function loadCloudMaster(): Promise<boolean> {
+  try {
+    const raw = await AsyncStorage.getItem(MASTER_KEY);
+    return raw === null ? true : raw === '1';
+  } catch {
+    return true;
+  }
+}
+
+export async function setCloudMaster(on: boolean): Promise<void> {
+  try {
+    await AsyncStorage.setItem(MASTER_KEY, on ? '1' : '0');
+  } catch {}
+}
+
+export interface CloudSyncResult {
+  /** connected channels the master wants in the cloud */
+  wanted: string[];
+  /** already (or newly) imported */
+  imported: string[];
+  /** cloud copies removed */
+  removed: string[];
+  /** wanted but failed, with reasons for the UI */
+  failed: { ch: string; message: string }[];
+}
+
+/**
+ * Reconciler: makes reality match the master switch. Idempotent and safe to
+ * call on every MetaState change — imports only what's missing, removes only
+ * what's flagged, never throws (failures are collected, not raised).
+ */
+export async function syncCloudChannels(): Promise<CloudSyncResult> {
+  const out: CloudSyncResult = { wanted: [], imported: [], removed: [], failed: [] };
+  try {
+    const master = await loadCloudMaster();
+    const meta = await loadMetaState();
+    const connected = connectedChannelIds(meta);
+    const flags = await loadCloudChannels();
+    const session = await currentSession().catch(() => null);
+
+    if (!master) {
+      // Master off: remove every flagged cloud copy (provider-wide when the
+      // device tokens needed for a precise external_id are already gone).
+      for (const ch of flags) {
+        try {
+          if (session) {
+            const payload = await buildImportPayload(ch as CloudChannelKey, meta).catch(() => null);
+            if (payload) {
+              await removeChannelToken({
+                workspace_id: session.workspace.id,
+                provider: payload.provider,
+                external_id: payload.external_id,
+              });
+            } else {
+              await removeChannelToken({ workspace_id: session.workspace.id, provider: ch });
+            }
+          }
+        } catch {}
+        await setCloudChannel(ch, false);
+        out.removed.push(ch);
+      }
+      return out;
+    }
+
+    out.wanted = connected;
+    if (!session) return out; // desired state waits for sign-in; no failure
+    const flagged = new Set(flags);
+    for (const ch of connected) {
+      if (flagged.has(ch)) {
+        out.imported.push(ch);
+        continue;
+      }
+      try {
+        const payload = await buildImportPayload(ch as CloudChannelKey, meta);
+        if (!payload) {
+          out.failed.push({ ch, message: 'Reconnect this channel first.' });
+          continue;
+        }
+        await importChannelToken({ workspace_id: session.workspace.id, ...payload });
+        await setCloudChannel(ch, true);
+        out.imported.push(ch);
+      } catch (e: any) {
+        out.failed.push({ ch, message: e?.message ?? 'Import failed.' });
+      }
+    }
+    // Heal stale flags (e.g. a disconnect whose server cleanup failed).
+    for (const ch of flags) {
+      if (!connected.includes(ch)) {
+        try {
+          await removeChannelToken({ workspace_id: session.workspace.id, provider: ch });
+        } catch {}
+        await setCloudChannel(ch, false);
+        out.removed.push(ch);
+      }
+    }
+    return out;
+  } catch {
+    return out;
+  }
 }
