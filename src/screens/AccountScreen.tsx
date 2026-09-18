@@ -8,7 +8,7 @@ import Constants from 'expo-constants';
 import { wipeAllData } from '../utils/account';
 import { currentSession, signUpEmail, signInEmail, signInWithGoogle, signOutCloud, onCloudAuthChange, isSupabaseConfigured, pullProfileFromCloud, WorkspaceInfo } from '../utils/supabase';
 import { loadMetaState, connectedChannelIds } from '../utils/metaStore';
-import { loadCloudMaster, setCloudMaster, loadCloudChannels, syncCloudChannels } from '../utils/cloudChannels';
+import { loadCloudChannels, syncCloudChannels } from '../utils/cloudChannels';
 
 WebBrowser.maybeCompleteAuthSession();
 import { loadTeam, addTeamMember, removeTeamMember, updateMember, memberChannelsLabel, assignableChannels, canRemoveMember, canAssignChannels, canChangeRole, loadActor, saveActor, TeamMember, Actor } from '../utils/team';
@@ -59,48 +59,18 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
   const [sbErr, setSbErr] = useState<string | null>(null);
   const [sbNotice, setSbNotice] = useState<string | null>(null);
   const [sbAccount, setSbAccount] = useState<{ email: string; workspace: WorkspaceInfo } | null>(null);
-  const [cloudMaster, setCloudMasterState] = useState(true);
   const [cloudImp, setCloudImp] = useState(0);
   const [cloudConn, setCloudConn] = useState(0);
-  const [cloudBusy, setCloudBusy] = useState(false);
 
-  /** Counts for the master-switch sub text (imported ∩ connected). */
+  /** Counts for the status row (imported ∩ connected). */
   const refreshCloud = async () => {
     try {
-      const [master, meta, flags] = await Promise.all([
-        loadCloudMaster(),
-        loadMetaState(),
-        loadCloudChannels(),
-      ]);
+      const [meta, flags] = await Promise.all([loadMetaState(), loadCloudChannels()]);
       const connected = connectedChannelIds(meta);
       const fset = new Set(flags);
-      setCloudMasterState(master);
       setCloudConn(connected.length);
       setCloudImp(connected.filter((c) => fset.has(c)).length);
     } catch {}
-  };
-
-  const flipCloudMaster = async (v: boolean) => {
-    if (cloudBusy) return;
-    setCloudBusy(true);
-    setCloudMasterState(v); // optimistic — reconciler confirms below
-    try {
-      await setCloudMaster(v);
-      const r = await syncCloudChannels();
-      await refreshCloud();
-      if (v && r.failed.length > 0) {
-        Alert.alert(
-          'Cloud publishing',
-          `On, but ${r.failed.length} channel${r.failed.length === 1 ? '' : 's'} couldn't upload: ` +
-            r.failed.map((f) => `${f.ch} (${f.message})`).join(', '),
-        );
-      }
-    } catch (e: any) {
-      Alert.alert('Cloud publishing', e?.message ?? 'Something went wrong.');
-      await refreshCloud();
-    } finally {
-      setCloudBusy(false);
-    }
   };
 
   useEffect(() => {
@@ -485,19 +455,18 @@ export default function AccountScreen({ email, team, plan, notifPosts, notifComm
             </View>
             <View style={s.list}>
               {row('add-circle-outline', 'Connect new channel', 'Facebook, Instagram, Threads', onConnect)}
-              {toggleRow(
+              {row(
+                'cloud-upload-outline',
                 'Cloud publishing',
-                cloudBusy
-                  ? 'Working…'
-                  : !cloudMaster
-                    ? 'Off — turn on to publish from the cloud while the app is closed'
-                    : sbState !== 'in'
-                      ? 'On — sign in to Sosial Cloud to activate'
-                      : cloudConn === 0
-                        ? 'On — connect a channel and it uploads automatically'
-                        : `On · ${cloudImp} of ${cloudConn} channel${cloudConn === 1 ? '' : 's'} in cloud`,
-                cloudMaster,
-                () => { void flipCloudMaster(!cloudMaster); },
+                sbState !== 'in'
+                  ? 'Always on — sign in to Sosial Cloud to activate'
+                  : cloudConn === 0
+                    ? 'Always on — connect a channel and it uploads automatically'
+                    : `Always on · ${cloudImp} of ${cloudConn} channel${cloudConn === 1 ? '' : 's'} in cloud`,
+                () => Alert.alert(
+                  'Cloud publishing',
+                  'Always on: connecting a channel stores an encrypted copy of its tokens so scheduled posts publish while the app is closed. To revoke a channel, disconnect it in Connect.',
+                ),
               )}
               {row('card-outline', 'Subscription plan', planName, () => setView('plan'))}
               {plan === 'team' ? row('people-outline', 'Team', members.length ? `${members.length} teammate${members.length === 1 ? '' : 's'} · invite & roles` : 'Invite people & assign channels', () => setView('team')) : null}

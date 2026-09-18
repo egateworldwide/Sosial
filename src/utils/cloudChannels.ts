@@ -205,11 +205,19 @@ export async function disableCloudChannel(key: CloudChannelKey, snapshot?: MetaS
 
 const MASTER_KEY = 'sosial_cloud_master_v1';
 
-/** Desired state. Absent key = true: cloud publishing is on by default. */
+/** Desired state. Always-on policy: cloud publishing cannot be switched off
+ * (scheduled posts can only fire from the cloud). Absent key = true; a
+ * legacy stored '0' (b37 toggle era) is migrated to '1' on first read. */
 export async function loadCloudMaster(): Promise<boolean> {
   try {
     const raw = await AsyncStorage.getItem(MASTER_KEY);
-    return raw === null ? true : raw === '1';
+    if (raw === null) return true;
+    if (raw !== '1') {
+      try {
+        await AsyncStorage.setItem(MASTER_KEY, '1');
+      } catch {}
+    }
+    return true;
   } catch {
     return true;
   }
