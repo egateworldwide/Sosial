@@ -8,6 +8,7 @@ import type { Job } from './db';
 import { getPublishBundle, markTargetSent, markTargetFailed } from './db';
 import { publishBlueskyTarget, blueskyPostUrl } from './bsky';
 import { publishThreadsTarget } from './threads';
+import { publishXTarget } from './x';
 import { info } from './logger';
 
 function notPorted(kind: string): Error {
@@ -43,6 +44,12 @@ async function handlePublishTarget(job: Job): Promise<void> {
       const { remoteId, remoteUrl } = await publishThreadsTarget(bundle);
       await markTargetSent(targetId, remoteId, remoteUrl);
       info(`target ${targetId} sent → ${remoteId}`);
+      return;
+    }
+    if (provider === 'x') {
+      const { tweetId, tweetUrl } = await publishXTarget(bundle);
+      await markTargetSent(targetId, tweetId, tweetUrl);
+      info(`target ${targetId} sent → ${tweetId}`);
       return;
     }
     throw notPorted(`publish_target:${provider}`);

@@ -99,6 +99,8 @@ export async function buildImportPayload(
         provider: 'x', external_id: m.xUserId, display_name: m.xName,
         access_token: m.xAccessToken ?? m.xRefreshToken ?? '',
         refresh_token: m.xRefreshToken, expires_at: iso(m.xExpiresAt),
+        // Public OAuth client id — the worker needs it for silent refresh.
+        metadata: { xClientId: process.env.EXPO_PUBLIC_X_CLIENT_ID ?? '' },
       };
     case 'bluesky': {
       // Session tokens only — the app password itself is never stored on
