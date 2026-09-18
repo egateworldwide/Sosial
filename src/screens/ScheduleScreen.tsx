@@ -192,11 +192,11 @@ export default function ScheduleScreen({ onBack, onConnect }: { onBack: () => vo
             done.push('Facebook');
           } else if (ch === 'instagram') {
             if (!meta.igId || !meta.igToken) throw new Error('Instagram not connected');
-            await publishInstagram({ igId: meta.igId, igToken: meta.igToken, caption, imageUri: p.imageUri, videoUri: p.videoUri });
+            await publishInstagram({ igId: meta.igId, igToken: meta.igToken, caption, imageUri: p.imageUri, videoUri: p.videoUri, mirrorClientId: p.id });
             done.push('Instagram');
           } else if (ch === 'threads') {
             if (!m.threadsId || !m.threadsToken) throw new Error('Threads not connected');
-            await publishThreads({ threadsId: m.threadsId, token: m.threadsToken, text: caption, imageUri: p.imageUri, videoUri: p.videoUri });
+            await publishThreads({ threadsId: m.threadsId, token: m.threadsToken, text: caption, imageUri: p.imageUri, videoUri: p.videoUri, mirrorClientId: p.id });
             done.push('Threads');
           } else {
             manual.push(ch === 'any' ? 'manual post' : ch);

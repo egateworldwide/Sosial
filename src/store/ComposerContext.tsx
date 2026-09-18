@@ -556,11 +556,11 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
           } else if (ch === 'instagram') {
             if (!m.igId || !m.igToken) throw new Error('Instagram not connected');
             if (type === 'story') {
-              keep(ch, await publishInstagramStory({ igId: m.igId, igToken: m.igToken, caption, imageUri: p.imageUri, videoUri: p.videoUri, attachments: atts }));
+              keep(ch, await publishInstagramStory({ igId: m.igId, igToken: m.igToken, caption, imageUri: p.imageUri, videoUri: p.videoUri, attachments: atts, mirrorClientId: p.id }));
             } else if (type === 'reel' && !atts.some((a) => a.kind === 'video')) {
               throw new Error('Instagram Reels need a video.');
             } else {
-              keep(ch, await publishInstagram({ igId: m.igId, igToken: m.igToken, caption, imageUri: p.imageUri, videoUri: p.videoUri, attachments: atts }));
+              keep(ch, await publishInstagram({ igId: m.igId, igToken: m.igToken, caption, imageUri: p.imageUri, videoUri: p.videoUri, attachments: atts, mirrorClientId: p.id }));
             }
             done.push('Instagram');
           } else if (ch === 'threads') {
@@ -569,7 +569,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
               // real ghost post: text-only container flagged to auto-archive in 24h
               keep(ch, await publishThreads({ threadsId: m.threadsId, token: m.threadsToken, text: caption, ghost: true, topicTag: p.threadsTopic }));
             } else {
-              keep(ch, await publishThreads({ threadsId: m.threadsId, token: m.threadsToken, text: caption, imageUri: p.imageUri, videoUri: p.videoUri, attachments: atts, topicTag: p.threadsTopic }));
+              keep(ch, await publishThreads({ threadsId: m.threadsId, token: m.threadsToken, text: caption, imageUri: p.imageUri, videoUri: p.videoUri, attachments: atts, topicTag: p.threadsTopic, mirrorClientId: p.id }));
             }
             done.push('Threads');
           } else if (ch === 'tiktok') {

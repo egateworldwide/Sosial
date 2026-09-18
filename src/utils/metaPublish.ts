@@ -1,6 +1,7 @@
 import { graph, THREADS_API, IG_GRAPH } from './metaConfig';
 import type { MediaAttachment } from './managed';
 import { loadMetaState } from './metaStore';
+import { supabase, supabaseUrl, currentSession } from './supabase';
 import * as FileSystem from 'expo-file-system/legacy';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
@@ -120,6 +121,51 @@ export async function uploadPublic(uri: string, kind: 'image' | 'video'): Promis
   } catch {}
 
   throw new Error('Image hosts rejected the upload — check your connection, or post manually.');
+}
+
+function extFor(uri: string, kind: string): string {
+  const u = uri.toLowerCase().split('?')[0];
+  const m = u.match(/\.([a-z0-9]{2,4})$/);
+  if (m) return m[1];
+  return kind === 'video' ? 'mp4' : 'jpg';
+}
+
+/**
+ * Public URL for Threads/IG media (they fetch from URL — local files can't go
+ * direct). Own Supabase storage FIRST: scheduled posts are mirrored there at
+ * save time, so the bytes are usually already in our bucket — a signed URL
+ * beats the anonymous hosts on reliability and keeps video off third-party
+ * servers. Falls back to the anonymous hosts when signed out or unmirrored.
+ * `mirror.index` is the attachment's position in postAttachments() (mirror
+ * paths are <workspace>/<client_id>/<index>.<ext>).
+ */
+export async function hostedMediaUrl(
+  uri: string,
+  kind: 'image' | 'video',
+  mirror?: { clientId: string; index: number; ext: string },
+): Promise<string> {
+  if (uri.startsWith('http')) return uri;
+  if (mirror) {
+    try {
+      const session = await currentSession().catch(() => null);
+      const wsId = session?.workspace?.id;
+      if (session && wsId) {
+        const sb = supabase();
+        const dir = `${wsId}/${mirror.clientId}`;
+        const name = `${mirror.index}.${mirror.ext}`;
+        const { data: files } = await sb.storage.from('post-media').list(dir, { limit: 20 });
+        if ((files ?? []).some((f: any) => f?.name === name)) {
+          const { data: signed } = await sb.storage.from('post-media').createSignedUrl(`${dir}/${name}`, 3600);
+          let url = String((signed as any)?.signedUrl ?? '');
+          if (url && !url.startsWith('http')) {
+            url = `${supabaseUrl()}/storage/v1${url.startsWith('/') ? '' : '/'}${url}`;
+          }
+          if (url.startsWith('http')) return url;
+        }
+      }
+    } catch {}
+  }
+  return uploadPublic(uri, kind);
 }
 
 /**
@@ -488,15 +534,21 @@ export async function publishInstagram(opts: {
   imageUri?: string;
   videoUri?: string;
   attachments?: MediaAttachment[];
+  /** local post id — lets media resolve from our own storage before anon hosts */
+  mirrorClientId?: string;
 }): Promise<string> {
   const atts = toAttachments(opts.imageUri, opts.videoUri, opts.attachments);
   const videos = atts.filter((a) => a.kind === 'video');
   const images = atts.filter((a) => a.kind === 'image');
   if (!atts.length) throw new Error('Instagram needs a photo or video — text-only is not allowed by their API.');
   const tok = encodeURIComponent(opts.igToken);
+  const mirrorFor = (a: MediaAttachment) =>
+    opts.mirrorClientId
+      ? { clientId: opts.mirrorClientId, index: atts.indexOf(a), ext: extFor(a.uri, a.kind) }
+      : undefined;
   if (videos.length) {
     // reels take a single video
-    const mediaUrl = videos[0].uri.startsWith('http') ? videos[0].uri : await uploadPublic(videos[0].uri, 'video');
+    const mediaUrl = await hostedMediaUrl(videos[0].uri, 'video', mirrorFor(videos[0]));
     const c = await fetch(
       `${IG_GRAPH}/${opts.igId}/media?media_type=REELS&video_url=${encodeURIComponent(mediaUrl)}&caption=${encodeURIComponent(opts.caption)}&share_to_feed=true&access_token=${tok}`,
       { method: 'POST' },
@@ -520,7 +572,8 @@ export async function publishInstagram(opts: {
       cleanups.push(...f.cleanup);
       uri = f.uri;
     }
-    urls.push(uri.startsWith('http') ? uri : await uploadPublic(uri, 'image'));
+    // ext from the ORIGINAL uri — that's what the mirror stored
+    urls.push(await hostedMediaUrl(uri, 'image', mirrorFor(img)));
   }
   if (urls.length === 1) {
     const c = await fetch(
@@ -574,12 +627,18 @@ export async function publishInstagramStory(opts: {
   imageUri?: string;
   videoUri?: string;
   attachments?: MediaAttachment[];
+  /** local post id — lets media resolve from our own storage before anon hosts */
+  mirrorClientId?: string;
 }): Promise<string> {
   const atts = toAttachments(opts.imageUri, opts.videoUri, opts.attachments);
   if (!atts.length) throw new Error('Instagram stories need a photo or video.');
   const tok = encodeURIComponent(opts.igToken);
   const first = atts[0];
-  const mediaUrl = first.uri.startsWith('http') ? first.uri : await uploadPublic(first.uri, first.kind);
+  const mediaUrl = await hostedMediaUrl(
+    first.uri,
+    first.kind,
+    opts.mirrorClientId ? { clientId: opts.mirrorClientId, index: 0, ext: extFor(first.uri, first.kind) } : undefined,
+  );
   const field = first.kind === 'video' ? 'video_url' : 'image_url';
   const c = await fetch(
     `${IG_GRAPH}/${opts.igId}/media?media_type=STORIES&${field}=${encodeURIComponent(mediaUrl)}&caption=${encodeURIComponent(opts.caption)}&access_token=${tok}`,
@@ -607,6 +666,8 @@ export async function publishThreads(opts: {
   ghost?: boolean;
   /** community/topic pill — 1–50 chars, no periods or ampersands (API rule) */
   topicTag?: string;
+  /** local post id — lets media resolve from our own storage before anon hosts */
+  mirrorClientId?: string;
 }): Promise<string> {
   const tok = encodeURIComponent(opts.token);
   const atts = toAttachments(opts.imageUri, opts.videoUri, opts.attachments);
@@ -617,7 +678,11 @@ export async function publishThreads(opts: {
   const kind = !first ? 'TEXT' : first.kind === 'video' ? 'VIDEO' : 'IMAGE';
   let mediaUrl = '';
   if (first) {
-    mediaUrl = first.uri.startsWith('http') ? first.uri : await uploadPublic(first.uri, first.kind);
+    mediaUrl = await hostedMediaUrl(
+      first.uri,
+      first.kind,
+      opts.mirrorClientId ? { clientId: opts.mirrorClientId, index: 0, ext: extFor(first.uri, first.kind) } : undefined,
+    );
   }
   const tag = (opts.topicTag ?? '').replace(/^[#\s]+/, '').replace(/[.&]/g, '').trim().slice(0, 50);
   const params =
