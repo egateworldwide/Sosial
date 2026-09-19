@@ -220,7 +220,7 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
   const { openComposer, draftBody, setDraftBody, draftThread, setDraftThread, draftMedia, pickDraftMedia, removeDraftMedia, moveDraftMedia, saveDraftPost, stashDraftPost, postDraftNow, clearDraft, openAi, beginInline, endInline } = useComposer();
   // Fresh inline composer mount (remount resets its channel/schedule picks).
   const [formKey, setFormKey] = useState(0);
-  const [tab, setTab] = useState<'ideas' | 'templates' | 'post' | 'publish'>('ideas');
+  const [tab, setTab] = useState<'ideas' | 'templates' | 'post' | 'publish'>('post');
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [projects, setProjects] = useState<QuickPost[]>([]);
   const [presets, setPresets] = useState<ProjectPreset[]>([]);
@@ -499,7 +499,7 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
 
         {/* section tabs — scrolls instead of overflowing on narrow screens */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 20, marginTop: 16 }}>
-          {(['ideas', 'templates', 'post', 'publish'] as const).map((t) => {
+          {(['post', 'templates', 'publish', 'ideas'] as const).map((t) => {
             const on = tab === t;
             return (
               <TouchableOpacity
