@@ -28,13 +28,13 @@ export default function BottomNav({ tab, onTab, onTemplate, onPost }: {
 
   const inner = (
     <>
-      {item('create', tab === 'create' ? 'bulb' : 'bulb-outline', 'Create')}
+      {item('create', 'bulb', 'Create')}
       <TouchableOpacity onPress={() => setPlus(true)} style={s.plusWrap} activeOpacity={0.8}>
         <View style={s.plus}>
           <Ionicons name="add" size={28} color={C.onInk} />
         </View>
       </TouchableOpacity>
-      {item('analytics', tab === 'analytics' ? 'bar-chart' : 'bar-chart-outline', 'Analytics')}
+      {item('analytics', 'bar-chart', 'Analytics')}
     </>
   );
 
@@ -52,7 +52,7 @@ export default function BottomNav({ tab, onTab, onTemplate, onPost }: {
               style={s.opt} activeOpacity={0.75}
             >
               <View style={[s.optIcon, { backgroundColor: C.accentSoft }]}>
-                <Ionicons name="color-palette-outline" size={22} color={C.accentInk} />
+                <Ionicons name="color-palette" size={22} color={C.accentInk} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={s.optT}>Template</Text>

@@ -34,7 +34,7 @@ const TABS: MainTab[] = ['create', 'analytics'];
 
 function Shell() {
   const { C, mode, toggle } = useTheme();
-  const { openComposer, openPostById, publishPostById } = useComposer();
+  const { openPostById, publishPostById } = useComposer();
   const [route, setRoute] = useState<Route>('create');
   const [connectFrom, setConnectFrom] = useState<Route>('create');
   const [privacyFrom, setPrivacyFrom] = useState<Route>('account');
@@ -248,7 +248,7 @@ function Shell() {
             tab={route as MainTab}
             onTab={setRoute}
             onTemplate={newTemplate}
-            onPost={() => openComposer(null)}
+            onPost={goCreatePost}
           />
         ) : null}
         <ProfileMenu

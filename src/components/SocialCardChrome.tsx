@@ -268,20 +268,21 @@ export default function SocialCardChrome({ page, pad, fit, maxH, watermark, chil
             </View>
             <Text style={{ ...F(font), fontSize: pad(8), color: gray }} numberOfLines={1}>{firstHandle} · 2h</Text>
           </View>
-          <Ionicons name="ellipsis-horizontal" size={pad(11)} color={gray} />
         </View>
         <AutoFit fit={fit} maxH={maxH} style={body(true, true)}>{children}</AutoFit>
-        {/* reply · repost · like · views */}
+        {/* reply · repost · like · save · share · more — like the app */}
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: pad(14), paddingBottom: pad(10), gap: pad(4) }}>
           {[
-            { icon: 'chatbubble-outline', count: '12', color: gray },
+            { icon: 'chatbox-outline', count: '12', color: gray },
             { icon: 'repeat-outline', count: '48', color: '#2E9E53' },
             { icon: 'heart-outline', count: '312', color: '#EC245E' },
-            { icon: 'bar-chart-outline', count: '2.1K', color: gray },
+            { icon: 'bookmark-outline', count: '', color: gray },
+            { icon: 'arrow-redo-outline', count: '', color: gray },
+            { icon: 'ellipsis-horizontal', count: '', color: gray },
           ].map((a, i) => (
             <View key={i} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3 }}>
               <Ionicons name={a.icon as any} size={pad(11)} color={a.color} />
-              <Text style={{ ...F(font), fontSize: pad(8), color: gray }}>{a.count}</Text>
+              {a.count ? <Text style={{ ...F(font), fontSize: pad(8), color: gray }}>{a.count}</Text> : null}
             </View>
           ))}
         </View>
@@ -305,16 +306,16 @@ export default function SocialCardChrome({ page, pad, fit, maxH, watermark, chil
               <Ionicons name="globe-outline" size={pad(8)} color={gray} />
             </View>
           </View>
-          <Ionicons name="ellipsis-horizontal" size={pad(12)} color={gray} />
+          <Ionicons name="ellipsis-vertical" size={pad(12)} color={gray} />
         </View>
         <AutoFit fit={fit} maxH={maxH} style={body(true, true)}>{children}</AutoFit>
-        {/* reply · boost · favourite · bookmark */}
+        {/* reply · boost · favourite · share — like the app */}
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: pad(14), paddingBottom: pad(10), gap: pad(4) }}>
           {[
-            { icon: 'chatbubble-outline', count: '12', color: gray },
+            { icon: 'arrow-undo-outline', count: '12', color: gray },
             { icon: 'repeat-outline', count: '48', color: '#6364FF' },
             { icon: 'star-outline', count: '312', color: '#CA8F04' },
-            { icon: 'bookmark-outline', count: '', color: gray },
+            { icon: 'share-social-outline', count: '', color: gray },
           ].map((a, i) => (
             <View key={i} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3 }}>
               <Ionicons name={a.icon as any} size={pad(11)} color={a.color} />

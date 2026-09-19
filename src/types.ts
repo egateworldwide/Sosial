@@ -103,6 +103,8 @@ export interface PostPage {
   blocks: ContentBlock[];
   font: FontId; // project-level font
   cardStyle: CardStyle; // content card template
+  /** full card: the content card IS the whole canvas (no backdrop/title/pfp rows) */
+  fullCard?: boolean;
   cardColor?: string; // content card background
   cardH?: number | null; // fixed card height px, null = auto fill
   cardAuto?: boolean; // card hugs its content — height grows/shrinks with the blocks

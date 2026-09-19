@@ -24,6 +24,8 @@ import {
   notificationsSupported, NO_NOTIF_MSG, fmtDateTime,
 } from '../utils/reminders';
 import PublishNotice, { PubRow } from '../components/PublishNotice';
+import AICopySheet from '../components/AICopySheet';
+import { SocialResult } from '../utils/ai/social';
 import { pullCloudStatus, markCloudLegSent, markCloudPostSent } from '../utils/cloudPosts';
 
 /** Minimum gap between automatic retries of a failed/overdue queued post. */
@@ -75,18 +77,40 @@ interface ComposerCtx {
   approvePost: (id: string) => Promise<void>;
   /** owner/admin: approval → draft */
   rejectPost: (id: string) => Promise<void>;
+  /** live new-post draft (the Post pill binds these inline) */
+  draftBody: string;
+  setDraftBody: (v: string) => void;
+  draftThread: string[] | null;
+  setDraftThread: (segs: string[] | null) => void;
+  draftMedia: MediaAttachment[];
+  pickDraftMedia: () => void;
+  removeDraftMedia: (index: number) => void;
+  moveDraftMedia: (from: number, to: number) => void;
+  /** queue / draft / post-now against the live draft — true when stored */
+  saveDraftPost: (at: number, plats: string[], types?: PlatformTypes, sourceUrl?: string, threadsTopic?: string, ttPrivacy?: string, ytPrivacy?: string) => Promise<boolean>;
+  stashDraftPost: (types?: PlatformTypes, sourceUrl?: string, threadsTopic?: string, ttPrivacy?: string, ytPrivacy?: string) => Promise<boolean>;
+  postDraftNow: (plats: string[], types?: PlatformTypes, sourceUrl?: string, threadsTopic?: string, ttPrivacy?: string, ytPrivacy?: string) => Promise<boolean>;
+  /** load a post into the live draft WITHOUT opening the sheet */
+  importDraft: (p: ManagedPost | null) => void;
+  /** wipe the live draft */
+  clearDraft: () => void;
+  /** open the AI caption/thread writer onto the live draft */
+  openAi: () => void;
+  /** mark the inline Post-pill form active (lets sheet-gated saves run sheetless) */
+  beginInline: () => void;
+  endInline: () => void;
 }
 
-const Ctx = createContext<ComposerCtx>({ refreshedAt: 0, openComposer: () => {}, openPostById: async () => {}, publishPostById: async () => {}, submitForApproval: async () => {}, approvePost: async () => {}, rejectPost: async () => {} });
+const Ctx = createContext<ComposerCtx>({ refreshedAt: 0, openComposer: () => {}, openPostById: async () => {}, publishPostById: async () => {}, submitForApproval: async () => {}, approvePost: async () => {}, rejectPost: async () => {}, draftBody: '', setDraftBody: () => {}, draftThread: null, setDraftThread: () => {}, draftMedia: [], pickDraftMedia: () => {}, removeDraftMedia: () => {}, moveDraftMedia: () => {}, saveDraftPost: async () => false, stashDraftPost: async () => false, postDraftNow: async () => false, importDraft: () => {}, clearDraft: () => {}, openAi: () => {}, beginInline: () => {}, endInline: () => {} });
 
 export function useComposer(): ComposerCtx {
   return useContext(Ctx);
 }
 
 /**
- * The new-post window, rendered once at app level. Any "New post" entry —
- * bottom-nav +, Post pill, idea cards — opens this sheet in place, with no
- * post page behind it.
+ * The composer sheet, rendered once at app level for editing existing posts
+ * (queue rows, idea cards, bottom-nav +). Fresh posts are composed inline on
+ * the Create → Post pill, which binds the same live draft without a sheet.
  */
 export function ComposerProvider({ children }: { children: React.ReactNode }) {
   const [sheet, setSheet] = useState<{ post: ManagedPost | null } | null>(null);
@@ -102,6 +126,9 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
   const [privacyAsk, setPrivacyAsk] = useState<{ options: { value: string; label: string }[]; resolve: (v: string) => void } | null>(null);
   const sheetRef = useRef(sheet);
   sheetRef.current = sheet;
+  /** true while the inline Post-pill form is mounted — sheet-gated saves may
+   *  run sheetless (the modal stays shut; only one composer is ever live). */
+  const inlineRef = useRef(false);
   const publishingRef = useRef(false);
   const attemptTimesRef = useRef<Record<string, number>>({});
 
@@ -178,6 +205,53 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
   const removeMedia = (index: number) => {
     setTMedia((prev) => prev.filter((_, i) => i !== index));
   };
+
+  /** Drag-to-arrange in the sheet strip — first item posts first. */
+  const moveMedia = (from: number, to: number) => {
+    setTMedia((prev) => {
+      if (from < 0 || to < 0 || from >= prev.length || to >= prev.length || from === to) return prev;
+      const next = [...prev];
+      const [m] = next.splice(from, 1);
+      next.splice(to, 0, m);
+      return next;
+    });
+  };
+
+  /** Wipe the live draft (fresh new-post page, post-submit reset). */
+  const clearDraft = useCallback(() => {
+    setTBody('');
+    setTThread(null);
+    setTMedia([]);
+  }, []);
+
+  /** Load a post into the live draft WITHOUT opening the sheet (inline page, AI handoff). */
+  const importDraft = useCallback((p: ManagedPost | null) => {
+    setTBody(p?.body ?? '');
+    setTThread(p?.thread && p.thread.length > 1 ? [...p.thread] : null);
+    setTMedia(p ? postAttachments(p) : []);
+  }, []);
+
+  /** Inline Post-pill form lifecycle — lets sheet-gated saves run sheetless. */
+  const beginInline = useCallback(() => {
+    inlineRef.current = true;
+  }, []);
+  const endInline = useCallback(() => {
+    inlineRef.current = false;
+  }, []);
+
+  /** AI writer sheet (new + edit composer alike) → straight into the live draft. */
+  const [aiOpen, setAiOpen] = useState(false);
+  const openAi = useCallback(() => setAiOpen(true), []);
+  const applyAiResult = useCallback((r: SocialResult) => {
+    const tags = r.hashtags.length ? '\n\n' + r.hashtags.join(' ') : '';
+    if (r.thread.length > 1) {
+      onThread(r.thread);
+    } else {
+      onThread(null);
+      setTBody(r.caption + tags);
+    }
+    setAiOpen(false);
+  }, [onThread]);
 
   /** Title is no longer typed — it's the first line of the post text, kept for lists + reminders. */
   const buildRec = (at: number | undefined, plats: string[], status: PostStatus, types?: PlatformTypes, sourceUrl?: string, threadsTopic?: string, ttPrivacy?: string, ytPrivacy?: string): ManagedPost => {
@@ -266,23 +340,23 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
     };
   };
 
-  const save = async (at: number, plats: string[], types?: PlatformTypes, sourceUrl?: string, threadsTopic?: string, ttPrivacy?: string, ytPrivacy?: string) => {
-    if (!sheetRef.current) return;
+  const save = async (at: number, plats: string[], types?: PlatformTypes, sourceUrl?: string, threadsTopic?: string, ttPrivacy?: string, ytPrivacy?: string): Promise<boolean> => {
+    if (!sheetRef.current && !inlineRef.current) return false;
     if (queueTooSoon(at)) {
       showInfo('Too soon', `Earliest is ${minQueueLabel()} — scheduled posts need at least 5 minutes lead time.`);
-      return;
+      return false;
     }
     if (isEmptyPost({ body: tBody, attachments: tMedia })) {
       showInfo('Nothing to post', 'Write something or attach a photo/video first.');
-      return;
+      return false;
     }
     const resolved = resolvePlats(plats, await loadMetaState());
     const blocked = mediaBlock(resolved);
     if (blocked) {
       showInfo('That channel needs media', blocked.message, blocked.channels);
-      return;
+      return false;
     }
-    const keepApproval = sheetRef.current.post?.status === 'approval';
+    const keepApproval = sheetRef.current?.post?.status === 'approval';
     const isMember = canSubmit(await loadActor());
     const status: PostStatus = keepApproval || isMember ? 'approval' : 'queued';
     const rec = buildRec(at, plats, status, types, sourceUrl, threadsTopic, ttPrivacy, ytPrivacy);
@@ -301,16 +375,20 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
     } else if (!reminded) {
       showInfo('Queued without reminder', NO_NOTIF_MSG);
     }
+    clearDraft();
+    return true;
   };
 
-  const saveDraft = async (types?: PlatformTypes, sourceUrl?: string, threadsTopic?: string, ttPrivacy?: string, ytPrivacy?: string) => {
-    if (!sheetRef.current) return;
-    const plats = sheetRef.current.post?.platforms?.length ? sheetRef.current.post.platforms : ['any'];
+  const saveDraft = async (types?: PlatformTypes, sourceUrl?: string, threadsTopic?: string, ttPrivacy?: string, ytPrivacy?: string): Promise<boolean> => {
+    if (!sheetRef.current && !inlineRef.current) return false;
+    const plats = sheetRef.current?.post?.platforms?.length ? sheetRef.current.post.platforms : ['any'];
     const rec = buildRec(undefined, plats, 'draft', types, sourceUrl, threadsTopic, ttPrivacy, ytPrivacy);
     await saveManagedPost(rec);
     await cancelPostReminder(rec.id);
     setSheet(null);
     bump();
+    clearDraft();
+    return true;
   };
 
   /** Status transitions driven from the Post pipeline (by id, not the open sheet). */
@@ -336,6 +414,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
     await cancelPostReminder(cur.id);
     await deleteManagedPost(cur.id);
     setSheet(null);
+    clearDraft();
     bump();
   };
 
@@ -345,6 +424,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
     await cancelPostReminder(cur.id);
     await saveManagedPost({ ...cur, status: 'sent', sentAt: Date.now() });
     setSheet(null);
+    clearDraft();
     bump();
   };
 
@@ -366,24 +446,24 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
   };
 
   /** "Post now": publish immediately — no queueing, no scheduledAt. */
-  const postNow = async (plats: string[], types?: PlatformTypes, sourceUrl?: string, threadsTopic?: string, ttPrivacy?: string, ytPrivacy?: string) => {
-    if (!sheetRef.current) return;
+  const postNow = async (plats: string[], types?: PlatformTypes, sourceUrl?: string, threadsTopic?: string, ttPrivacy?: string, ytPrivacy?: string): Promise<boolean> => {
+    if (!sheetRef.current && !inlineRef.current) return false;
     // A stuck or background publish used to swallow taps silently here —
     // say so, so a held lock is diagnosable instead of invisible.
     if (publishing || publishingRef.current) {
       showInfo('Already publishing', 'Wait for the current publish to finish before posting again.');
-      return;
+      return false;
     }
     if (isEmptyPost({ body: tBody, attachments: tMedia })) {
       showInfo('Nothing to post', 'Write something or attach a photo/video first.');
-      return;
+      return false;
     }
     try {
       const resolved = resolvePlats(plats, await loadMetaState());
       const blocked = mediaBlock(resolved);
       if (blocked) {
         showInfo('That channel needs media', blocked.message, blocked.channels);
-        return;
+        return false;
       }
       // Members can't publish directly — their "post now" becomes a pending approval.
       if (canSubmit(await loadActor())) {
@@ -393,23 +473,29 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
         setSheet(null);
         bump();
         showInfo('Sent for approval', 'An owner or admin will review it before it goes out.');
-        return;
+        clearDraft();
+        return true;
       }
       // no scheduledAt → the auto-publish sweep ignores it, so it can't double-post
       const rec = buildRec(undefined, plats, 'queued', types, sourceUrl, threadsTopic, ttPrivacy, ytPrivacy);
       const r = await runPublish(rec);
-      if (!r) return;
+      if (!r) return false;
       const ok = r.done.length > 0 && r.errs.length === 0 && r.manual.length === 0;
       if (!ok) {
-        // failed — keep it as a draft so nothing is lost; user can retry from Drafts
+        // failed — keep it as a draft so nothing is lost; user can retry from Drafts.
+        // Sheetless (inline page): stay put with content intact. Sheet open:
+        // reopen onto the draft so the failure stays visible with its rows.
         const draft = { ...rec, status: 'draft' as PostStatus, scheduledAt: undefined };
         await saveManagedPost(draft);
-        setSheet({ post: draft });
+        if (sheet !== null) setSheet({ post: draft });
         bump();
       }
       await finishPublish(rec, r);
+      clearDraft();
+      return true;
     } catch (e: any) {
       setNotice({ mode: 'result', title: 'Publish failed', rows: [{ id: 'post', label: 'Post', state: 'fail' as const, note: e?.message ?? 'Try again.' }] });
+      return false;
     }
   };
 
@@ -937,7 +1023,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <Ctx.Provider value={{ refreshedAt, openComposer, openPostById, publishPostById, submitForApproval, approvePost, rejectPost }}>
+    <Ctx.Provider value={{ refreshedAt, openComposer, openPostById, publishPostById, submitForApproval, approvePost, rejectPost, draftBody: tBody, setDraftBody: setTBody, draftThread: tThread, setDraftThread: onThread, draftMedia: tMedia, pickDraftMedia: pickMedia, removeDraftMedia: removeMedia, moveDraftMedia: moveMedia, saveDraftPost: save, stashDraftPost: saveDraft, postDraftNow: postNow, importDraft, clearDraft, openAi, beginInline, endInline }}>
       {children}
       <ScheduleSheet
         visible={sheet !== null}
@@ -953,13 +1039,14 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
         initialTtPrivacy={sheet?.post?.ttPrivacy}
         initialYtPrivacy={sheet?.post?.ytPrivacy}
         composer={{ title: '', caption: tBody, onCaption: setTBody, thread: tThread, onThread }}
-        media={{ items: tMedia, onPick: pickMedia, onRemove: removeMedia }}
+        media={{ items: tMedia, onPick: pickMedia, onRemove: removeMedia, onMove: moveMedia }}
         onSave={save}
         draftLabel="Save as draft"
         onDraft={saveDraft}
         onPostNow={postNow}
         onDelete={sheet?.post ? remove : undefined}
         onClose={() => { setSheet(null); setNotice(null); }}
+        onAi={openAi}
         publishing={publishing}
         progress={notice?.rows}
         statusTitle={notice?.title}
@@ -989,6 +1076,12 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
         rows={(privacyAsk?.options ?? []).map((o) => ({ id: o.value, label: o.label, state: 'pending' as const }))}
         onPick={(v) => privacyAsk?.resolve(v)}
         onCancel={() => privacyCancelRef.current?.()}
+      />
+      <AICopySheet
+        visible={aiOpen}
+        initialPrompt={tBody}
+        onClose={() => setAiOpen(false)}
+        onApply={applyAiResult}
       />
     </Ctx.Provider>
   );

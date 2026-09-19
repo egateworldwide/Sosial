@@ -5,6 +5,7 @@ import { useTheme, Palette, R, T } from '../theme';
 import { AvatarButton } from '../components/ProfileMenu';
 import { SocialGlyph } from '../components/ui';
 import ChannelDrawer from '../components/ChannelDrawer';
+import CommunityScreen from './CommunityScreen';
 import { AreaChart, BarsChart } from '../components/charts';
 import { SOCIAL_META } from '../constants';
 import { loadMetaState, MetaState } from '../utils/metaStore';
@@ -153,6 +154,7 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
   const [channel, setChannel] = useState('all');
   const [drawer, setDrawer] = useState(false);
   const [range, setRange] = useState<RangeKey>('last30');
+  const [view, setView] = useState<'analytics' | 'community'>('analytics');
 
   const load = async (m?: MetaState, r?: RangeKey) => {
     const mm = m ?? (await loadMetaState());
@@ -209,7 +211,6 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
     .sort((a, b) => b.score - a.score)
     .slice(0, 8);
   const maxScore = Math.max(1, ...bars.map((b) => b.score));
-  const comments = (data?.comments ?? []).filter((c) => (channel === 'all' ? true : c.channel === channel));
   const notes = chans.map((c) => c.note).filter(Boolean) as string[];
   const anyConnected = drawerChannels.some((c) => c.connected);
 
@@ -240,10 +241,26 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} />}
       >
         <View style={s.masthead}>
-          <Text style={[T.h1, { color: C.ink, fontSize: 30, lineHeight: 36 }]}>Analytics</Text>
+          <View>
+            <Text style={[T.h1, { color: C.ink, fontSize: 30, lineHeight: 36 }]}>{view === 'community' ? 'Community' : 'Analytics'}</Text>
+            {view === 'community' ? <Text style={s.heroSub}>Replies, comments and mentions.</Text> : null}
+          </View>
           <AvatarButton email={email} team={team} onPress={onProfile} />
         </View>
 
+        <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 24, marginTop: 14 }}>
+          {(['analytics', 'community'] as const).map((v) => {
+            const on = view === v;
+            return (
+              <TouchableOpacity key={v} onPress={() => setView(v)} style={[s.range, on && { backgroundColor: C.ink, borderColor: C.ink }]} activeOpacity={0.75}>
+                <Text style={[s.rangeT, on && { color: C.onInk }]}>{v === 'analytics' ? 'Analytics' : 'Community'}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {view === 'analytics' ? (
+        <>
         <View style={{ paddingHorizontal: 24, marginTop: 14 }}>
           <TouchableOpacity onPress={() => setDrawer(true)} style={s.chanBtn} activeOpacity={0.75}>
             {channel === 'all' ? (
@@ -498,29 +515,6 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
               )}
             </View>
 
-            {/* comments & mentions */}
-            <View style={{ paddingHorizontal: 24, marginTop: 30 }}>
-              <Text style={s.secT}>Comments & mentions</Text>
-              {comments.length === 0 ? (
-                <Text style={s.hint}>No comments found on recent posts.</Text>
-              ) : (
-                <View style={{ marginTop: 4 }}>
-                  {comments.slice(0, 30).map((c, i) => (
-                    <View key={`${c.channel}-${i}`} style={s.feedRow}>
-                      <View style={[s.dot, { backgroundColor: SOCIAL_META[c.channel]?.bg ?? C.ink, marginTop: 5 }]} />
-                      <View style={{ flex: 1, gap: 2 }}>
-                        <Text style={s.commentA} numberOfLines={1}>
-                          {c.author} <Text style={s.commentOn}>on {c.postTitle}</Text>
-                        </Text>
-                        <Text style={s.commentX}>{c.text}</Text>
-                        <Text style={s.commentT}>{c.ts ? timeAgo(c.ts) : ''}</Text>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </View>
-
             {notes.length > 0 ? (
               <View style={{ paddingHorizontal: 24, marginTop: 16 }}>
                 {notes.map((n, i) => (
@@ -529,6 +523,12 @@ export default function AnalyticsScreen({ email, team, onProfile, onConnect }: {
               </View>
             ) : null}
           </>
+        )}
+        </>
+        ) : (
+          <View style={{ marginTop: 14 }}>
+            <CommunityScreen bare email={email} team={team} onProfile={onProfile} onConnect={onConnect} />
+          </View>
         )}
       </ScrollView>
 
@@ -590,11 +590,6 @@ const makeS = (C: Palette) => StyleSheet.create({
   barV: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: C.ink, minWidth: 40, textAlign: 'right' },
   metaLine: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11.5, color: C.faint, marginTop: 1 },
   dayLab: { flex: 1, textAlign: 'center', fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11, color: C.faint },
-  feedRow: { flexDirection: 'row', gap: 10, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.lineSoft },
-  commentA: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.ink },
-  commentOn: { fontFamily: 'PlusJakartaSans_400Regular', color: C.muted },
-  commentX: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13.5, lineHeight: 19, color: C.soft },
-  commentT: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11.5, color: C.faint },
   note: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.faint, marginTop: 4 },
   empty: { backgroundColor: C.card, borderRadius: R.lg, padding: 28, alignItems: 'center' },
   emptyT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 16, color: C.ink },

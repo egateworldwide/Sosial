@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Modal, TextInput, Image } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Modal, TextInput, Image, Dimensions } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { useTheme, Palette, R, T } from '../theme';
@@ -8,17 +8,20 @@ import ConnectButton from '../components/ConnectButton';
 import { Txt } from '../components/ui';
 import AICopySheet from '../components/AICopySheet';
 import { usePost, defaultPage } from '../store/PostContext';
-import { QuickPost } from '../types';
+import { CardStyle, QuickPost } from '../types';
 import { uid } from '../constants';
 import { saveProject, loadProjects, deleteProject, renameProject } from './HomeScreen';
-import { loadIdeas, saveIdea, deleteIdea, Idea } from '../utils/ideas';
+import { loadIdeas, saveIdea, deleteIdea, Idea, ThreadSeg } from '../utils/ideas';
 import PostScreen from './PostScreen';
+import { ScheduleForm } from '../components/ScheduleSheet';
 import { useComposer } from '../store/ComposerContext';
 import { MediaAttachment, ManagedPost } from '../utils/managed';
 import { joinThread } from '../utils/thread';
 import { SocialResult } from '../utils/ai/social';
-import { deleteProjectPreset, instantiatePreset, loadProjectPresets, renameProjectPreset,
-  saveProjectPreset, ProjectPreset } from '../utils/presets';
+import { deleteProjectPreset, instantiatePreset, renameProjectPreset,
+  saveProjectPreset, seedStarterTemplates, ProjectPreset } from '../utils/presets';
+import PostCanvas, { CANVAS_W } from '../components/PostCanvas';
+import { POST_SIZES } from '../constants';
 
 const THREAD_LIMIT = 280;
 
@@ -47,8 +50,10 @@ function ideaMedia(idea: Idea): MediaAttachment[] {
 /** Build a fresh (unsaved) post to prefill the composer, so any Create surface
  *  can hand off to the proven scheduling sheet instead of duplicating it. */
 function draftPost(opts: { body?: string; media?: MediaAttachment | null; thread?: string[] | null }): ManagedPost {
-  const segs = (opts.thread ?? []).map((s) => s.trim()).filter(Boolean);
-  const thread = segs.length > 1 ? segs : undefined;
+  const raw = opts.thread ?? [];
+  const segs = raw.map((s) => s.trim()).filter(Boolean);
+  // A 2+ entry starter (even blank) opens the composer in thread mode.
+  const thread = segs.length > 1 ? segs : (raw.length > 1 ? raw : undefined);
   return {
     id: '',
     title: '',
@@ -75,17 +80,65 @@ function MediaThumb({ media, style }: { media: MediaAttachment; style?: any }) {
   return <Image source={{ uri: media.uri }} style={[s.mediaThumb, style]} />;
 }
 
-function ThreadEditor({ segments, onChange, placeholder = 'Hook…' }: {
-  segments: string[];
-  onChange: (s: string[]) => void;
+/** Masonry column width the miniature canvases lay out against. */
+const TPL_COL_W = (Dimensions.get('window').width - 48 - 12) / 2;
+
+/**
+ * The saved design itself, truly previewed: a miniature of the real canvas
+ * (backdrop, title, blocks, chrome — exactly what export produces). Name +
+ * meta + dots below like a project library, no outer card or border.
+ */
+function TplPost({ post, kind, builtIn, onOpen, onMenu }: {
+  post: QuickPost;
+  kind: 'Template' | 'Design';
+  builtIn?: boolean;
+  onOpen: () => void;
+  onMenu: () => void;
+}) {
+  const { C } = useTheme();
+  const s = makeS(C);
+  const page = post.pages[0];
+  if (!page) return null;
+  const size = POST_SIZES.find((x) => x.id === post.sizeId);
+  return (
+    <View style={{ width: TPL_COL_W }}>
+      <TouchableOpacity onPress={onOpen} activeOpacity={0.85}>
+        <PostCanvas page={page} ratio={size?.ratio ?? 1} scale={TPL_COL_W / CANVAS_W} watermark={false} />
+      </TouchableOpacity>
+      <View style={s.tplMeta}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.tplName} numberOfLines={1}>{post.name}</Text>
+          <Text style={s.tplSub} numberOfLines={1}>{kind} · {post.pages.length} page{post.pages.length > 1 ? 's' : ''}</Text>
+        </View>
+        <TouchableOpacity onPress={onMenu} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} activeOpacity={0.7}>
+          <Ionicons name="ellipsis-horizontal" size={18} color={C.ink} />
+        </TouchableOpacity>
+      </View>
+      {builtIn ? (
+        <View style={s.tplStarter}><Text style={s.tplStarterT}>STARTER</Text></View>
+      ) : null}
+    </View>
+  );
+}
+
+function ThreadEditor({ segments, onChange, pickMedia, placeholder = 'Hook…' }: {
+  segments: ThreadSeg[];
+  onChange: (s: ThreadSeg[]) => void;
+  pickMedia: () => Promise<MediaAttachment | null>;
   placeholder?: string;
 }) {
   const { C } = useTheme();
   const s = makeS(C);
-  const segs = segments.length ? segments : [''];
-  const setAt = (i: number, v: string) => onChange(segs.map((x, j) => (j === i ? v : x)));
-  const add = () => { if (segs.length < 12) onChange([...segs, '']); };
+  const blank: ThreadSeg = { text: '', media: null };
+  const segs = segments.length ? segments : [{ ...blank }];
+  const setAt = (i: number, v: string) => onChange(segs.map((x, j) => (j === i ? { ...x, text: v } : x)));
+  const add = () => { if (segs.length < 12) onChange([...segs, { ...blank }]); };
   const remove = (i: number) => { if (segs.length > 1) onChange(segs.filter((_, j) => j !== i)); };
+  const attach = async (i: number) => {
+    const m = await pickMedia();
+    if (m) onChange(segs.map((x, j) => (j === i ? { ...x, media: m } : x)));
+  };
+  const detach = (i: number) => onChange(segs.map((x, j) => (j === i ? { ...x, media: null } : x)));
   return (
     <View style={{ gap: 8 }}>
       {segs.map((seg, i) => (
@@ -93,16 +146,36 @@ function ThreadEditor({ segments, onChange, placeholder = 'Hook…' }: {
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={s.segLabel}>Post {i + 1}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Text style={[s.segCount, seg.length > THREAD_LIMIT && { color: C.redText }]}>{seg.length}/{THREAD_LIMIT}</Text>
+              {i === 0 ? (
+                seg.media ? (
+                  <View>
+                    {seg.media.kind === 'video' ? (
+                      <View style={[s.segThumb, { backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' }]}>
+                        <Ionicons name="play" size={12} color="#fff" />
+                      </View>
+                    ) : (
+                      <Image source={{ uri: seg.media.uri }} style={s.segThumb} />
+                    )}
+                    <TouchableOpacity onPress={() => detach(i)} style={s.segThumbX} activeOpacity={0.7} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                      <Ionicons name="close" size={9} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity onPress={() => attach(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="image" size={14} color="rgba(255,255,255,0.45)" />
+                  </TouchableOpacity>
+                )
+              ) : null}
+              <Text style={[s.segCount, seg.text.length > THREAD_LIMIT && { color: '#F2A3A3' }]}>{seg.text.length}/{THREAD_LIMIT}</Text>
               {segs.length > 1 ? (
                 <TouchableOpacity onPress={() => remove(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Ionicons name="close" size={15} color={C.faint} />
+                  <Ionicons name="close" size={15} color="rgba(255,255,255,0.55)" />
                 </TouchableOpacity>
               ) : null}
             </View>
           </View>
           <Txt
-            value={seg}
+            value={seg.text}
             onChangeText={(v) => setAt(i, v)}
             placeholder={i === 0 ? placeholder : 'Next part…'}
             multiline
@@ -111,10 +184,11 @@ function ThreadEditor({ segments, onChange, placeholder = 'Hook…' }: {
         </View>
       ))}
       {segs.length < 12 ? (
-        <TouchableOpacity onPress={add} style={s.segAdd} activeOpacity={0.7}>
-          <Ionicons name="add" size={15} color={C.accentInk} />
-          <Text style={s.segAddT}>Add post</Text>
-        </TouchableOpacity>
+        <View style={{ alignItems: 'center', marginTop: 2 }}>
+          <TouchableOpacity onPress={add} style={s.segPlus} activeOpacity={0.7}>
+            <Ionicons name="add" size={17} color={C.accentInk} />
+          </TouchableOpacity>
+        </View>
       ) : null}
     </View>
   );
@@ -143,8 +217,10 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
 }) {
   const { C } = useTheme();
   const s = makeS(C);
-  const { openComposer } = useComposer();
-  const [tab, setTab] = useState<'ideas' | 'templates' | 'post'>('ideas');
+  const { openComposer, draftBody, setDraftBody, draftThread, setDraftThread, draftMedia, pickDraftMedia, removeDraftMedia, moveDraftMedia, saveDraftPost, stashDraftPost, postDraftNow, clearDraft, openAi, beginInline, endInline } = useComposer();
+  // Fresh inline composer mount (remount resets its channel/schedule picks).
+  const [formKey, setFormKey] = useState(0);
+  const [tab, setTab] = useState<'ideas' | 'templates' | 'post' | 'publish'>('ideas');
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [projects, setProjects] = useState<QuickPost[]>([]);
   const [presets, setPresets] = useState<ProjectPreset[]>([]);
@@ -154,28 +230,30 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
   const [cTitle, setCTitle] = useState('');
   const [cBody, setCBody] = useState('');
   const [cMedia, setCMedia] = useState<MediaAttachment | null>(null);
-  const [cThread, setCThread] = useState<string[] | null>(null);
-  // new-post card
-  const [npBody, setNpBody] = useState('');
-  const [npMedia, setNpMedia] = useState<MediaAttachment | null>(null);
-  const [npThread, setNpThread] = useState<string[] | null>(null);
+  const [cThread, setCThread] = useState<ThreadSeg[] | null>(null);
   // idea editor
   const [editing, setEditing] = useState<Idea | null>(null);
   const [eTitle, setETitle] = useState('');
   const [eBody, setEBody] = useState('');
   const [eMedia, setEMedia] = useState<MediaAttachment | null>(null);
-  const [eThread, setEThread] = useState<string[] | null>(null);
-  // AI sheet routing
-  const [ai, setAi] = useState<{ target: 'idea' | 'editor' | 'newpost'; prompt: string } | null>(null);
+  const [eThread, setEThread] = useState<ThreadSeg[] | null>(null);
+  // AI sheet routing (composer AI lives in context; ideas + editor use this one)
+  const [ai, setAi] = useState<{ target: 'idea' | 'editor'; prompt: string } | null>(null);
   // design/template menus
   const [menu, setMenu] = useState<{ kind: 'project'; item: QuickPost } | { kind: 'preset'; tpl: ProjectPreset } | null>(null);
+  /** Two-column masonry split (even/odd) for the template library grid. */
+  const masonry = <T,>(items: T[]): [T[], T[]] => {
+    const cols: [T[], T[]] = [[], []];
+    items.forEach((it, i) => cols[i % 2].push(it));
+    return cols;
+  };
   const [renaming, setRenaming] = useState<{ kind: 'project' | 'preset'; id: string } | null>(null);
   const [renameValue, setRenameValue] = useState('');
 
   const reload = () => {
     loadIdeas().then(setIdeas);
     loadProjects().then(setProjects);
-    loadProjectPresets().then(setPresets);
+    seedStarterTemplates().then(setPresets);
   };
 
   useEffect(() => {
@@ -184,6 +262,19 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
       onConsumePostSignal();
     }
   }, [postSignal]);
+
+  // Sheet-gated saves run sheetless while the inline composer is mounted.
+  useEffect(() => {
+    if (tab !== 'post') return;
+    beginInline();
+    return () => endInline();
+  }, [tab, beginInline, endInline]);
+
+  /** Stored successfully — wipe the page clean for the next post. */
+  const resetInline = () => {
+    clearDraft();
+    setFormKey((k) => k + 1);
+  };
 
   useEffect(() => {
     reload();
@@ -198,33 +289,39 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
     const tags = r.hashtags.length ? '\n\n' + r.hashtags.join(' ') : '';
     const asThread = r.thread.length > 1;
     const head = (asThread ? r.thread[0] : r.caption).split('\n')[0].slice(0, 70);
+    const toSegs = (t: string[]): ThreadSeg[] => t.map((text) => ({ text, media: null }));
     if (target === 'idea') {
-      if (asThread) { setCThread(r.thread); setCBody(joinThread(r.thread)); }
+      if (asThread) { setCThread(toSegs(r.thread)); setCBody(joinThread(r.thread)); }
       else { setCThread(null); setCBody(r.caption + tags); }
       if (!cTitle.trim()) setCTitle(head);
     } else if (target === 'editor') {
-      if (asThread) { setEThread(r.thread); setEBody(joinThread(r.thread)); }
+      if (asThread) { setEThread(toSegs(r.thread)); setEBody(joinThread(r.thread)); }
       else { setEThread(null); setEBody(r.caption + tags); }
       if (!eTitle.trim()) setETitle(head);
-    } else if (target === 'newpost') {
-      if (asThread) { setNpThread(r.thread); setNpBody(joinThread(r.thread)); }
-      else { setNpThread(null); setNpBody(r.caption + tags); }
     }
     setAi(null);
   };
 
   /* ---------------- ideas ---------------- */
 
+  /** Live segments (text or media); the head's media doubles as the idea cover. */
+  const liveSegs = (t: ThreadSeg[] | null): ThreadSeg[] =>
+    (t ?? []).filter((s) => s.text.trim() || s.media);
+  const headMediaOf = (segs: ThreadSeg[], fallback: MediaAttachment | null): MediaAttachment | null =>
+    segs[0]?.media ?? fallback;
+
   const saveNewIdea = async () => {
-    const segs = (cThread ?? []).map((x) => x.trim()).filter(Boolean);
-    const thread = segs.length > 1 ? segs : undefined;
-    const body = thread ? joinThread(thread) : cBody;
-    if (!cTitle.trim() && !body.trim() && !cMedia) return;
+    const live = liveSegs(cThread);
+    const thread = live.length > 1 ? live : undefined;
+    const texts = live.map((s) => s.text.trim()).filter(Boolean);
+    const body = thread ? joinThread(texts) : cBody;
+    if (!cTitle.trim() && !body.trim() && !cMedia && !live.some((s) => s.media)) return;
+    const head = headMediaOf(live, cMedia);
     await saveIdea({
       title: cTitle.trim() || (body.split('\n')[0] || '').slice(0, 60) || 'Untitled idea',
       body,
-      imageUri: cMedia?.kind === 'image' ? cMedia.uri : undefined,
-      videoUri: cMedia?.kind === 'video' ? cMedia.uri : undefined,
+      imageUri: head?.kind === 'image' ? head.uri : undefined,
+      videoUri: head?.kind === 'video' ? head.uri : undefined,
       thread,
     });
     setCTitle('');
@@ -238,20 +335,23 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
     setEditing(idea);
     setETitle(idea.title);
     setEBody(idea.body);
-    setEMedia(idea.imageUri ? { uri: idea.imageUri, kind: 'image' } : idea.videoUri ? { uri: idea.videoUri, kind: 'video' } : null);
-    setEThread(idea.thread && idea.thread.length > 1 ? [...idea.thread] : null);
+    const isThread = (idea.thread?.length ?? 0) > 1;
+    setEMedia(!isThread && idea.imageUri ? { uri: idea.imageUri, kind: 'image' } : !isThread && idea.videoUri ? { uri: idea.videoUri, kind: 'video' } : null);
+    setEThread(isThread ? idea.thread!.map((s) => ({ ...s })) : null);
   };
 
   const saveEditor = async () => {
     if (!editing) return;
-    const segs = (eThread ?? []).map((x) => x.trim()).filter(Boolean);
-    const thread = segs.length > 1 ? segs : undefined;
+    const live = liveSegs(eThread);
+    const thread = live.length > 1 ? live : undefined;
+    const texts = live.map((s) => s.text.trim()).filter(Boolean);
+    const head = headMediaOf(live, eMedia);
     await saveIdea({
       ...editing,
       title: eTitle.trim() || 'Untitled idea',
-      body: thread ? joinThread(thread) : eBody,
-      imageUri: eMedia?.kind === 'image' ? eMedia.uri : undefined,
-      videoUri: eMedia?.kind === 'video' ? eMedia.uri : undefined,
+      body: thread ? joinThread(texts) : eBody,
+      imageUri: head?.kind === 'image' ? head.uri : undefined,
+      videoUri: head?.kind === 'video' ? head.uri : undefined,
       thread,
     });
     setEditing(null);
@@ -266,8 +366,24 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
   };
 
   const postFromIdea = (idea: Idea) => {
-    const media = ideaMedia(idea);
-    openComposer(draftPost({ body: idea.body, media: media[0] ?? null, thread: idea.thread ?? null }));
+    const segs = idea.thread ?? [];
+    const texts = segs.map((s) => s.text);
+    const head = segs[0]?.media ?? ideaMedia(idea)[0] ?? null;
+    const go = () => openComposer(draftPost({
+      body: idea.body,
+      media: head,
+      thread: texts.length > 1 ? texts : null,
+    }));
+    // Replies publish text-only everywhere — say so instead of dropping
+    // their photos silently.
+    if (segs.length > 1 && segs.slice(1).some((s) => s.media)) {
+      Alert.alert('Heads up', 'Only Post 1’s photo/video can publish in a thread — reply photos stay on the idea.', [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Post anyway', onPress: go },
+      ]);
+      return;
+    }
+    go();
   };
 
   /** Idea → design studio: reopen the linked project, or spin up a fresh one. */
@@ -294,16 +410,7 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
     onOpenProject(proj);
   };
 
-  /* ---------------- new-post card ---------------- */
-
-  const continueNewPost = () => {
-    const media = npMedia;
-    if (!npBody.trim() && !media && !(npThread ?? []).some((x) => x.trim())) {
-      Alert.alert('Nothing to post', 'Write something or attach a photo/video first.');
-      return;
-    }
-    openComposer(draftPost({ body: npBody, media, thread: npThread }));
-  };
+  /* ---------------- post tab entries ---------------- */
 
   /* ---- templates + designs (from the old library) ---- */
 
@@ -372,7 +479,7 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bone }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* masthead */}
         <View style={s.masthead}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -390,17 +497,20 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
           <Text style={s.sub}>Catch the idea, let AI shape it, then post it.</Text>
         </View>
 
-        {/* section tabs */}
-        <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 24, marginTop: 16 }}>
-          {(['ideas', 'templates', 'post'] as const).map((t) => {
+        {/* section tabs — scrolls instead of overflowing on narrow screens */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 20, marginTop: 16 }}>
+          {(['ideas', 'templates', 'post', 'publish'] as const).map((t) => {
             const on = tab === t;
             return (
-              <TouchableOpacity key={t} onPress={() => setTab(t)} style={[s.tab, on && { backgroundColor: C.ink, borderColor: C.ink }]} activeOpacity={0.75}>
-                <Text style={[s.tabT, on && { color: C.onInk }]}>{t === 'ideas' ? 'Ideas' : t === 'templates' ? 'Templates' : 'Post'}</Text>
+              <TouchableOpacity
+                key={t}
+                onPress={() => setTab(t)}
+                style={[s.tab, on && { backgroundColor: C.ink, borderColor: C.ink }]} activeOpacity={0.75}>
+                <Text style={[s.tabT, on && { color: C.onInk }]}>{t === 'ideas' ? 'Ideas' : t === 'templates' ? 'Templates' : t === 'post' ? 'Post' : 'Publish'}</Text>
               </TouchableOpacity>
             );
           })}
-        </View>
+        </ScrollView>
 
         {tab === 'ideas' ? (
           <View style={{ paddingHorizontal: 24, marginTop: 14 }}>
@@ -408,34 +518,35 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
             <View style={s.composer}>
               <Txt value={cTitle} onChangeText={setCTitle} placeholder="Idea title…" style={s.cTitle} />
               {cThread ? (
-                <ThreadEditor segments={cThread} onChange={setCThread} />
+                <ThreadEditor segments={cThread} onChange={setCThread} pickMedia={pickMedia} />
               ) : (
                 <Txt value={cBody} onChangeText={setCBody} placeholder="Describe the idea…" multiline style={{ minHeight: 56, textAlignVertical: 'top' }} />
               )}
-              {cMedia ? <MediaThumb media={cMedia} style={s.cImg} /> : null}
+              {!cThread && cMedia ? <MediaThumb media={cMedia} style={s.cImg} /> : null}
               <View style={s.toolRow}>
-                <TouchableOpacity onPress={async () => setCMedia(await pickMedia())} style={s.tool} activeOpacity={0.7}>
-                  <Ionicons name={cMedia?.kind === 'video' ? 'videocam-outline' : 'image-outline'} size={16} color={C.accentInk} />
-                  <Text style={s.toolT}>{cMedia ? 'Change' : 'Photo'}</Text>
-                </TouchableOpacity>
+                {!cThread ? (
+                  <TouchableOpacity onPress={async () => setCMedia(await pickMedia())} style={s.tool} activeOpacity={0.7}>
+                    <Ionicons name={cMedia?.kind === 'video' ? 'videocam' : 'image'} size={16} color={C.accentInk} />
+                    <Text style={s.toolT}>{cMedia ? 'Change' : 'Photo/video'}</Text>
+                  </TouchableOpacity>
+                ) : null}
                 <TouchableOpacity onPress={() => setAi({ target: 'idea', prompt: `${cTitle} ${cBody}`.trim() })} style={s.tool} activeOpacity={0.7}>
                   <Ionicons name="sparkles" size={15} color={C.accentInk} />
                   <Text style={s.toolT}>AI</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setCThread(cThread ? null : ['', ''])} style={[s.tool, cThread && s.toolOn]} activeOpacity={0.7}>
-                  <Ionicons name="chatbubbles-outline" size={15} color={cThread ? C.onInk : C.accentInk} />
+                <TouchableOpacity onPress={() => setCThread(cThread ? null : [{ text: '', media: null }, { text: '', media: null }])} style={[s.tool, cThread && s.toolOn]} activeOpacity={0.7}>
+                  <Ionicons name="git-branch" size={15} color={cThread ? C.onInk : C.accentInk} />
                   <Text style={[s.toolT, cThread && { color: C.onInk }]}>Thread</Text>
                 </TouchableOpacity>
-                {cMedia ? (
+                {!cThread && cMedia ? (
                   <TouchableOpacity onPress={() => setCMedia(null)} style={s.tool} activeOpacity={0.7}>
                     <Text style={[s.toolT, { color: C.redText }]}>Remove</Text>
                   </TouchableOpacity>
                 ) : null}
-                <View style={{ flex: 1 }} />
-                <TouchableOpacity onPress={saveNewIdea} style={s.cPost} activeOpacity={0.8}>
-                  <Text style={s.cPostT}>Save idea</Text>
-                </TouchableOpacity>
               </View>
+              <TouchableOpacity onPress={saveNewIdea} style={[s.cPost, s.cPostFull]} activeOpacity={0.8}>
+                <Text style={s.cPostT}>Save idea</Text>
+              </TouchableOpacity>
             </View>
 
             {/* feed */}
@@ -458,28 +569,28 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
                         </Text>
                       </View>
                       {isThreadIdea ? (
-                        <View style={s.badge}><Ionicons name="chatbubbles" size={11} color={C.accentInk} /></View>
+                        <View style={s.badge}><Ionicons name="git-branch" size={11} color={C.accentInk} /></View>
                       ) : null}
                     </View>
                     {idea.body && !isThreadIdea ? <Text style={s.cardB} numberOfLines={4}>{idea.body}</Text> : null}
-                    {isThreadIdea ? <Text style={s.cardB} numberOfLines={3}>{idea.thread![0]}</Text> : null}
+                    {isThreadIdea ? <Text style={s.cardB} numberOfLines={3}>{idea.thread![0].text}</Text> : null}
                     {media[0] ? <MediaThumb media={media[0]} style={s.cardImg} /> : null}
                     <View style={s.cardActions}>
                       <TouchableOpacity onPress={() => designIdea(idea)} style={s.designBtn} activeOpacity={0.8}>
-                        <Ionicons name="color-palette-outline" size={15} color={C.onInk} />
+                        <Ionicons name="color-palette" size={15} color={C.onInk} />
                         <Text style={s.designBtnT}>Design</Text>
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => postFromIdea(idea)} style={s.postBtn} activeOpacity={0.8}>
-                        <Ionicons name={isThreadIdea ? 'chatbubbles-outline' : 'send-outline'} size={15} color={C.ink} />
+                        <Ionicons name={isThreadIdea ? 'git-branch' : 'send'} size={15} color={C.ink} />
                         <Text style={s.postBtnT}>{isThreadIdea ? 'Thread' : 'Post'}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => setAi({ target: 'editor', prompt: idea.body || idea.title })} style={s.postBtn} activeOpacity={0.8}>
-                        <Ionicons name="sparkles-outline" size={15} color={C.ink} />
+                        <Ionicons name="sparkles" size={15} color={C.ink} />
                         <Text style={s.postBtnT}>AI</Text>
                       </TouchableOpacity>
                       <View style={{ flex: 1 }} />
                       <TouchableOpacity onPress={() => removeIdea(idea.id)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                        <Ionicons name="trash-outline" size={18} color={C.faint} />
+                        <Ionicons name="trash" size={18} color={C.faint} />
                       </TouchableOpacity>
                     </View>
                   </TouchableOpacity>
@@ -502,20 +613,19 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
             {presets.length === 0 ? (
               <Text style={s.hint}>No templates yet — tap ••• on any design and choose “Save as template”.</Text>
             ) : (
-              <View style={{ marginTop: 6 }}>
-                {presets.map((tpl, idx) => (
-                  <View key={tpl.id} style={s.row}>
-                    <TouchableOpacity onPress={() => handleUsePreset(tpl)} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 }} activeOpacity={0.7}>
-                      <Text style={s.idx}>{String(idx + 1).padStart(2, '0')}</Text>
-                      <View style={{ flex: 1, gap: 2 }}>
-                        <Text style={s.rowT} numberOfLines={1}>{tpl.name}</Text>
-                        <Text style={s.rowS}>{tpl.post.sizeId} · {tpl.post.pages.length} page{tpl.post.pages.length > 1 ? 's' : ''}</Text>
-                      </View>
-                      <View style={s.useBtn}><Text style={s.useBtnT}>Use</Text></View>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setMenu({ kind: 'preset', tpl })} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                      <Ionicons name="ellipsis-horizontal" size={20} color={C.muted} />
-                    </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
+                {masonry(presets).map((col, ci) => (
+                  <View key={ci} style={{ flex: 1, gap: 20 }}>
+                    {col.map((tpl) => (
+                      <TplPost
+                        key={tpl.id}
+                        post={tpl.post}
+                        kind="Template"
+                        builtIn={tpl.builtIn}
+                        onOpen={() => handleUsePreset(tpl)}
+                        onMenu={() => setMenu({ kind: 'preset', tpl })}
+                      />
+                    ))}
                   </View>
                 ))}
               </View>
@@ -524,69 +634,50 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
             {projects.length === 0 ? (
               <Text style={s.hint}>Your recent designs land here.</Text>
             ) : (
-              <View style={{ marginTop: 6 }}>
-                {projects.map((item, idx) => (
-                  <View key={item.id} style={s.row}>
-                    <TouchableOpacity onPress={() => onOpenProject(item)} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 }} activeOpacity={0.7}>
-                      <Text style={s.idx}>{String(idx + 1).padStart(2, '0')}</Text>
-                      <View style={{ flex: 1, gap: 2 }}>
-                        <Text style={s.rowT} numberOfLines={1}>{item.name}</Text>
-                        <Text style={s.rowS}>{item.sizeId} · {item.pages.length} page{item.pages.length > 1 ? 's' : ''} · {fmtDate(item.createdAt)}</Text>
-                      </View>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setMenu({ kind: 'project', item })} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                      <Ionicons name="ellipsis-horizontal" size={20} color={C.muted} />
-                    </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
+                {masonry(projects).map((col, ci) => (
+                  <View key={ci} style={{ flex: 1, gap: 20 }}>
+                    {col.map((item) => (
+                      <TplPost
+                        key={item.id}
+                        post={item}
+                        kind="Design"
+                        onOpen={() => onOpenProject(item)}
+                        onMenu={() => setMenu({ kind: 'project', item })}
+                      />
+                    ))}
                   </View>
                 ))}
               </View>
             )}
           </View>
+        ) : tab === 'post' ? (
+          <View style={{ paddingHorizontal: 20, marginTop: 14 }}>
+            {/* The composer itself, inline — no bottom-sheet window. Same form
+                and submit paths as the sheet, bound to the live draft. */}
+            <ScheduleForm
+              key={formKey}
+              bare
+              visible
+              title="New post"
+              composer={{ title: '', caption: draftBody, onCaption: setDraftBody, thread: draftThread, onThread: setDraftThread }}
+              media={{ items: draftMedia, onPick: pickDraftMedia, onRemove: removeDraftMedia, onMove: moveDraftMedia }}
+              onSave={async (at, plats, types, sourceUrl, threadsTopic, ttPrivacy, ytPrivacy) => {
+                if (await saveDraftPost(at, plats, types, sourceUrl, threadsTopic, ttPrivacy, ytPrivacy)) resetInline();
+              }}
+              draftLabel="Save as draft"
+              onDraft={async (types, sourceUrl, threadsTopic, ttPrivacy, ytPrivacy) => {
+                if (await stashDraftPost(types, sourceUrl, threadsTopic, ttPrivacy, ytPrivacy)) resetInline();
+              }}
+              onPostNow={async (plats, types, sourceUrl, threadsTopic, ttPrivacy, ytPrivacy) => {
+                if (await postDraftNow(plats, types, sourceUrl, threadsTopic, ttPrivacy, ytPrivacy)) resetInline();
+              }}
+              onClose={() => {}}
+              onAi={openAi}
+            />
+          </View>
         ) : (
           <View style={{ paddingHorizontal: 24, marginTop: 14 }}>
-            {/* new-post card */}
-            <View style={s.newCard}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-                <View style={s.miniAvatar}><Text style={s.miniAvatarT}>{initial}</Text></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.newCardT}>New post</Text>
-                  <Text style={s.newCardS}>Write it, attach, or make it a thread.</Text>
-                </View>
-                <TouchableOpacity onPress={() => setAi({ target: 'newpost', prompt: npBody })} style={s.aiPill} activeOpacity={0.8}>
-                  <Ionicons name="sparkles" size={13} color={C.accentInk} />
-                  <Text style={s.aiPillT}>AI</Text>
-                </TouchableOpacity>
-              </View>
-
-              {npThread ? (
-                <ThreadEditor segments={npThread} onChange={setNpThread} placeholder="Hook — start the story…" />
-              ) : (
-                <Txt value={npBody} onChangeText={setNpBody} placeholder="What do you want to share?" multiline style={{ minHeight: 78, textAlignVertical: 'top' }} />
-              )}
-              {npMedia ? <MediaThumb media={npMedia} style={s.cImg} /> : null}
-
-              <View style={s.toolRow}>
-                <TouchableOpacity onPress={async () => setNpMedia(await pickMedia())} style={s.tool} activeOpacity={0.7}>
-                  <Ionicons name="image-outline" size={16} color={C.accentInk} />
-                  <Text style={s.toolT}>{npMedia ? 'Change' : 'Photo'}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setNpThread(npThread ? null : ['', ''])} style={[s.tool, npThread && s.toolOn]} activeOpacity={0.7}>
-                  <Ionicons name="chatbubbles-outline" size={15} color={npThread ? C.onInk : C.accentInk} />
-                  <Text style={[s.toolT, npThread && { color: C.onInk }]}>Thread</Text>
-                </TouchableOpacity>
-                {npMedia ? (
-                  <TouchableOpacity onPress={() => setNpMedia(null)} style={s.tool} activeOpacity={0.7}>
-                    <Text style={[s.toolT, { color: C.redText }]}>Remove</Text>
-                  </TouchableOpacity>
-                ) : null}
-                <View style={{ flex: 1 }} />
-                <TouchableOpacity onPress={continueNewPost} style={s.cPost} activeOpacity={0.85}>
-                  <Text style={s.cPostT}>Continue</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <Text style={[s.secT, { marginTop: 24 }]}>Queue & sent</Text>
             <PostScreen bare email={email} team={team} onProfile={onProfile} onConnect={onConnect} />
           </View>
         )}
@@ -609,25 +700,27 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
               <Txt value={eTitle} onChangeText={setETitle} placeholder="Idea title…" style={s.cTitle} />
               <View style={{ height: 8 }} />
               {eThread ? (
-                <ThreadEditor segments={eThread} onChange={setEThread} />
+                <ThreadEditor segments={eThread} onChange={setEThread} pickMedia={pickMedia} />
               ) : (
                 <Txt value={eBody} onChangeText={setEBody} placeholder="Describe the idea…" multiline style={{ minHeight: 90, textAlignVertical: 'top' }} />
               )}
-              {eMedia ? <MediaThumb media={eMedia} style={[s.cImg, { marginTop: 8 }]} /> : null}
+              {!eThread && eMedia ? <MediaThumb media={eMedia} style={[s.cImg, { marginTop: 8 }]} /> : null}
               <View style={s.toolRow}>
-                <TouchableOpacity onPress={async () => setEMedia(await pickMedia())} style={s.tool} activeOpacity={0.7}>
-                  <Ionicons name="image-outline" size={16} color={C.accentInk} />
-                  <Text style={s.toolT}>{eMedia ? 'Change' : 'Photo'}</Text>
-                </TouchableOpacity>
+                {!eThread ? (
+                  <TouchableOpacity onPress={async () => setEMedia(await pickMedia())} style={s.tool} activeOpacity={0.7}>
+                    <Ionicons name="image" size={16} color={C.accentInk} />
+                    <Text style={s.toolT}>{eMedia ? 'Change' : 'Photo/video'}</Text>
+                  </TouchableOpacity>
+                ) : null}
                 <TouchableOpacity onPress={() => setAi({ target: 'editor', prompt: eBody || eTitle })} style={s.tool} activeOpacity={0.7}>
                   <Ionicons name="sparkles" size={15} color={C.accentInk} />
                   <Text style={s.toolT}>AI</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setEThread(eThread ? null : ['', ''])} style={[s.tool, eThread && s.toolOn]} activeOpacity={0.7}>
-                  <Ionicons name="chatbubbles-outline" size={15} color={eThread ? C.onInk : C.accentInk} />
+                <TouchableOpacity onPress={() => setEThread(eThread ? null : [{ text: '', media: null }, { text: '', media: null }])} style={[s.tool, eThread && s.toolOn]} activeOpacity={0.7}>
+                  <Ionicons name="git-branch" size={15} color={eThread ? C.onInk : C.accentInk} />
                   <Text style={[s.toolT, eThread && { color: C.onInk }]}>Thread</Text>
                 </TouchableOpacity>
-                {eMedia ? (
+                {!eThread && eMedia ? (
                   <TouchableOpacity onPress={() => setEMedia(null)} style={s.tool} activeOpacity={0.7}>
                     <Text style={[s.toolT, { color: C.redText }]}>Remove</Text>
                   </TouchableOpacity>
@@ -638,13 +731,13 @@ export default function CreateScreen({ email, team, onProfile, onConnect, onTemp
               </TouchableOpacity>
               {editing ? (
                 <TouchableOpacity onPress={() => postFromIdea(editing)} style={[s.postBtn, { justifyContent: 'center', marginTop: 8, paddingVertical: 14 }]} activeOpacity={0.8}>
-                  <Ionicons name="send-outline" size={16} color={C.ink} />
+                  <Ionicons name="send" size={16} color={C.ink} />
                   <Text style={s.postBtnT}>Post this idea</Text>
                 </TouchableOpacity>
               ) : null}
               {editing ? (
                 <TouchableOpacity onPress={() => designIdea(editing)} style={[s.postBtn, { justifyContent: 'center', marginTop: 8, paddingVertical: 14 }]} activeOpacity={0.8}>
-                  <Ionicons name="color-palette-outline" size={16} color={C.ink} />
+                  <Ionicons name="color-palette" size={16} color={C.ink} />
                   <Text style={s.postBtnT}>Open in design studio</Text>
                 </TouchableOpacity>
               ) : null}
@@ -700,14 +793,15 @@ const makeS = (C: Palette) => StyleSheet.create({
   masthead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 20 },
   wordmark: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 17, letterSpacing: -0.4, color: C.ink },
   sub: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, color: C.muted, marginTop: 6 },
-  tab: { borderRadius: 999, paddingHorizontal: 18, paddingVertical: 9, backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft },
-  tabT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.muted },
+  tab: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft },
+  tabT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.muted },
   composer: { backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, padding: 13, gap: 4 },
   cTitle: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14 },
   cImg: { width: '100%', height: 150, borderRadius: R.md, marginTop: 8 },
   cAttach: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.accentSoft, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
   cAttachT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: C.accentInk },
   cPost: { backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 9 },
+  cPostFull: { alignItems: 'center', justifyContent: 'center', paddingVertical: 14, marginTop: 10 },
   cPostT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.onInk },
   toolRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   tool: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.accentSoft, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
@@ -716,12 +810,13 @@ const makeS = (C: Palette) => StyleSheet.create({
   mediaThumb: { width: '100%', borderRadius: R.md, resizeMode: 'cover' },
   videoThumb: { height: 150, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center', gap: 4 },
   videoTag: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11, color: '#fff' },
-  segBox: { backgroundColor: C.paper, borderRadius: R.md, borderWidth: 1, borderColor: C.lineSoft, padding: 10, gap: 6, marginTop: 6 },
-  segLabel: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11, letterSpacing: 0.3, color: C.accentInk },
-  segCount: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11, color: C.faint },
-  segInput: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13.5, minHeight: 54, textAlignVertical: 'top' },
-  segAdd: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: C.accentSoft, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, marginTop: 6 },
-  segAddT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: C.accentInk },
+  segBox: { backgroundColor: '#1C1917', borderRadius: R.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)', padding: 10, gap: 6, marginTop: 6 },
+  segLabel: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11, letterSpacing: 0.3, color: 'rgba(255,255,255,0.60)' },
+  segCount: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11, color: 'rgba(255,255,255,0.45)' },
+  segInput: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13.5, minHeight: 54, textAlignVertical: 'top', color: '#F5F1E8' },
+  segPlus: { width: 30, height: 30, borderRadius: 15, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
+  segThumb: { width: 34, height: 34, borderRadius: 9 },
+  segThumbX: { position: 'absolute', top: -5, right: -5, width: 15, height: 15, borderRadius: 8, backgroundColor: '#000000AA', alignItems: 'center', justifyContent: 'center' },
   card: { backgroundColor: C.paper, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, padding: 14 },
   miniAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
   miniAvatarT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: C.onInk },
@@ -738,21 +833,15 @@ const makeS = (C: Palette) => StyleSheet.create({
   empty: { backgroundColor: C.card, borderRadius: R.lg, padding: 28, alignItems: 'center' },
   emptyT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 16, color: C.ink },
   emptyS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, color: C.muted, marginTop: 6, textAlign: 'center', lineHeight: 19 },
-  newCard: { backgroundColor: C.paper, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, padding: 14, gap: 8 },
-  newCardT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 15.5, letterSpacing: -0.2, color: C.ink },
-  newCardS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.muted, marginTop: 1 },
-  aiPill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.accentSoft, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
-  aiPillT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: C.accentInk },
   tplCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.accent, borderRadius: R.md + 2, paddingVertical: 16, paddingHorizontal: 20 },
   tplCtaT: { fontFamily: 'PlusJakartaSans_700Bold', color: C.onInk, fontSize: 15 },
   hint: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 19, color: C.muted, marginTop: 12 },
   secT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 19, letterSpacing: -0.4, color: C.ink },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.line },
-  idx: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.accent, width: 24 },
-  rowT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15.5, letterSpacing: -0.2, color: C.ink },
-  rowS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, color: C.muted },
-  useBtn: { backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 15, paddingVertical: 8 },
-  useBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.onInk },
+  tplMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  tplName: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, letterSpacing: -0.2, color: C.ink },
+  tplSub: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12, color: C.muted, marginTop: 1 },
+  tplStarter: { position: 'absolute', top: 8, left: 8, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  tplStarterT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 10, letterSpacing: 0.8, color: '#fff' },
   sheetBg: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
   sheet: { backgroundColor: C.paper, borderTopLeftRadius: R.xl, borderTopRightRadius: R.xl, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 30, maxHeight: '92%' },
   sheetT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 17, letterSpacing: -0.3, color: C.ink, marginBottom: 6 },

@@ -160,6 +160,22 @@ function PostCanvasInner({ page, ratio, scale, watermark }: Props, ref: React.Re
     </View>
   );
 
+  // Full card: the chrome fills the entire canvas — single card, no
+  // backdrop/title/pfp rows. Export captures exactly this.
+  if (page.fullCard) {
+    const fullBg = page.cardColor ?? '#FFFFFFF2';
+    return (
+      <ViewShot ref={ref} options={{ format: 'png', quality: 1 }} style={[styles.frame, { width: CANVAS_W * s, height: H * s, borderRadius: pad(14) }]}>
+        <View style={{ width: CANVAS_W * s, height: H * s, borderRadius: pad(14), overflow: 'hidden', backgroundColor: fullBg }}>
+          <SocialCardChrome page={page} pad={pad} watermark={watermark}>
+            {blocks}
+          </SocialCardChrome>
+        </View>
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: pad(14), borderWidth: 1, borderColor: '#EAEAEA' }} />
+      </ViewShot>
+    );
+  }
+
   return (
     <ViewShot ref={ref} options={{ format: 'png', quality: 1 }} style={[styles.frame, { width: CANVAS_W * s, height: H * s, borderRadius: pad(14) }]}>
       <View style={{ width: CANVAS_W * s, height: H * s }}>

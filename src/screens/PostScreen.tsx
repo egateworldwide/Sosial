@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, RefreshControl } from 'react-native';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { useTheme, Palette, R, T } from '../theme';
 import { SocialGlyph } from '../components/ui';
 import { AvatarButton } from '../components/ProfileMenu';
 import ConnectButton from '../components/ConnectButton';
 import ChannelDrawer from '../components/ChannelDrawer';
 import { SOCIAL_META } from '../constants';
-import { loadManagedPosts, ManagedPost, MAX_AUTO_TRIES } from '../utils/managed';
+import { loadManagedPosts, ManagedPost, MAX_AUTO_TRIES, postAttachments } from '../utils/managed';
 import { pullCloudStatus } from '../utils/cloudPosts';
 import { loadMetaState, MetaState } from '../utils/metaStore';
 import { fmtDateTime, platformsLabel } from '../utils/reminders';
@@ -18,10 +19,10 @@ type Tab = 'queued' | 'draft' | 'approval' | 'sent';
 type Sort = 'newest' | 'oldest' | 'az';
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'queued', label: 'Queue' },
   { id: 'draft', label: 'Drafts' },
-  { id: 'approval', label: 'Approvals' },
+  { id: 'queued', label: 'Queue' },
   { id: 'sent', label: 'Sent' },
+  { id: 'approval', label: 'Approvals' },
 ];
 
 const SORTS: { id: Sort; label: string }[] = [
@@ -47,21 +48,40 @@ function dayLabel(ts: number): string {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-function Cover({ uri, kind, size = 46 }: { uri?: string; kind?: 'image' | 'video'; size?: number }) {
+/** Photo preview in its native aspect (probed, clamped) — the card ratio
+ *  follows the post instead of forcing a square. */
+function PhotoPreview({ uri }: { uri: string }) {
   const { C } = useTheme();
   const s = makeS(C);
-  const box = [s.cover, { width: size, height: size }];
-  if (uri && kind !== 'video') return <Image source={{ uri }} style={box} />;
-  if (uri) {
-    return (
-      <View style={[box, { backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }]}>
-        <Ionicons name="play" size={16} color={C.onInk} />
-      </View>
+  const [ratio, setRatio] = useState<number | null>(null);
+  useEffect(() => {
+    let live = true;
+    setRatio(null);
+    Image.getSize(
+      uri,
+      (w, h) => { if (live && w > 0 && h > 0) setRatio(Math.min(2, Math.max(0.5, w / h))); },
+      () => {},
     );
-  }
+    return () => { live = false; };
+  }, [uri]);
+  return <Image source={{ uri }} style={[s.media, { aspectRatio: ratio ?? 4 / 3 }]} resizeMode="cover" />;
+}
+
+/** Muted looping video preview — phone clips default to a 9:16 card. */
+function VideoPreview({ uri }: { uri: string }) {
+  const { C } = useTheme();
+  const s = makeS(C);
+  const player = useVideoPlayer(uri, (p) => {
+    p.loop = true;
+    p.muted = true;
+    p.play();
+  });
   return (
-    <View style={[box, s.coverEmpty]}>
-      <Text style={s.coverT}>Aa</Text>
+    <View style={[s.media, { aspectRatio: 9 / 16 }]}>
+      <VideoView style={{ width: '100%', height: '100%' }} player={player} contentFit="cover" nativeControls={false} />
+      <View style={s.mediaPlay}>
+        <Ionicons name="play" size={13} color="#fff" />
+      </View>
     </View>
   );
 }
@@ -73,7 +93,7 @@ function ChannelStack({ plats, C }: { plats: string[]; C: Palette }) {
       {plats.slice(0, 4).map((c, i) => (
         c === 'any' ? (
           <View key={`${c}-${i}`} style={[s.stackTile, { backgroundColor: C.card, borderColor: C.lineSoft, marginLeft: i === 0 ? 0 : -7 }]}>
-            <Ionicons name="globe-outline" size={11} color={C.muted} />
+            <Ionicons name="globe" size={11} color={C.muted} />
           </View>
         ) : (
           <View key={`${c}-${i}`} style={[s.stackTile, { backgroundColor: SOCIAL_META[c]?.bg ?? C.ink, marginLeft: i === 0 ? 0 : -7 }]}>
@@ -103,7 +123,7 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
   const [actor, setActor] = useState<Actor>({ id: null, role: 'owner' });
   const [channel, setChannel] = useState('all');
   const [drawer, setDrawer] = useState(false);
-  const [tab, setTab] = useState<Tab>('queued');
+  const [tab, setTab] = useState<Tab>('draft');
   const [sort, setSort] = useState<Sort>('newest');
   const [refreshing, setRefreshing] = useState(false);
 
@@ -178,6 +198,7 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
 
   const row = (p: ManagedPost) => {
     const plats = p.platforms?.length ? p.platforms : ['any'];
+    const first = postAttachments(p)[0];
     const overdue = tab === 'queued' && !!p.scheduledAt && p.scheduledAt <= Date.now();
     const when =
       tab === 'sent' && p.sentAt ? `Sent ${fmtDateTime(p.sentAt)}` :
@@ -187,20 +208,39 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
     return (
       <View key={p.id}>
         <TouchableOpacity onPress={() => openComposer(p)} style={st.card} activeOpacity={0.75}>
-          <View style={st.cardTop}>
-            <Cover uri={p.imageUri ?? p.videoUri} kind={p.videoUri ? 'video' : 'image'} />
-            <View style={{ flex: 1, gap: 3 }}>
-              <Text style={st.t} numberOfLines={1}>{p.title || 'Untitled'}</Text>
-              <Text style={st.body} numberOfLines={2}>{p.body || platformsLabel(plats)}</Text>
+          {first ? (
+            <View style={st.cardRow}>
+              <View style={{ width: 104 }}>
+                {first.kind === 'video'
+                  ? <VideoPreview uri={first.uri} />
+                  : <PhotoPreview uri={first.uri} />}
+              </View>
+              <View style={{ flex: 1, gap: 5 }}>
+                <Text style={st.t} numberOfLines={1}>{p.title || 'Untitled'}</Text>
+                <Text style={st.body} numberOfLines={3}>{p.body || platformsLabel(plats)}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                  <View style={[st.whenDot, { backgroundColor: overdue ? C.redText : C.faint }]} />
+                  <Text style={[st.when, overdue && { color: C.redText }]} numberOfLines={1}>{when}</Text>
+                </View>
+                <ChannelStack plats={plats} C={C} />
+              </View>
             </View>
-            <Ionicons name="chevron-forward" size={16} color={C.faint} />
-          </View>
-          <View style={st.cardFoot}>
-            <View style={[st.whenDot, { backgroundColor: overdue ? C.redText : C.faint }]} />
-            <Text style={[st.when, overdue && { color: C.redText }]} numberOfLines={1}>{when}</Text>
-            <View style={{ flex: 1 }} />
-            <ChannelStack plats={plats} C={C} />
-          </View>
+          ) : (
+            <>
+              <View style={st.cardTop}>
+                <View style={{ flex: 1, gap: 3 }}>
+                  <Text style={st.t} numberOfLines={1}>{p.title || 'Untitled'}</Text>
+                  <Text style={st.body} numberOfLines={2}>{p.body || platformsLabel(plats)}</Text>
+                </View>
+              </View>
+              <View style={st.cardFoot}>
+                <View style={[st.whenDot, { backgroundColor: overdue ? C.redText : C.faint }]} />
+                <Text style={[st.when, overdue && { color: C.redText }]} numberOfLines={1}>{when}</Text>
+                <View style={{ flex: 1 }} />
+                <ChannelStack plats={plats} C={C} />
+              </View>
+            </>
+          )}
           {tab === 'queued' && legErr ? (
             <View style={st.errBar}>
               <Ionicons name="alert-circle" size={13} color={C.redText} />
@@ -218,7 +258,7 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
           <View style={st.actions}>
             {showSubmit ? (
               <TouchableOpacity onPress={() => submitForApproval(p.id)} style={st.actionBtn} activeOpacity={0.8}>
-                <Ionicons name="send-outline" size={13} color={C.onInk} />
+                <Ionicons name="send" size={13} color={C.onInk} />
                 <Text style={st.actionBtnT}>Submit for approval</Text>
               </TouchableOpacity>
             ) : null}
@@ -241,16 +281,16 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
   };
 
   const counts: Record<Tab, number> = {
-    queued: posts.filter((p) => (p.status ?? 'draft') === 'queued').length,
     draft: posts.filter((p) => (p.status ?? 'draft') === 'draft').length,
-    approval: posts.filter((p) => p.status === 'approval').length,
+    queued: posts.filter((p) => (p.status ?? 'draft') === 'queued').length,
     sent: posts.filter((p) => p.status === 'sent').length,
+    approval: posts.filter((p) => p.status === 'approval').length,
   };
 
   const body = (
     <>
       {/* pipeline tabs */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: pad, marginTop: bare ? 0 : 14 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: pad, marginTop: 14 }}>
         {TABS.map((t) => {
           const on = tab === t.id;
           return (
@@ -268,7 +308,7 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: pad, marginTop: 12 }}>
         <TouchableOpacity onPress={() => setDrawer(true)} style={st.tool} activeOpacity={0.75}>
           {channel === 'all' ? (
-            <Ionicons name="globe-outline" size={15} color={C.accentInk} />
+            <Ionicons name="globe" size={15} color={C.accentInk} />
           ) : (
             <View style={[st.toolGlyph, { backgroundColor: SOCIAL_META[channel]?.bg ?? C.ink }]}>
               <SocialGlyph platform={channel} size={10} color="#fff" />
@@ -279,7 +319,7 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
         </TouchableOpacity>
         <View style={{ flex: 1 }} />
         <TouchableOpacity onPress={cycleSort} style={st.tool} activeOpacity={0.75}>
-          <Ionicons name="swap-vertical-outline" size={15} color={C.accentInk} />
+          <Ionicons name="swap-vertical" size={15} color={C.accentInk} />
           <Text style={st.toolT}>{sortLabel}</Text>
         </TouchableOpacity>
         {bare ? (
@@ -358,7 +398,7 @@ function Empty({ C, title, sub }: { C: Palette; title: string; sub: string }) {
   return (
     <View style={s.empty}>
       <View style={s.emptyIcon}>
-        <Ionicons name="file-tray-outline" size={20} color={C.faint} />
+        <Ionicons name="file-tray" size={20} color={C.faint} />
       </View>
       <Text style={s.emptyT}>{title}</Text>
       <Text style={s.emptyS}>{sub}</Text>
@@ -382,6 +422,7 @@ const makeS = (C: Palette) => StyleSheet.create({
   day: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 12.5, letterSpacing: 0.6, textTransform: 'uppercase', color: C.accentInk },
   card: { backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, padding: 12, gap: 10 },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: 11 },
+  cardRow: { flexDirection: 'row', gap: 11, alignItems: 'flex-start' },
   cardFoot: { flexDirection: 'row', alignItems: 'center', gap: 7, borderTopWidth: 1, borderTopColor: C.lineSoft, paddingTop: 9 },
   whenDot: { width: 6, height: 6, borderRadius: 3 },
   when: { flexShrink: 1, fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11.5, color: C.muted },
@@ -392,9 +433,8 @@ const makeS = (C: Palette) => StyleSheet.create({
   actionBtnGhost: { backgroundColor: 'transparent', borderWidth: 1, borderColor: C.lineSoft },
   actionBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: C.onInk },
   errBar: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, backgroundColor: C.paleRed, borderRadius: R.md, paddingHorizontal: 9, paddingVertical: 7 },
-  cover: { borderRadius: 11, backgroundColor: C.lineSoft },
-  coverEmpty: { backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
-  coverT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14, color: C.accentInk },
+  media: { width: '100%', borderRadius: 11, backgroundColor: C.lineSoft, overflow: 'hidden' },
+  mediaPlay: { position: 'absolute', right: 8, bottom: 8, width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' },
   t: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14.5, letterSpacing: -0.2, color: C.ink },
   body: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 17, color: C.muted },
   errT: { flex: 1, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11.5, lineHeight: 16, color: C.redText },

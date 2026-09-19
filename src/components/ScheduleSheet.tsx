@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, ScrollView, Alert, Platform, KeyboardAvoidingView, Image, ActivityIndicator } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, LayoutAnimation, PanResponder, UIManager, View, Text, TouchableOpacity, Modal, ScrollView, Alert, Platform, KeyboardAvoidingView, Image, ActivityIndicator } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Ionicons from '@expo/vector-icons/build/Ionicons';
 import { VideoView, useVideoPlayer } from 'expo-video';
@@ -11,7 +11,7 @@ import { SOCIAL_META } from '../constants';
 import { MAX_ATTACHMENTS } from '../utils/metaPublish';
 import { fmtDateTime } from '../utils/reminders';
 import { PlatformTypes, POST_TYPE_OPTIONS, defaultPlatformType, ChannelKey, minQueueTime, queueTooSoon, minQueueLabel } from '../utils/managed';
-import { chainLimit, splitThread, joinThread } from '../utils/thread';
+import { chainLimit, splitThread, THREAD_CAPS } from '../utils/thread';
 import { loadMetaState, connectedChannelIds, MetaState } from '../utils/metaStore';
 import { getValidToken, fetchCreatorInfo } from '../utils/tiktokAuth';
 import { TT_PRIVACY_LABELS } from '../utils/tiktokConfig';
@@ -42,6 +42,90 @@ function slotTomorrow(hour: number, min = 0): number {
   d.setDate(d.getDate() + 1);
   d.setHours(hour, min, 0, 0);
   return d.getTime();
+}
+
+/** 9:16 tile pitch: thumb width + strip gap. Drag math depends on it. */
+const THUMB_STEP = 108;
+
+// Reorder transitions ease instead of jumping (Android needs the flag).
+if (Platform.OS === 'android' && (UIManager as any)?.setLayoutAnimationEnabledExperimental) {
+  (UIManager as any).setLayoutAnimationEnabledExperimental(true);
+}
+
+/** Muted looping video tile — the strip preview videos were missing. */
+function VideoThumb({ uri }: { uri: string }) {
+  const { C } = useTheme();
+  const st = makeSt(C);
+  const player = useVideoPlayer(uri, (p) => {
+    p.loop = true;
+    p.muted = true;
+    p.play();
+  });
+  return (
+    <View style={st.thumb}>
+      <VideoView style={{ width: '100%', height: '100%' }} player={player} contentFit="cover" nativeControls={false} />
+      <View style={st.thumbPlay}>
+        <Ionicons name="play" size={12} color="#fff" />
+      </View>
+    </View>
+  );
+}
+
+/** One strip tile — image cover or live video preview. */
+function MediaTile({ it }: { it: SheetMediaItem }) {
+  const { C } = useTheme();
+  const st = makeSt(C);
+  if (it.kind === 'video') return <VideoThumb uri={it.uri} />;
+  return <Image source={{ uri: it.uri }} style={st.thumb} resizeMode="cover" />;
+}
+
+/**
+ * Long-press to lift, drag horizontally to re-slot. The strip ScrollView
+ * keeps scrolling on plain swipes (responder claims only while a tile is
+ * lifted), taps still open the viewer — the drop consumes the release tap.
+ */
+function DragThumb({ index, count, active, dim, onDrop, children }: {
+  index: number;
+  count: number;
+  active: boolean;
+  dim: boolean;
+  onDrop: (to: number) => void;
+  children: React.ReactNode;
+}) {
+  const x = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    Animated.timing(scale, { toValue: active ? 1.07 : 1, duration: 140, useNativeDriver: false }).start();
+  }, [active, scale]);
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, g) => active && Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy),
+      onPanResponderMove: (_, g) => x.setValue(g.dx),
+      onPanResponderRelease: (_, g) => {
+        const to = Math.max(0, Math.min(count - 1, index + Math.round(g.dx / THUMB_STEP)));
+        x.setValue(0);
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        onDrop(to);
+      },
+      onPanResponderTerminate: () => {
+        x.setValue(0);
+        onDrop(index);
+      },
+    }),
+  ).current;
+  return (
+    <Animated.View
+      {...pan.panHandlers}
+      style={{
+        transform: [{ translateX: x }, { scale }],
+        opacity: dim ? 0.55 : 1,
+        zIndex: active ? 2 : 0,
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
 }
 
 /** Real video preview for the viewer modal — own component so the player hook
@@ -165,6 +249,8 @@ export interface SheetMedia {
   items: SheetMediaItem[];
   onPick: () => void;
   onRemove: (index: number) => void;
+  /** Reorder items (drag-and-drop in the strip). Absent = static order. */
+  onMove?: (from: number, to: number) => void;
 }
 
 interface Props {
@@ -185,8 +271,10 @@ interface Props {
   onPostNow?: (plats: string[], types: PlatformTypes, sourceUrl?: string, threadsTopic?: string, ttPrivacy?: string, ytPrivacy?: string) => void;
   draftLabel?: string;
   onDraft?: (types: PlatformTypes, sourceUrl?: string, threadsTopic?: string, ttPrivacy?: string, ytPrivacy?: string) => void;
-  onClose: () => void;
+  onClose?: () => void;
   /** Live publish progress (shown inline while the "Post now" button spins). */
+  /** Open the AI caption/thread writer onto this draft. */
+  onAi?: () => void;
   publishing?: boolean;
   progress?: PubRow[];
   /** publish-notice mirror, rendered inside the sheet so a result is visible
@@ -200,8 +288,12 @@ interface Props {
   remoteIds?: Record<string, string>;
 }
 
-/** Buffer-style sheet: channels (multi) + title/description + time. */
-export default function ScheduleSheet({ visible, initialAt, initialPlatforms, initialTypes, initialSourceUrl, initialThreadsTopic, initialTtPrivacy, initialYtPrivacy, title, bulkCount, composer, media, onDelete, draftLabel, onDraft, onSave, onPostNow, onClose, readOnly, readOnlyNote, remoteIds, publishing, progress, statusTitle, statusMessage }: Props) {
+/**
+ * Buffer-style composer: channels (multi) + title/description + time.
+ * `bare` renders the same form inline (Create → Post pill) instead of in the
+ * bottom-sheet Modal — state and submit paths are identical either way.
+ */
+export function ScheduleForm({ visible, initialAt, initialPlatforms, initialTypes, initialSourceUrl, initialThreadsTopic, initialTtPrivacy, initialYtPrivacy, title, bulkCount, composer, media, onDelete, draftLabel, onDraft, onSave, onPostNow, onClose, onAi, readOnly, readOnlyNote, remoteIds, publishing, progress, statusTitle, statusMessage, bare }: Props & { bare?: boolean }) {
   const { C, mode: themeMode } = useTheme();
   const st = makeSt(C);
   const [plats, setPlats] = useState<string[]>(['any']);
@@ -221,6 +313,10 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
   const [mode, setMode] = useState<'date' | 'time'>('date');
   const [pickingTime, setPickingTime] = useState(false);
   const [viewer, setViewer] = useState<number | null>(null);
+  /** Arrange mode: index of the lifted tile (strip scroll locks while set). */
+  const [dragIx, setDragIx] = useState<number | null>(null);
+  /** Drop consumes the release tap so it can't also open the viewer. */
+  const skipTap = useRef(false);
   const [, setTick] = useState(0);
 
   const vCount = media?.items.length ?? 0;
@@ -230,8 +326,10 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
   // Threading is offered when at least one selected channel supports native
   // replies. "Anywhere" resolves to the connected set, mirroring publish time,
   // so the segment cap is the strictest channel the post can actually reach.
+  // With nothing picked yet the editor stays available under the strictest
+  // cap of all chain channels (280) — segments written now fit everywhere.
   const chainPlats = plats.includes('any') ? connected : plats;
-  const chainCap = chainLimit(chainPlats);
+  const chainCap = chainLimit(chainPlats) ?? Math.min(...Object.values(THREAD_CAPS));
   const threadOn = !!composer?.thread && composer.thread.length > 0;
 
   useEffect(() => {
@@ -239,12 +337,12 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
       const init = initialPlatforms && initialPlatforms.length > 0 ? initialPlatforms : null;
       const explicit = !!init && !(init.length === 1 && init[0] === 'any');
       if (explicit) setPlats(init);
-      // "Anywhere" opens with every connected channel already ticked, so a
-      // post type can be picked per channel; falls back to Anywhere offline
+      // Nothing is pre-picked: the user ticks exactly the channels this
+      // post should reach (Anywhere is one tap away on its chip).
       loadMetaState().then((m) => {
         const c = connectedChannelIds(m);
         setConnected(c);
-        if (!explicit) setPlats(c.length > 0 ? c : ['any']);
+        if (!explicit) setPlats([]);
       });
       setTypes(initialTypes ?? {});
       setThreadsTopic(initialThreadsTopic ?? '');
@@ -305,7 +403,9 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
     }
     setPlats((prev) => {
       const without = prev.filter((x) => x !== 'any' && x !== c);
-      if (prev.includes(c)) return without.length > 0 ? without : ['any'];
+      // Unpicking the last channel leaves nothing picked (never silently
+      // falls back to Anywhere — that posted places the user didn't choose).
+      if (prev.includes(c)) return without;
       return [...without, c];
     });
   };
@@ -389,7 +489,16 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
     }
   };
 
+  const needChannels = (): boolean => {
+    if (plats.length === 0) {
+      Alert.alert('No channels picked', 'Pick at least one channel first — nothing is selected by default.');
+      return true;
+    }
+    return false;
+  };
+
   const save = () => {
+    if (needChannels()) return;
     // Loud stop for custom times under the 5-minute floor (scoped to custom —
     // the Now/bulk path queues at +60s by design and has its own guards).
     if (preset === 'custom' && queueTooSoon(at)) {
@@ -418,17 +527,9 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
     ]);
   };
 
-  return (
-  <>
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-      <View style={st.bg}>
-        {/* backdrop tap-to-close sits BEHIND the sheet — no pressable may wrap
-            the ScrollView or Android drags die in responder negotiation */}
-        <TouchableOpacity activeOpacity={1} onPress={onClose} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
-        <View style={st.sheet}>
-          <ScrollView nestedScrollEnabled style={{ flexShrink: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 10 }} keyboardShouldPersistTaps="handled">
-          <Text style={st.title}>{title ?? 'Add to queue'}</Text>
+  const content = (
+    <>
+      <Text style={st.title}>{title ?? 'Add to queue'}</Text>
           {readOnly && readOnlyNote ? <Text style={st.sentNote}>✓ {readOnlyNote}</Text> : null}
 
           {composer ? (
@@ -471,12 +572,10 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
                       </View>
                     );
                   })}
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <GhostBtn label="Add post" onPress={() => composer.onThread!([...composer.thread!, ''])} />
-                    <GhostBtn label="Auto-split" onPress={() => {
-                      const next = splitThread(joinThread(composer.thread!), chainCap);
-                      composer.onThread!(next.length ? next : ['']);
-                    }} />
+                  <View style={{ alignItems: 'center', marginTop: 2 }}>
+                    <TouchableOpacity onPress={() => composer.onThread!([...composer.thread!, ''])} style={st.segPlus} activeOpacity={0.7}>
+                      <Ionicons name="add" size={17} color={C.accentInk} />
+                    </TouchableOpacity>
                   </View>
                 </>
               ) : (
@@ -488,18 +587,28 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
                     multiline
                     style={{ minHeight: 96, textAlignVertical: 'top' }}
                   />
-                  {chainCap && composer.onThread ? (
-                    <TouchableOpacity
-                      onPress={() => {
-                        const next = splitThread(composer.caption, chainCap);
-                        composer.onThread!(next.length ? next : ['']);
-                      }}
-                      hitSlop={6}
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-                    >
-                      <Ionicons name="git-branch-outline" size={15} color={C.accentInk} />
-                      <Text style={{ fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.accentInk }}>Post as thread</Text>
-                    </TouchableOpacity>
+                  {onAi || (chainCap && composer.onThread) ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18 }}>
+                      {onAi ? (
+                        <TouchableOpacity onPress={onAi} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Ionicons name="sparkles" size={15} color={C.accentInk} />
+                          <Text style={{ fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.accentInk }}>AI writer</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                      {chainCap && composer.onThread ? (
+                        <TouchableOpacity
+                          onPress={() => {
+                            const next = splitThread(composer.caption, chainCap);
+                            composer.onThread!(next.length ? next : ['']);
+                          }}
+                          hitSlop={6}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                        >
+                          <Ionicons name="git-branch" size={15} color={C.accentInk} />
+                          <Text style={{ fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.accentInk }}>Post as thread</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
                   ) : null}
                 </>
               )}
@@ -514,13 +623,7 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
                   <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginTop: 8, paddingRight: 4 }}>
                     {media.items.map((it, i) => (
                       <TouchableOpacity key={`${it.uri}-${i}`} onPress={() => setViewer(i)} activeOpacity={0.8}>
-                        {it.kind === 'video' ? (
-                          <View style={[st.thumb, { backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }]}>
-                            <Ionicons name="play" size={20} color="#fff" />
-                          </View>
-                        ) : (
-                          <Image source={{ uri: it.uri }} style={st.thumb} />
-                        )}
+                        <MediaTile it={it} />
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
@@ -533,22 +636,45 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
                 {media.items.length > 0 ? <Text style={st.countT}>{media.items.length}/{MAX_ATTACHMENTS}</Text> : null}
               </View>
               {media.items.length > 0 ? (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginTop: 8, paddingRight: 4 }}>
+                <>
+                <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} scrollEnabled={dragIx === null} contentContainerStyle={{ gap: 8, marginTop: 8, paddingTop: 8, paddingRight: 12, paddingBottom: 2 }}>
                   {media.items.map((it, i) => (
-                    <View key={`${it.uri}-${i}`}>
-                      <TouchableOpacity onPress={() => setViewer(i)} activeOpacity={0.8}>
-                        {it.kind === 'video' ? (
-                          <View style={[st.thumb, { backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }]}>
-                            <Ionicons name="play" size={20} color="#fff" />
-                          </View>
-                        ) : (
-                          <Image source={{ uri: it.uri }} style={st.thumb} />
-                        )}
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => media.onRemove(i)} style={st.thumbX} activeOpacity={0.7}>
-                        <Ionicons name="close" size={12} color="#fff" />
-                      </TouchableOpacity>
-                    </View>
+                    <DragThumb
+                      key={`${it.uri}-${i}`}
+                      index={i}
+                      count={media.items.length}
+                      active={dragIx === i}
+                      dim={dragIx !== null && dragIx !== i}
+                      onDrop={(to) => {
+                        const from = dragIx ?? i;
+                        setDragIx(null);
+                        skipTap.current = true;
+                        if (to !== from) media.onMove?.(from, to);
+                      }}
+                    >
+                      <View>
+                        <TouchableOpacity
+                          onPress={() => {
+                            // A real drop consumes the release tap; a hold
+                            // without moving never reaches onDrop, so a tap
+                            // arriving with a tile still lifted CANCELS the
+                            // lift instead of opening the viewer — otherwise
+                            // the strip stays scroll-locked forever.
+                            if (skipTap.current) { skipTap.current = false; return; }
+                            if (dragIx !== null) { setDragIx(null); return; }
+                            setViewer(i);
+                          }}
+                          onLongPress={() => setDragIx(i)}
+                          delayLongPress={280}
+                          activeOpacity={0.8}
+                        >
+                          <MediaTile it={it} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => media.onRemove(i)} style={st.thumbX} activeOpacity={0.7}>
+                          <Ionicons name="close" size={12} color="#fff" />
+                        </TouchableOpacity>
+                      </View>
+                    </DragThumb>
                   ))}
                   {media.items.length < MAX_ATTACHMENTS ? (
                     <TouchableOpacity onPress={media.onPick} style={[st.thumb, st.thumbAdd]} activeOpacity={0.7}>
@@ -556,6 +682,10 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
                     </TouchableOpacity>
                   ) : null}
                 </ScrollView>
+                {media.items.length > 1 ? (
+                  <Text style={st.arrangeHint}>Hold & drag to arrange — first item posts first</Text>
+                ) : null}
+                </>
               ) : (
                 <View style={{ marginTop: 8 }}>
                   <GhostBtn label="Attach photo or video" onPress={media.onPick} />
@@ -568,8 +698,8 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
 
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={st.label}>Channels{readOnly ? '' : ' — pick any'}</Text>
-            {!readOnly && !(plats.length === 1 && plats[0] === 'any') ? (
-              <TouchableOpacity onPress={() => setPlats(['any'])} activeOpacity={0.7}>
+            {!readOnly && plats.length > 0 && !(plats.length === 1 && plats[0] === 'any') ? (
+              <TouchableOpacity onPress={() => setPlats([])} activeOpacity={0.7}>
                 <Text style={st.clearAllT}>Clear all</Text>
               </TouchableOpacity>
             ) : null}
@@ -787,7 +917,7 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
               label={bulkCount ? `Queue ${bulkCount} page${bulkCount > 1 ? 's' : ''}` : preset === 'now' ? 'Post now' : `Queue for ${fmtDateTime(at)}`}
               loading={preset === 'now' && onPostNow && !bulkCount && !!publishing}
               loadingLabel="Posting…"
-              onPress={preset === 'now' && onPostNow && !bulkCount ? () => onPostNow(plats, finalTypes(), sourceUrl.trim(), threadsTopic.trim() || undefined, ttPrivacy || undefined, ytPrivacy || undefined) : save}
+              onPress={preset === 'now' && onPostNow && !bulkCount ? () => { if (!needChannels()) onPostNow(plats, finalTypes(), sourceUrl.trim(), threadsTopic.trim() || undefined, ttPrivacy || undefined, ytPrivacy || undefined); } : save}
             />
           </View>
           </>
@@ -837,11 +967,9 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
               ) : null}
             </View>
           ) : null}
-          </ScrollView>
-        </View>
-      </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    </>
+  );
+  const viewerModal = (
     <Modal visible={vIdx !== null} transparent animationType="fade" onRequestClose={() => setViewer(null)}>
       {vItem ? (
         <View style={st.viewerBg}>
@@ -882,8 +1010,40 @@ export default function ScheduleSheet({ visible, initialAt, initialPlatforms, in
         </View>
       ) : null}
     </Modal>
+  );
+
+  if (bare) {
+    return (
+      <View style={{ gap: 10 }}>
+        {content}
+        {viewerModal}
+      </View>
+    );
+  }
+  return (
+    <>
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={() => onClose?.()}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <View style={st.bg}>
+            {/* backdrop tap-to-close sits BEHIND the sheet — no pressable may wrap
+                the ScrollView or Android drags die in responder negotiation */}
+            <TouchableOpacity activeOpacity={1} onPress={() => onClose?.()} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+            <View style={st.sheet}>
+              <ScrollView nestedScrollEnabled style={{ flexShrink: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 10 }} keyboardShouldPersistTaps="handled">
+                {content}
+              </ScrollView>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+      {viewerModal}
     </>
   );
+}
+
+/** Bottom-sheet Modal wrapper (queue rows, idea cards, bottom-nav +). */
+export default function ScheduleSheet(props: Props) {
+  return <ScheduleForm {...props} />;
 }
 
 const makeSt = (C: Palette) => ({
@@ -908,10 +1068,13 @@ const makeSt = (C: Palette) => ({
   topicChev: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15, lineHeight: 18, color: C.faint } as const,
   topicClear: { backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft, borderRadius: R.md, paddingHorizontal: 14, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' } as const,
   topicClearT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.redText } as const,
+  segPlus: { width: 30, height: 30, borderRadius: 15, backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' } as const,
   clearAllT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: C.faint } as const,
   countT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: C.muted } as const,
   limitHint: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11.5, lineHeight: 16, color: C.faint, marginTop: 6 } as const,
-  thumb: { width: 64, height: 64, borderRadius: R.md } as const,
+  thumb: { width: 100, aspectRatio: 9 / 16, borderRadius: R.md, backgroundColor: C.lineSoft, overflow: 'hidden' } as const,
+  thumbPlay: { position: 'absolute', right: 6, bottom: 6, width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' } as const,
+  arrangeHint: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11.5, color: C.faint, marginTop: 6 } as const,
   thumbAdd: { backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft, alignItems: 'center', justifyContent: 'center' } as const,
   thumbX: { position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: 10, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' } as const,
   viewerBg: { flex: 1, backgroundColor: '#000000EE', paddingTop: 48, paddingBottom: 32, paddingHorizontal: 20 } as const,
