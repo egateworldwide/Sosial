@@ -719,6 +719,9 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
             done.push('Threads');
           } else if (ch === 'tiktok') {
             if (!m.ttRefreshToken && !m.ttAccessToken) throw new Error('TikTok not connected');
+            if (firstVideo && atts.some((a) => a.kind === 'image')) {
+              throw new Error('TikTok can’t mix photos and video — send one or the other (a Live Photo counts as a photo).');
+            }
             const imgs = atts.filter((a) => a.kind === 'image').slice(0, ATTACH_LIMITS.tiktok.images);
             if (type === 'photo' || !firstVideo) {
               // photo carousel — TikTok pulls from public URLs

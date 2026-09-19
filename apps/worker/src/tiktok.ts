@@ -259,6 +259,12 @@ export async function publishTikTokTarget(bundle: Bundle): Promise<{ publishId: 
     .sort((a, z) => a.position - z.position);
   const token = await ensureToken(b);
 
+  // TikTok has no mixed-media post (single video OR up to 35 photos), so a
+  // draft holding both would silently drop the photos. Fail loudly instead.
+  if (videos.length > 0 && images.length > 0) {
+    throw new Error('TikTok can’t mix photos and video — send one or the other.');
+  }
+
   if (videos.length > 0) {
     info(`tiktok target ${b.target.id}: VIDEO (${privacy})`);
     let raw: Buffer;
