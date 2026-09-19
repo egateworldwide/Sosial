@@ -86,13 +86,19 @@ export async function buildImportPayload(
     case 'threads':
       if (!m.threadsId || !m.threadsToken) return null;
       return { provider: 'threads', external_id: m.threadsId, display_name: m.threadsName, access_token: m.threadsToken };
-    case 'tiktok':
+    case 'tiktok': {
       if (!m.ttOpenId || (!m.ttAccessToken && !m.ttRefreshToken)) return null;
+      // Verified photo host rides along so closed-app photo posts can use it
+      // (TikTok rejects PULL_FROM_URL hosts the user hasn't verified).
+      const metadata: Record<string, string> = {};
+      const host = (m.ttPhotoHost ?? '').trim().replace(/\/+$/, '');
+      if (host) metadata.ttPhotoHost = host;
       return {
         provider: 'tiktok', external_id: m.ttOpenId, display_name: m.ttName,
         access_token: m.ttAccessToken ?? m.ttRefreshToken ?? '',
-        refresh_token: m.ttRefreshToken, expires_at: iso(m.ttExpiresAt),
+        refresh_token: m.ttRefreshToken, expires_at: iso(m.ttExpiresAt), metadata,
       };
+    }
     case 'x':
       if (!m.xUserId || (!m.xAccessToken && !m.xRefreshToken)) return null;
       return {

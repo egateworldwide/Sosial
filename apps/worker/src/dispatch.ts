@@ -10,6 +10,7 @@ import { publishBlueskyTarget, blueskyPostUrl } from './bsky';
 import { publishThreadsTarget } from './threads';
 import { publishXTarget } from './x';
 import { publishYouTubeTarget } from './youtube';
+import { publishTikTokTarget } from './tiktok';
 import { publishFacebookTarget, publishInstagramTarget } from './meta';
 import { info } from './logger';
 
@@ -52,6 +53,12 @@ async function handlePublishTarget(job: Job): Promise<void> {
       const { tweetId, tweetUrl } = await publishXTarget(bundle);
       await markTargetSent(targetId, tweetId, tweetUrl);
       info(`target ${targetId} sent → ${tweetId}`);
+      return;
+    }
+    if (provider === 'tiktok') {
+      const { publishId } = await publishTikTokTarget(bundle);
+      await markTargetSent(targetId, publishId, '');
+      info(`target ${targetId} sent → ${publishId}`);
       return;
     }
     if (provider === 'youtube') {
