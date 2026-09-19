@@ -12,6 +12,7 @@ import { publishXTarget } from './x';
 import { publishYouTubeTarget } from './youtube';
 import { publishTikTokTarget } from './tiktok';
 import { publishFacebookTarget, publishInstagramTarget } from './meta';
+import { publishMastodonTarget } from './mastodon';
 import { info } from './logger';
 
 function notPorted(kind: string): Error {
@@ -75,6 +76,12 @@ async function handlePublishTarget(job: Job): Promise<void> {
     }
     if (provider === 'instagram') {
       const { remoteId, remoteUrl } = await publishInstagramTarget(bundle);
+      await markTargetSent(targetId, remoteId, remoteUrl);
+      info(`target ${targetId} sent → ${remoteId}`);
+      return;
+    }
+    if (provider === 'mastodon') {
+      const { remoteId, remoteUrl } = await publishMastodonTarget(bundle);
       await markTargetSent(targetId, remoteId, remoteUrl);
       info(`target ${targetId} sent → ${remoteId}`);
       return;
