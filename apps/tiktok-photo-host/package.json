@@ -1,0 +1,17 @@
+{
+  "name": "tiktok-photo-host",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ephemeral public host for TikTok photo posts: accepts an upload, serves it publicly, deletes it after TTL (default 24h). TikTok only pulls photos from domains the user owns and verified.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "multer": "^2.0.0",
+    "sharp": "^0.35.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

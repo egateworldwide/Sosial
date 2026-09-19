@@ -28,3 +28,7 @@ Thumbs.db
 
 # misc
 .eps/
+
+# tiktok-photo-host: uploaded bytes (ephemeral) + local env
+apps/tiktok-photo-host/data/
+apps/tiktok-photo-host/.env
