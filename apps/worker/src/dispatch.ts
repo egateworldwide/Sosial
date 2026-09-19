@@ -14,6 +14,7 @@ import { publishTikTokTarget } from './tiktok';
 import { publishFacebookTarget, publishInstagramTarget } from './meta';
 import { publishMastodonTarget } from './mastodon';
 import { publishLinkedInTarget } from './linkedin';
+import { publishPinterestTarget } from './pinterest';
 import { info } from './logger';
 
 function notPorted(kind: string): Error {
@@ -89,6 +90,12 @@ async function handlePublishTarget(job: Job): Promise<void> {
     }
     if (provider === 'linkedin') {
       const { remoteId, remoteUrl } = await publishLinkedInTarget(bundle);
+      await markTargetSent(targetId, remoteId, remoteUrl);
+      info(`target ${targetId} sent → ${remoteId}`);
+      return;
+    }
+    if (provider === 'pinterest') {
+      const { remoteId, remoteUrl } = await publishPinterestTarget(bundle);
       await markTargetSent(targetId, remoteId, remoteUrl);
       info(`target ${targetId} sent → ${remoteId}`);
       return;
