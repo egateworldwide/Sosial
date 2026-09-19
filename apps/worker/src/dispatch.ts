@@ -10,6 +10,7 @@ import { publishBlueskyTarget, blueskyPostUrl } from './bsky';
 import { publishThreadsTarget } from './threads';
 import { publishXTarget } from './x';
 import { publishYouTubeTarget } from './youtube';
+import { publishFacebookTarget, publishInstagramTarget } from './meta';
 import { info } from './logger';
 
 function notPorted(kind: string): Error {
@@ -57,6 +58,18 @@ async function handlePublishTarget(job: Job): Promise<void> {
       const { videoId, videoUrl } = await publishYouTubeTarget(bundle);
       await markTargetSent(targetId, videoId, videoUrl);
       info(`target ${targetId} sent → ${videoId}`);
+      return;
+    }
+    if (provider === 'facebook') {
+      const { remoteId, remoteUrl } = await publishFacebookTarget(bundle);
+      await markTargetSent(targetId, remoteId, remoteUrl);
+      info(`target ${targetId} sent → ${remoteId}`);
+      return;
+    }
+    if (provider === 'instagram') {
+      const { remoteId, remoteUrl } = await publishInstagramTarget(bundle);
+      await markTargetSent(targetId, remoteId, remoteUrl);
+      info(`target ${targetId} sent → ${remoteId}`);
       return;
     }
     throw notPorted(`publish_target:${provider}`);

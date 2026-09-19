@@ -15,6 +15,7 @@ const BSKY_BLOB_CAP = 1000000;
 /** Dedicated video service (not the PDS) + bounded processing poll. */
 const BSKY_VIDEO_HOST = 'https://video.bsky.app';
 const VIDEO_POLL_MS = 5 * 60 * 1000;
+const BSKY_MAX_VIDEO_BYTES = 128 * 1024 * 1024;
 
 interface Bundle {
   target: { id: string; provider: string; caption: string | null; options: any; status: string };
@@ -277,7 +278,7 @@ async function publishVideoWith(
 ): Promise<BskyRef> {
   let raw: Buffer;
   try {
-    raw = await storageDownload(await storageSign('post-media', video.storage_path));
+    raw = await storageDownload(await storageSign('post-media', video.storage_path), BSKY_MAX_VIDEO_BYTES);
   } catch (e: any) {
     throw new Error(`Video download failed — ${e?.message ?? 'storage error'}`);
   }

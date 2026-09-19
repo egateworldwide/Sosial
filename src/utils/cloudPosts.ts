@@ -106,14 +106,22 @@ export async function pushPostToCloud(post: ManagedPost): Promise<void> {
   // Media: canonical accessor only — `attachments` already contains EVERY
   // item, and legacy imageUri/videoUri just mirror it. Concatenating all
   // three uploaded each mirrored file twice (2 rows → worker saw "2 videos").
+  //
+  // Paths are unique per push (position + timestamp + random): re-saving the
+  // same post id with a REPLACED video must never overwrite-or-reuse the old
+  // object. The old index-based scheme (`<index>.<ext>`) meant a swapped mp4
+  // kept the same storage path, so a slow/in-flight push left Instagram and
+  // Threads resolving the PREVIOUS video for the new post.
   const atts = postAttachments(post).slice(0, 10);
   const linked: string[] = [];
+  const newPaths: string[] = [];
+  const pushStamp = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
   for (const a of atts) {
     if (!a?.uri || linked.length >= 10) continue;
     const kind = a.kind === 'video' ? 'video' : 'image';
     const ext = extFor(a.uri, kind);
     const mime = mimeFor(ext, kind);
-    const path = `${wsId}/${post.id}/${linked.length}.${ext}`;
+    const path = `${wsId}/${post.id}/${linked.length}-${pushStamp}.${ext}`;
     // Native binary upload: Hermes cannot build Blobs from TypedArrays, so
     // the file goes straight from disk via a signed upload slot — no JS
     // Blob, no base64 round-trip through JS memory.
@@ -137,33 +145,47 @@ export async function pushPostToCloud(post: ManagedPost): Promise<void> {
       const info: any = await FileSystem.getInfoAsync(a.uri);
       if (info?.exists && typeof info.size === 'number' && info.size > 0) byteSize = info.size;
     } catch {}
-    let mediaId: string | null = null;
-    const { data: existing } = await sb
+    // Unique paths never collide, so always insert a fresh asset row — the
+    // old path-keyed dedupe reused the previous video's row after a swap.
+    const { data: ins, error: mErr } = await sb
       .from('media_assets')
+      .insert({
+        workspace_id: wsId,
+        uploaded_by: userId,
+        storage_path: path,
+        kind,
+        mime_type: mime,
+        byte_size: byteSize,
+        status: 'ready',
+      })
       .select('id')
-      .eq('workspace_id', wsId)
-      .eq('storage_path', path)
-      .maybeSingle();
-    if (existing) {
-      mediaId = String((existing as any).id);
-    } else {
-      const { data: ins, error: mErr } = await sb
-        .from('media_assets')
-        .insert({
-          workspace_id: wsId,
-          uploaded_by: userId,
-          storage_path: path,
-          kind,
-          mime_type: mime,
-          byte_size: byteSize,
-          status: 'ready',
-        })
-        .select('id')
-        .single();
-      if (mErr || !ins) throw new Error(`cloud media row failed: ${mErr?.message ?? 'no row'}`);
-      mediaId = String((ins as any).id);
-    }
-    linked.push(mediaId);
+      .single();
+    if (mErr || !ins) throw new Error(`cloud media row failed: ${mErr?.message ?? 'no row'}`);
+    linked.push(String((ins as any).id));
+    newPaths.push(path);
+  }
+
+  // Links BEFORE targets (atomicity): the worker only ever sees queued
+  // targets, so a target must never exist while its media links are still
+  // the previous push's rows — that window published the old video.
+  // Remember the previous links first so stale objects/rows can be swept
+  // after the new ones land (best-effort — never fails the push).
+  let prevPaths: string[] = [];
+  try {
+    const { data: prev } = await sb
+      .from('post_media')
+      .select('media_id, media_assets!inner(storage_path)')
+      .eq('post_id', postId);
+    prevPaths = ((prev ?? []) as any[])
+      .map((r) => String((r as any)?.media_assets?.storage_path ?? ''))
+      .filter(Boolean);
+  } catch {}
+  await sb.from('post_media').delete().eq('post_id', postId);
+  for (let i = 0; i < linked.length; i++) {
+    const { error: linkErr } = await sb
+      .from('post_media')
+      .insert({ post_id: postId, media_id: linked[i], position: i });
+    if (linkErr) throw new Error(`cloud media link failed: ${linkErr.message}`);
   }
 
   // Targets: one per platform that is BOTH selected AND cloud-connected.
@@ -204,14 +226,22 @@ export async function pushPostToCloud(post: ManagedPost): Promise<void> {
     made += 1;
   }
 
-  // Links last (replace wholesale so re-saves can't leave stale order/rows).
-  await sb.from('post_media').delete().eq('post_id', postId);
-  for (let i = 0; i < linked.length; i++) {
-    const { error: linkErr } = await sb
-      .from('post_media')
-      .insert({ post_id: postId, media_id: linked[i], position: i });
-    if (linkErr) throw new Error(`cloud media link failed: ${linkErr.message}`);
-  }
+  // Sweep superseded objects/rows from earlier pushes of THIS post only
+  // (best-effort — a leftover `0.mp4` in this prefix is exactly how a
+  // replaced video haunted the next publish).
+  try {
+    const stale = prevPaths.filter((p) => p && !newPaths.includes(p));
+    if (stale.length) {
+      await sb.storage.from('post-media').remove(stale).catch(() => ({}));
+      const { data: rows } = await sb
+        .from('media_assets')
+        .select('id, storage_path')
+        .eq('workspace_id', wsId)
+        .in('storage_path', stale);
+      const ids = ((rows ?? []) as any[]).map((r) => String(r.id)).filter(Boolean);
+      if (ids.length) await sb.from('media_assets').delete().in('id', ids);
+    }
+  } catch {}
   console.log(
     `[cloud] pushed ${post.id}: ${made} target(s), ${linked.length} media for [${(post.platforms ?? []).join(',')}]`,
   );

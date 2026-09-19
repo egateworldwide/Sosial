@@ -139,6 +139,71 @@ function extFor(uri: string, kind: string): string {
  * `mirror.index` is the attachment's position in postAttachments() (mirror
  * paths are <workspace>/<client_id>/<index>.<ext>).
  */
+/** Exact mirrored asset for one attachment position (DB truth, not a
+ *  guessed `<index>.<ext>` filename — pushes now use unique names). */
+async function mirrorAsset(
+  clientId: string,
+  index: number,
+): Promise<{ path: string; byteSize: number | null } | null> {
+  try {
+    const session = await currentSession().catch(() => null);
+    if (!session) return null;
+    const sb = supabase();
+    const { data: prow } = await sb.from('posts').select('id').eq('client_id', clientId).maybeSingle();
+    const pid = (prow as any)?.id;
+    if (!pid) return null;
+    const { data: links } = await sb
+      .from('post_media')
+      .select('position, media_id')
+      .eq('post_id', pid)
+      .order('position');
+    const rows = ((links ?? []) as any[]).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+    const row = rows[index];
+    if (!row?.media_id) return null;
+    const { data: asset } = await sb
+      .from('media_assets')
+      .select('storage_path, byte_size')
+      .eq('id', row.media_id)
+      .maybeSingle();
+    const p = String((asset as any)?.storage_path ?? '');
+    if (!p) return null;
+    const bs = (asset as any)?.byte_size;
+    return { path: p, byteSize: typeof bs === 'number' ? bs : null };
+  } catch {
+    return null;
+  }
+}
+
+async function localBytes(uri: string): Promise<number | null> {
+  try {
+    if (uri.startsWith('http')) return null;
+    const info: any = await FileSystem.getInfoAsync(uri);
+    if (info?.exists && typeof info.size === 'number' && info.size > 0) return info.size;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** True when the mirror clearly isn't the current local file (a replaced
+ *  video re-saved under the same post id). Tolerance avoids false
+ *  positives from rounding; a swapped file differs by far more. */
+function staleMirror(mirrored: number | null, local: number | null): boolean {
+  if (mirrored == null || local == null) return false;
+  if (mirrored <= 0 || local <= 0) return false;
+  const diff = Math.abs(mirrored - local);
+  return diff > 4096 && diff / Math.max(mirrored, local) > 0.01;
+}
+
+async function signedMirrorUrl(path: string): Promise<string> {
+  const { data: signed } = await supabase().storage.from('post-media').createSignedUrl(path, 3600);
+  let url = String((signed as any)?.signedUrl ?? '');
+  if (url && !url.startsWith('http')) {
+    url = `${supabaseUrl()}/storage/v1${url.startsWith('/') ? '' : '/'}${url}`;
+  }
+  return url;
+}
+
 export async function hostedMediaUrl(
   uri: string,
   kind: 'image' | 'video',
@@ -146,6 +211,20 @@ export async function hostedMediaUrl(
 ): Promise<string> {
   if (uri.startsWith('http')) return uri;
   if (mirror) {
+    // 1. Exact DB-resolved path for this attachment position.
+    try {
+      const local = await localBytes(uri);
+      const exact = await mirrorAsset(mirror.clientId, mirror.index);
+      if (exact) {
+        if (!staleMirror(exact.byteSize, local)) {
+          const url = await signedMirrorUrl(exact.path);
+          if (url.startsWith('http')) return url;
+        } else {
+          console.log(`[media] mirror stale for ${mirror.clientId}#${mirror.index} — uploading current file`);
+        }
+      }
+    } catch {}
+    // 2. Legacy fallback for mirrors stored as `<index>.<ext>` (pre-fix posts).
     try {
       const session = await currentSession().catch(() => null);
       const wsId = session?.workspace?.id;
@@ -155,12 +234,26 @@ export async function hostedMediaUrl(
         const name = `${mirror.index}.${mirror.ext}`;
         const { data: files } = await sb.storage.from('post-media').list(dir, { limit: 20 });
         if ((files ?? []).some((f: any) => f?.name === name)) {
-          const { data: signed } = await sb.storage.from('post-media').createSignedUrl(`${dir}/${name}`, 3600);
-          let url = String((signed as any)?.signedUrl ?? '');
-          if (url && !url.startsWith('http')) {
-            url = `${supabaseUrl()}/storage/v1${url.startsWith('/') ? '' : '/'}${url}`;
+          const full = `${dir}/${name}`;
+          try {
+            const local = await localBytes(uri);
+            const { data: asset } = await sb
+              .from('media_assets')
+              .select('byte_size')
+              .eq('workspace_id', wsId)
+              .eq('storage_path', full)
+              .maybeSingle();
+            const bs = (asset as any)?.byte_size;
+            if (staleMirror(typeof bs === 'number' ? bs : null, local)) {
+              console.log(`[media] legacy mirror stale for ${mirror.clientId}#${mirror.index} — uploading current file`);
+            } else {
+              const url = await signedMirrorUrl(full);
+              if (url.startsWith('http')) return url;
+            }
+          } catch {
+            const url = await signedMirrorUrl(full);
+            if (url.startsWith('http')) return url;
           }
-          if (url.startsWith('http')) return url;
         }
       }
     } catch {}
@@ -666,7 +759,7 @@ export async function publishInstagramStory(opts: {
   const mediaUrl = await hostedMediaUrl(
     first.uri,
     first.kind,
-    opts.mirrorClientId ? { clientId: opts.mirrorClientId, index: 0, ext: extFor(first.uri, first.kind) } : undefined,
+    opts.mirrorClientId ? { clientId: opts.mirrorClientId, index: atts.indexOf(first), ext: extFor(first.uri, first.kind) } : undefined,
   );
   const field = first.kind === 'video' ? 'video_url' : 'image_url';
   const c = await fetch(
@@ -712,7 +805,7 @@ export async function publishThreads(opts: {
     mediaUrl = await hostedMediaUrl(
       first.uri,
       first.kind,
-      opts.mirrorClientId ? { clientId: opts.mirrorClientId, index: 0, ext: extFor(first.uri, first.kind) } : undefined,
+      opts.mirrorClientId ? { clientId: opts.mirrorClientId, index: atts.indexOf(first), ext: extFor(first.uri, first.kind) } : undefined,
     );
   }
   const tag = (opts.topicTag ?? '').replace(/^[#\s]+/, '').replace(/[.&]/g, '').trim().slice(0, 50);
