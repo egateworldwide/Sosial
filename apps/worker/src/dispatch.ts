@@ -9,6 +9,7 @@ import { getPublishBundle, markTargetSent, markTargetFailed } from './db';
 import { publishBlueskyTarget, blueskyPostUrl } from './bsky';
 import { publishThreadsTarget } from './threads';
 import { publishXTarget } from './x';
+import { publishYouTubeTarget } from './youtube';
 import { info } from './logger';
 
 function notPorted(kind: string): Error {
@@ -50,6 +51,12 @@ async function handlePublishTarget(job: Job): Promise<void> {
       const { tweetId, tweetUrl } = await publishXTarget(bundle);
       await markTargetSent(targetId, tweetId, tweetUrl);
       info(`target ${targetId} sent → ${tweetId}`);
+      return;
+    }
+    if (provider === 'youtube') {
+      const { videoId, videoUrl } = await publishYouTubeTarget(bundle);
+      await markTargetSent(targetId, videoId, videoUrl);
+      info(`target ${targetId} sent → ${videoId}`);
       return;
     }
     throw notPorted(`publish_target:${provider}`);

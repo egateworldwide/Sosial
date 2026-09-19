@@ -30,6 +30,13 @@ const SORTS: { id: Sort; label: string }[] = [
   { id: 'az', label: 'A–Z' },
 ];
 
+const EMPTY_COPY: Record<Tab, { title: string; sub: string }> = {
+  queued: { title: 'Queue is clear', sub: 'Scheduled posts land here with their time and channels.' },
+  draft: { title: 'No drafts', sub: 'Save a post without a schedule and it waits here.' },
+  approval: { title: 'Nothing to approve', sub: 'Posts your team submits for review land here.' },
+  sent: { title: 'Nothing sent yet', sub: 'Published posts land here with a timestamp.' },
+};
+
 function dayLabel(ts: number): string {
   const d = new Date(ts);
   const now = new Date();
@@ -40,20 +47,41 @@ function dayLabel(ts: number): string {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-function Cover({ uri, kind }: { uri?: string; kind?: 'image' | 'video' }) {
+function Cover({ uri, kind, size = 46 }: { uri?: string; kind?: 'image' | 'video'; size?: number }) {
   const { C } = useTheme();
   const s = makeS(C);
-  if (uri && kind !== 'video') return <Image source={{ uri }} style={s.cover} />;
+  const box = [s.cover, { width: size, height: size }];
+  if (uri && kind !== 'video') return <Image source={{ uri }} style={box} />;
   if (uri) {
     return (
-      <View style={[s.cover, { backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }]}>
-        <Ionicons name="play" size={20} color={C.onInk} />
+      <View style={[box, { backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }]}>
+        <Ionicons name="play" size={16} color={C.onInk} />
       </View>
     );
   }
   return (
-    <View style={[s.cover, s.coverEmpty]}>
+    <View style={[box, s.coverEmpty]}>
       <Text style={s.coverT}>Aa</Text>
+    </View>
+  );
+}
+
+function ChannelStack({ plats, C }: { plats: string[]; C: Palette }) {
+  const s = makeS(C);
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      {plats.slice(0, 4).map((c, i) => (
+        c === 'any' ? (
+          <View key={`${c}-${i}`} style={[s.stackTile, { backgroundColor: C.card, borderColor: C.lineSoft, marginLeft: i === 0 ? 0 : -7 }]}>
+            <Ionicons name="globe-outline" size={11} color={C.muted} />
+          </View>
+        ) : (
+          <View key={`${c}-${i}`} style={[s.stackTile, { backgroundColor: SOCIAL_META[c]?.bg ?? C.ink, marginLeft: i === 0 ? 0 : -7 }]}>
+            <SocialGlyph platform={c} size={10} color="#fff" />
+          </View>
+        )
+      ))}
+      {plats.length > 4 ? <Text style={s.moreN}>+{plats.length - 4}</Text> : null}
     </View>
   );
 }
@@ -78,6 +106,8 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
   const [tab, setTab] = useState<Tab>('queued');
   const [sort, setSort] = useState<Sort>('newest');
   const [refreshing, setRefreshing] = useState(false);
+
+  const pad = bare ? 0 : 24;
 
   const reload = async () => {
     setPosts(await loadManagedPosts());
@@ -140,40 +170,49 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
   const showSubmit = tab === 'draft' && canSubmit(actor);
   const showApprove = tab === 'approval' && canApprove(actor);
 
+  const cycleSort = () => {
+    const i = SORTS.findIndex((x) => x.id === sort);
+    setSort(SORTS[(i + 1) % SORTS.length].id);
+  };
+  const sortLabel = SORTS.find((x) => x.id === sort)?.label ?? 'Newest';
+
   const row = (p: ManagedPost) => {
     const plats = p.platforms?.length ? p.platforms : ['any'];
     const overdue = tab === 'queued' && !!p.scheduledAt && p.scheduledAt <= Date.now();
     const when =
-      tab === 'sent' && p.sentAt ? `Sent · ${fmtDateTime(p.sentAt)}` :
+      tab === 'sent' && p.sentAt ? `Sent ${fmtDateTime(p.sentAt)}` :
       p.scheduledAt ? `${overdue ? 'Overdue · ' : ''}${fmtDateTime(p.scheduledAt)}` : 'Not scheduled';
     const legErr = Object.values(p.channelErr ?? {})[0] as string | undefined;
     const parked = tab === 'queued' && (p.autoTries ?? 0) >= MAX_AUTO_TRIES;
     return (
       <View key={p.id}>
         <TouchableOpacity onPress={() => openComposer(p)} style={st.card} activeOpacity={0.75}>
-          <Cover uri={p.imageUri ?? p.videoUri} kind={p.videoUri ? 'video' : 'image'} />
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={st.t} numberOfLines={1}>{p.title || 'Untitled'}</Text>
-            <Text style={st.meta} numberOfLines={1}>{p.body || 'No description'}</Text>
-            <Text style={[st.meta, overdue && { color: C.redText }]}>{when} · {platformsLabel(plats)}</Text>
-            {tab === 'queued' && legErr ? <Text style={st.errT} numberOfLines={2}>⚠ {legErr}</Text> : null}
-            {tab === 'queued' && !legErr && parked ? <Text style={st.errT} numberOfLines={2}>Auto-retry stopped — open to retry manually</Text> : null}
+          <View style={st.cardTop}>
+            <Cover uri={p.imageUri ?? p.videoUri} kind={p.videoUri ? 'video' : 'image'} />
+            <View style={{ flex: 1, gap: 3 }}>
+              <Text style={st.t} numberOfLines={1}>{p.title || 'Untitled'}</Text>
+              <Text style={st.body} numberOfLines={2}>{p.body || platformsLabel(plats)}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={C.faint} />
           </View>
-          {/* overlapping channel stack, like the Connect button */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 0 }}>
-            {plats.slice(0, 4).map((c, i) => (
-              c === 'any' ? (
-                <View key={`${c}-${i}`} style={[st.stackTile, { backgroundColor: C.card, borderColor: C.lineSoft, marginLeft: i === 0 ? 0 : -8 }]}>
-                  <Ionicons name="globe-outline" size={14} color={C.muted} />
-                </View>
-              ) : (
-                <View key={`${c}-${i}`} style={[st.stackTile, { backgroundColor: SOCIAL_META[c]?.bg ?? C.ink, marginLeft: i === 0 ? 0 : -8 }]}>
-                  <SocialGlyph platform={c} size={12} color="#fff" />
-                </View>
-              )
-            ))}
-            {plats.length > 4 ? <Text style={st.moreN}>+{plats.length - 4}</Text> : null}
+          <View style={st.cardFoot}>
+            <View style={[st.whenDot, { backgroundColor: overdue ? C.redText : C.faint }]} />
+            <Text style={[st.when, overdue && { color: C.redText }]} numberOfLines={1}>{when}</Text>
+            <View style={{ flex: 1 }} />
+            <ChannelStack plats={plats} C={C} />
           </View>
+          {tab === 'queued' && legErr ? (
+            <View style={st.errBar}>
+              <Ionicons name="alert-circle" size={13} color={C.redText} />
+              <Text style={st.errT} numberOfLines={2}>{legErr}</Text>
+            </View>
+          ) : null}
+          {tab === 'queued' && !legErr && parked ? (
+            <View style={st.errBar}>
+              <Ionicons name="pause-circle" size={13} color={C.redText} />
+              <Text style={st.errT} numberOfLines={2}>Auto-retry stopped — open to retry manually</Text>
+            </View>
+          ) : null}
         </TouchableOpacity>
         {showSubmit || showApprove ? (
           <View style={st.actions}>
@@ -208,14 +247,88 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
     sent: posts.filter((p) => p.status === 'sent').length,
   };
 
+  const body = (
+    <>
+      {/* pipeline tabs */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: pad, marginTop: bare ? 0 : 14 }}>
+        {TABS.map((t) => {
+          const on = tab === t.id;
+          return (
+            <TouchableOpacity key={t.id} onPress={() => setTab(t.id)} style={[st.tab, on && st.tabOn]} activeOpacity={0.75}>
+              <Text style={[st.tabT, on && { color: C.onInk }]}>{t.label}</Text>
+              <View style={[st.tabCount, on && { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                <Text style={[st.tabCountT, on && { color: C.onInk }]}>{counts[t.id]}</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {/* toolbar — channel filter, sort, refresh */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: pad, marginTop: 12 }}>
+        <TouchableOpacity onPress={() => setDrawer(true)} style={st.tool} activeOpacity={0.75}>
+          {channel === 'all' ? (
+            <Ionicons name="globe-outline" size={15} color={C.accentInk} />
+          ) : (
+            <View style={[st.toolGlyph, { backgroundColor: SOCIAL_META[channel]?.bg ?? C.ink }]}>
+              <SocialGlyph platform={channel} size={10} color="#fff" />
+            </View>
+          )}
+          <Text style={st.toolT} numberOfLines={1}>{channelLabel}</Text>
+          <Ionicons name="chevron-down" size={14} color={C.faint} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }} />
+        <TouchableOpacity onPress={cycleSort} style={st.tool} activeOpacity={0.75}>
+          <Ionicons name="swap-vertical-outline" size={15} color={C.accentInk} />
+          <Text style={st.toolT}>{sortLabel}</Text>
+        </TouchableOpacity>
+        {bare ? (
+          <TouchableOpacity onPress={() => { void onRefresh(); }} style={st.iconBtn} activeOpacity={0.75}>
+            <Ionicons name="refresh" size={15} color={refreshing ? C.faint : C.muted} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
+      <View style={{ paddingHorizontal: pad, marginTop: 14 }}>
+        {tab === 'queued' ? (
+          groups.length === 0 ? (
+            <Empty C={C} title={EMPTY_COPY.queued.title} sub={EMPTY_COPY.queued.sub} />
+          ) : (
+            groups.map((g) => (
+              <View key={g.day} style={{ marginTop: 16 }}>
+                <Text style={st.day}>{g.day}</Text>
+                <View style={{ gap: 10, marginTop: 10 }}>{g.rows.map(row)}</View>
+              </View>
+            ))
+          )
+        ) : sorted.length === 0 ? (
+          <Empty C={C} title={EMPTY_COPY[tab].title} sub={EMPTY_COPY[tab].sub} />
+        ) : (
+          <View style={{ gap: 10 }}>{sorted.map(row)}</View>
+        )}
+      </View>
+
+      {bare ? null : (
+        <View style={{ paddingHorizontal: pad, marginTop: 16 }}>
+          <TouchableOpacity onPress={() => openComposer(null)} style={st.newBtn} activeOpacity={0.85}>
+            <Ionicons name="add" size={17} color={C.onInk} />
+            <Text style={st.newBtnT}>New post</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </>
+  );
+
   return (
-    <View style={{ flex: 1, backgroundColor: C.bone }}>
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: 40 }}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { void onRefresh(); }} tintColor={C.accent} />}
-      >
-        {bare ? null : (
+    <View style={{ flex: bare ? undefined : 1, backgroundColor: bare ? 'transparent' : C.bone }}>
+      {bare ? (
+        <View>{body}</View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={{ paddingBottom: 40 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { void onRefresh(); }} tintColor={C.accent} />}
+        >
           <View style={st.masthead}>
             <Text style={[T.h1, { color: C.ink, fontSize: 30, lineHeight: 36 }]}>Post</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -223,81 +336,9 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
               <AvatarButton email={email} team={team} onPress={onProfile} />
             </View>
           </View>
-        )}
-
-        {/* channel drawer trigger */}
-        <View style={{ paddingHorizontal: 24, marginTop: 14 }}>
-          <TouchableOpacity onPress={() => setDrawer(true)} style={st.chanBtn} activeOpacity={0.75}>
-            {channel === 'all' ? (
-              <Ionicons name="globe-outline" size={18} color={C.accentInk} />
-            ) : (
-              <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: SOCIAL_META[channel]?.bg ?? C.ink, alignItems: 'center', justifyContent: 'center' }}>
-                <SocialGlyph platform={channel} size={14} color="#fff" />
-              </View>
-            )}
-            <Text style={st.chanBtnT}>{channelLabel}</Text>
-            <Ionicons name="chevron-down" size={18} color={C.faint} />
-          </TouchableOpacity>
-        </View>
-
-        {/* pipeline tabs */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 24, marginTop: 12 }}>
-          {TABS.map((t) => {
-            const on = tab === t.id;
-            return (
-              <TouchableOpacity key={t.id} onPress={() => setTab(t.id)} style={[st.tab, on && { backgroundColor: C.ink, borderColor: C.ink }]} activeOpacity={0.75}>
-                <Text style={[st.tabT, on && { color: C.onInk }]}>{t.label} · {counts[t.id]}</Text>
-              </TouchableOpacity>
-            );
-          })}
+          {body}
         </ScrollView>
-
-        {/* sorting — sorters scroll, Post stays pinned on the right */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 24, marginTop: 12 }}>
-          <Ionicons name="swap-vertical-outline" size={15} color={C.faint} />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 4 }} style={{ flex: 1 }}>
-            {SORTS.map((o) => {
-              const on = sort === o.id;
-              return (
-                <TouchableOpacity key={o.id} onPress={() => setSort(o.id)} activeOpacity={0.7}>
-                  <Text style={[st.sortT, on && { color: C.accentInk }]}>{o.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-          <TouchableOpacity onPress={() => openComposer(null)} activeOpacity={0.85} style={st.addBtn}>
-            <Ionicons name="send" size={15} color={C.onInk} />
-            <Text style={st.addBtnT}>Post</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={{ paddingHorizontal: 24, marginTop: 12 }}>
-          {tab === 'queued' ? (
-            groups.length === 0 ? (
-              <View style={st.empty}>
-                <Text style={st.emptyT}>Queue is clear</Text>
-                <Text style={st.emptyS}>Scheduled posts land here with time + channels.</Text>
-              </View>
-            ) : (
-              groups.map((g) => (
-                <View key={g.day} style={{ marginTop: 14 }}>
-                  <Text style={st.day}>{g.day}</Text>
-                  <View style={{ gap: 10, marginTop: 10 }}>{g.rows.map(row)}</View>
-                </View>
-              ))
-            )
-          ) : sorted.length === 0 ? (
-            <View style={st.empty}>
-              <Text style={st.emptyT}>Nothing here</Text>
-              <Text style={st.emptyS}>
-                {tab === 'draft' ? 'Drafts you save land here.' : tab === 'approval' ? 'Posts waiting for approval land here.' : 'Published posts land here.'}
-              </Text>
-            </View>
-          ) : (
-            <View style={{ gap: 10 }}>{sorted.map(row)}</View>
-          )}
-        </View>
-      </ScrollView>
+      )}
 
       <ChannelDrawer
         visible={drawer}
@@ -312,30 +353,53 @@ export default function PostScreen({ email, team, onProfile, onConnect, bare }: 
   );
 }
 
+function Empty({ C, title, sub }: { C: Palette; title: string; sub: string }) {
+  const s = makeS(C);
+  return (
+    <View style={s.empty}>
+      <View style={s.emptyIcon}>
+        <Ionicons name="file-tray-outline" size={20} color={C.faint} />
+      </View>
+      <Text style={s.emptyT}>{title}</Text>
+      <Text style={s.emptyS}>{sub}</Text>
+    </View>
+  );
+}
+
 const makeS = (C: Palette) => StyleSheet.create({
-  masthead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 20 },
-  chanBtn: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, paddingHorizontal: 15, paddingVertical: 13 },
-  chanBtnT: { flex: 1, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14.5, color: C.ink },
-  tab: { borderRadius: 999, paddingHorizontal: 15, paddingVertical: 9, backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft },
-  tabT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.muted },
-  sortT: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, color: C.faint },
-  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.accent, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
-  addBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.onInk },
-  day: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14, letterSpacing: 0.4, textTransform: 'uppercase', color: C.accentInk },
-  card: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderRadius: R.lg, padding: 12 },
-  stackTile: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: C.paper },
-  moreN: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11.5, color: C.muted, marginLeft: 2 },
+  masthead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 20, marginBottom: 14 },
+  tab: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 999, paddingLeft: 14, paddingRight: 10, paddingVertical: 9, backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft },
+  tabOn: { backgroundColor: C.ink, borderColor: C.ink },
+  tabT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, color: C.muted },
+  tabCount: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: C.bone, alignItems: 'center', justifyContent: 'center' },
+  tabCountT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11, color: C.muted },
+  tool: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.card, borderRadius: 999, borderWidth: 1, borderColor: C.lineSoft, paddingHorizontal: 12, paddingVertical: 8, maxWidth: '55%' },
+  toolGlyph: { width: 18, height: 18, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  toolT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: C.ink },
+  iconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.card, borderWidth: 1, borderColor: C.lineSoft, alignItems: 'center', justifyContent: 'center' },
+  newBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: C.accent, borderRadius: R.lg, paddingVertical: 14 },
+  newBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: C.onInk },
+  day: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 12.5, letterSpacing: 0.6, textTransform: 'uppercase', color: C.accentInk },
+  card: { backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, padding: 12, gap: 10 },
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 11 },
+  cardFoot: { flexDirection: 'row', alignItems: 'center', gap: 7, borderTopWidth: 1, borderTopColor: C.lineSoft, paddingTop: 9 },
+  whenDot: { width: 6, height: 6, borderRadius: 3 },
+  when: { flexShrink: 1, fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11.5, color: C.muted },
+  stackTile: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: C.card },
+  moreN: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11, color: C.muted, marginLeft: 3 },
   actions: { flexDirection: 'row', gap: 8, marginTop: 6, marginBottom: 4 },
   actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.ink, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
   actionBtnGhost: { backgroundColor: 'transparent', borderWidth: 1, borderColor: C.lineSoft },
   actionBtnT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: C.onInk },
-  cover: { width: 56, height: 56, borderRadius: 12 },
+  errBar: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, backgroundColor: C.paleRed, borderRadius: R.md, paddingHorizontal: 9, paddingVertical: 7 },
+  cover: { borderRadius: 11, backgroundColor: C.lineSoft },
   coverEmpty: { backgroundColor: C.accentSoft, alignItems: 'center', justifyContent: 'center' },
-  coverT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 17, color: C.accentInk },
-  t: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15, letterSpacing: -0.2, color: C.ink },
-  meta: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, color: C.muted },
-  errT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: C.redText },
-  empty: { backgroundColor: C.card, borderRadius: R.lg, padding: 28, alignItems: 'center', marginTop: 6 },
-  emptyT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 16, color: C.ink },
+  coverT: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14, color: C.accentInk },
+  t: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14.5, letterSpacing: -0.2, color: C.ink },
+  body: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 12.5, lineHeight: 17, color: C.muted },
+  errT: { flex: 1, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11.5, lineHeight: 16, color: C.redText },
+  empty: { backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.lineSoft, paddingVertical: 30, paddingHorizontal: 24, alignItems: 'center', marginTop: 4 },
+  emptyIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.bone, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  emptyT: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 15.5, color: C.ink },
   emptyS: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, color: C.muted, marginTop: 6, textAlign: 'center', lineHeight: 19 },
 });

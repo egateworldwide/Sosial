@@ -51,11 +51,13 @@ export async function storageSign(bucket: string, path: string, expiresIn = 300)
   return `${base()}/storage/v1${signed}`;
 }
 
-/** Download bytes (cap 25 MB — publish adapters reject oversize earlier). */
-export async function storageDownload(url: string): Promise<Buffer> {
+/** Download bytes (default cap 25 MB — video channels pass a larger cap). */
+export async function storageDownload(url: string, maxBytes = 25 * 1024 * 1024): Promise<Buffer> {
   const r = await fetch(url);
   if (!r.ok) await fail(r, 'media download');
   const ab = await r.arrayBuffer();
-  if (ab.byteLength > 25 * 1024 * 1024) throw new Error('media file over 25 MB');
+  if (ab.byteLength > maxBytes) {
+    throw new Error(`media file over ${Math.round(maxBytes / 1048576)} MB`);
+  }
   return Buffer.from(ab);
 }

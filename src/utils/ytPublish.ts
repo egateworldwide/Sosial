@@ -1,7 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { YT_UPLOAD_API, YT_MAX_BYTES, YT_MAX_TITLE, YT_MAX_DESC } from './ytConfig';
 import { getValidYt } from './ytAuth';
-import { b64ToBytes } from './bskyPublish';
 
 function yerr(j: any, status: number, fallback: string): string {
   const m =
@@ -42,8 +41,10 @@ async function fileSize(uri: string): Promise<number> {
 
 /**
  * Resumable upload in two hops: POST metadata → session URL in the Location
- * header → PUT raw bytes. Single PUT (no chunking) keeps memory bounded via
- * the YT_MAX_BYTES cap — fine for Shorts and short-form clips.
+ * header → PUT the bytes. The file streams from disk natively
+ * (`FileSystem.uploadAsync` with BINARY_CONTENT) — base64-decoding a whole
+ * video into a JS byte array blows Hermes memory and stalls the upload.
+ * Single PUT (no chunking) keeps memory bounded via the YT_MAX_BYTES cap.
  */
 async function uploadVideo(token: string, uri: string, title: string, description: string, privacy: 'public' | 'unlisted' | 'private'): Promise<string> {
   const size = await fileSize(uri);
@@ -70,14 +71,18 @@ async function uploadVideo(token: string, uri: string, title: string, descriptio
     const j: any = await init.json().catch(() => ({}));
     throw new Error(yerr(j, init.status, 'YouTube upload init failed.'));
   }
-  const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-  const put = await fetch(sessionUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': mime, 'Content-Length': String(size) },
-    body: b64ToBytes(b64) as any,
+  const put = await FileSystem.uploadAsync(sessionUrl, uri, {
+    httpMethod: 'PUT',
+    headers: { 'Content-Type': mime },
+    uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
   });
-  const j: any = await put.json().catch(() => ({}));
-  if (!put.ok || !j?.id) throw new Error(yerr(j, put.status, 'YouTube upload failed.'));
+  let j: any = {};
+  try {
+    j = JSON.parse(put.body || '{}');
+  } catch {}
+  if (put.status < 200 || put.status >= 300 || !j?.id) {
+    throw new Error(yerr(j, put.status, 'YouTube upload failed.'));
+  }
   return String(j.id);
 }
 

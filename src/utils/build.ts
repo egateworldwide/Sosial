@@ -4,4 +4,4 @@
  * which bundle a phone is actually running — no more guessing
  * whether Expo Go served fresh code or a cached build.
  */
-export const BUILD_TAG = 'b61';
+export const BUILD_TAG = 'b62';
